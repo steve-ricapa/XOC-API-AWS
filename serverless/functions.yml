@@ -1,0 +1,42 @@
+jwtAuthorizer:
+  handler: src/handlers/authorizers/jwt_authorizer.handler
+  name: ${self:service}-${self:custom.stage}-jwt-authorizer
+  description: Custom JWT request authorizer for XOC API
+  memorySize: 256
+  timeout: 10
+  package:
+    patterns:
+      - src/**
+      - requirements.txt
+
+apiHttp:
+  handler: src/handlers/api.handler
+  name: ${self:service}-${self:custom.stage}-api
+  description: FastAPI HTTP entrypoint for XOC API
+  memorySize: 512
+  timeout: 20
+  events:
+    - httpApi:
+        method: GET
+        path: /health
+    - httpApi:
+        method: POST
+        path: /api/auth/register
+    - httpApi:
+        method: POST
+        path: /api/auth/login
+    - httpApi:
+        method: POST
+        path: /api/auth/refresh
+        authorizer: jwtRequestAuthorizer
+    - httpApi:
+        method: POST
+        path: /api/onboarding/tenant
+    - httpApi:
+        method: '*'
+        path: /api/{proxy+}
+        authorizer: jwtRequestAuthorizer
+  package:
+    patterns:
+      - src/**
+      - requirements.txt

@@ -1,0 +1,98 @@
+from typing import Any
+
+from fastapi import Depends, Request
+from sqlalchemy.orm import Session
+
+from src.persistence.db import get_db_session
+from src.persistence.models import User
+from src.shared.context import require_superadmin
+from src.shared.errors import ForbiddenError, UnauthorizedError
+
+
+def get_request_event(request: Request) -> dict[str, Any]:
+    return request.scope.get("aws.event") or {}
+
+
+def get_request_claims(request: Request) -> dict[str, Any]:
+    event = get_request_event(request)
+    request_context = event.get("requestContext") or {}
+    authorizer = request_context.get("authorizer") or {}
+    if isinstance(authorizer.get("lambda"), dict):
+        return authorizer["lambda"]
+    return authorizer if isinstance(authorizer, dict) else {}
+
+
+def require_access_claims(claims: dict[str, Any] = Depends(get_request_claims)) -> dict[str, Any]:
+    token_type = claims.get("tokenType") or claims.get("type")
+    if token_type and token_type != "access":
+        raise ForbiddenError("Access token required")
+    return claims
+
+
+def require_refresh_claims(claims: dict[str, Any] = Depends(get_request_claims)) -> dict[str, Any]:
+    token_type = claims.get("tokenType") or claims.get("type")
+    if token_type != "refresh":
+        raise ForbiddenError("Refresh token required")
+    return claims
+
+
+def get_current_company_id(claims: dict[str, Any] = Depends(require_access_claims)) -> int:
+    company_id = claims.get("companyId") or claims.get("company_id")
+    if not company_id:
+        raise UnauthorizedError("Company not found in request context")
+    return int(company_id)
+
+
+def get_request_company_context(claims: dict[str, Any] = Depends(require_access_claims)) -> tuple[int, str]:
+    scopes = claims.get("scopes") or []
+    if isinstance(scopes, str):
+        scopes = [scopes]
+    if "agent:invoke" in scopes:
+        company_id = claims.get("companyId") or claims.get("company_id")
+        if not company_id:
+            raise UnauthorizedError("company_id not found in token")
+        return int(company_id), "agent"
+
+    company_id = claims.get("companyId") or claims.get("company_id")
+    if not company_id:
+        raise UnauthorizedError("Company not found in request context")
+    return int(company_id), "user"
+
+
+def get_current_user_id(claims: dict[str, Any] = Depends(get_request_claims)) -> int:
+    user_id = claims.get("userId") or claims.get("sub") or claims.get("principalId")
+    if not user_id:
+        raise UnauthorizedError("User not found")
+    return int(user_id)
+
+
+def get_current_user(
+    claims: dict[str, Any] = Depends(require_access_claims),
+    session: Session = Depends(get_db_session),
+) -> User:
+    user_id = claims.get("userId") or claims.get("sub") or claims.get("principalId")
+    if not user_id:
+        raise UnauthorizedError("User not found")
+    user = session.get(User, int(user_id))
+    if not user:
+        raise UnauthorizedError("User not found")
+    return user
+
+
+def get_current_user_optional(
+    claims: dict[str, Any] = Depends(require_access_claims),
+    session: Session = Depends(get_db_session),
+) -> User | None:
+    scopes = claims.get("scopes") or []
+    if isinstance(scopes, str):
+        scopes = [scopes]
+    if "agent:invoke" in scopes:
+        return None
+
+    user_id = claims.get("userId") or claims.get("sub") or claims.get("principalId")
+    if not user_id:
+        raise UnauthorizedError("User not found")
+    user = session.get(User, int(user_id))
+    if not user:
+        raise UnauthorizedError("User not found")
+    return user

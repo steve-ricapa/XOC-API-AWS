@@ -1,0 +1,12 @@
+Resources:
+  ApplicationEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: ${self:service}-${self:custom.stage}-bus
+
+Outputs:
+  HttpApiUrl:
+    Value:
+      Fn::Sub: https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+  EventBusName:
+    Value: ${self:service}-${self:custom.stage}-bus

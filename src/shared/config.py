@@ -1,0 +1,92 @@
+import json
+import os
+from dataclasses import dataclass
+from functools import lru_cache
+
+import boto3
+
+from src.shared.errors import ConfigurationError
+
+
+@dataclass(frozen=True)
+class Settings:
+    app_stage: str
+    app_region: str
+    jwt_secret_key_ssm_path: str | None
+    database_secret_arn: str | None
+    database_url_ssm_path: str | None
+    cors_allowed_origins: list[str]
+    event_bus_name: str | None
+    enable_api_docs: bool
+
+
+def _split_csv(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    app_stage = os.environ.get("APP_STAGE", "dev")
+    return Settings(
+        app_stage=app_stage,
+        app_region=os.environ.get("APP_REGION", "us-east-1"),
+        jwt_secret_key_ssm_path=os.environ.get("JWT_SECRET_KEY_SSM_PATH"),
+        database_secret_arn=os.environ.get("DATABASE_SECRET_ARN"),
+        database_url_ssm_path=os.environ.get("DATABASE_URL_SSM_PATH"),
+        cors_allowed_origins=_split_csv(os.environ.get("CORS_ALLOWED_ORIGINS")),
+        event_bus_name=os.environ.get("EVENT_BUS_NAME"),
+        enable_api_docs=app_stage not in {"prod"},
+    )
+
+
+@lru_cache(maxsize=8)
+def get_ssm_parameter(parameter_name: str, *, decrypt: bool = True) -> str:
+    client = boto3.client("ssm")
+    response = client.get_parameter(Name=parameter_name, WithDecryption=decrypt)
+    value = response.get("Parameter", {}).get("Value")
+    if not value:
+        raise ConfigurationError(f"SSM parameter is empty: {parameter_name}")
+    return value
+
+
+@lru_cache(maxsize=8)
+def get_secret_string(secret_arn: str) -> str:
+    client = boto3.client("secretsmanager")
+    response = client.get_secret_value(SecretId=secret_arn)
+    secret_string = response.get("SecretString")
+    if not secret_string:
+        raise ConfigurationError(f"SecretString is empty: {secret_arn}")
+    return secret_string
+
+
+def get_database_url() -> str | None:
+    direct_url = os.environ.get("DATABASE_URL")
+    if direct_url:
+        return direct_url
+
+    settings = get_settings()
+    if settings.database_url_ssm_path:
+        return get_ssm_parameter(settings.database_url_ssm_path)
+
+    if settings.database_secret_arn:
+        secret_string = get_secret_string(settings.database_secret_arn)
+        try:
+            payload = json.loads(secret_string)
+        except json.JSONDecodeError:
+            return secret_string
+        return payload.get("database_url") or payload.get("DATABASE_URL")
+
+    return None
+
+
+def get_jwt_secret_key() -> str:
+    direct_secret = os.environ.get("JWT_SECRET_KEY")
+    if direct_secret:
+        return direct_secret
+
+    settings = get_settings()
+    if not settings.jwt_secret_key_ssm_path:
+        raise ConfigurationError("JWT secret source is not configured")
+    return get_ssm_parameter(settings.jwt_secret_key_ssm_path)

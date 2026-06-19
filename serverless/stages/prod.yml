@@ -1,0 +1,9 @@
+region: us-east-1
+logLevel: INFO
+logRetentionInDays: 90
+corsAllowedOrigins:
+  - https://api.example.com
+corsAllowedOriginsCsv: https://api.example.com
+jwtSecretKeySsmPath: /xoc/api/prod/jwt-secret-key
+databaseSecretArn: arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:xoc/api/prod/database
+databaseUrlSsmPath: /xoc/api/prod/database-url

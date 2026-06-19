@@ -1,0 +1,90 @@
+service: xoc-api-core
+
+frameworkVersion: '4'
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  stage: ${opt:stage, 'dev'}
+  stageConfig: ${file(./serverless/stages/${self:custom.stage}.yml)}
+  pythonRequirements:
+    dockerizePip: false
+    slim: true
+    layer: false
+
+provider:
+  name: aws
+  runtime: python3.12
+  architecture: arm64
+  stage: ${self:custom.stage}
+  region: ${self:custom.stageConfig.region}
+  logRetentionInDays: ${self:custom.stageConfig.logRetentionInDays}
+  tracing:
+    lambda: true
+  environment:
+    APP_STAGE: ${self:custom.stage}
+    APP_REGION: ${aws:region}
+    POWERTOOLS_SERVICE_NAME: ${self:service}
+    POWERTOOLS_LOG_LEVEL: ${self:custom.stageConfig.logLevel}
+    POWERTOOLS_METRICS_NAMESPACE: XOC/API
+    JWT_SECRET_KEY_SSM_PATH: ${self:custom.stageConfig.jwtSecretKeySsmPath}
+    DATABASE_SECRET_ARN: ${self:custom.stageConfig.databaseSecretArn}
+    DATABASE_URL_SSM_PATH: ${self:custom.stageConfig.databaseUrlSsmPath}
+    CORS_ALLOWED_ORIGINS: ${self:custom.stageConfig.corsAllowedOriginsCsv}
+    EVENT_BUS_NAME: ${self:service}-${self:custom.stage}-bus
+  httpApi:
+    cors:
+      allowedOrigins: ${self:custom.stageConfig.corsAllowedOrigins}
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+        - X-Request-Id
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      exposedResponseHeaders:
+        - X-Request-Id
+      allowCredentials: true
+    authorizers:
+      jwtRequestAuthorizer:
+        type: request
+        functionName: jwtAuthorizer
+        enableSimpleResponses: true
+        identitySource:
+          - $request.header.Authorization
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - ssm:GetParameter
+          Resource:
+            - arn:aws:ssm:${aws:region}:${aws:accountId}:parameter${self:custom.stageConfig.jwtSecretKeySsmPath}
+            - arn:aws:ssm:${aws:region}:${aws:accountId}:parameter${self:custom.stageConfig.databaseUrlSsmPath}
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource:
+            - ${self:custom.stageConfig.databaseSecretArn}
+        - Effect: Allow
+          Action:
+            - events:PutEvents
+          Resource:
+            - arn:aws:events:${aws:region}:${aws:accountId}:event-bus/${self:service}-${self:custom.stage}-bus
+
+package:
+  individually: true
+  patterns:
+    - '!node_modules/**'
+    - '!package-lock.json'
+    - '!README.md'
+    - '!tests/**'
+    - '!txdxai_Flask/**'
+
+functions: ${file(./serverless/functions.yml)}
+resources: ${file(./serverless/resources.yml)}

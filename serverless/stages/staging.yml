@@ -1,0 +1,9 @@
+region: us-east-1
+logLevel: INFO
+logRetentionInDays: 30
+corsAllowedOrigins:
+  - https://staging.example.com
+corsAllowedOriginsCsv: https://staging.example.com
+jwtSecretKeySsmPath: /xoc/api/staging/jwt-secret-key
+databaseSecretArn: arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:xoc/api/staging/database
+databaseUrlSsmPath: /xoc/api/staging/database-url
