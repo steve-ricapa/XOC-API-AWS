@@ -16,7 +16,7 @@ provider:
   architecture: arm64
   stage: ${self:custom.stage}
   region: ${self:custom.stageConfig.region}
-  role: arn:aws:iam::720537963320:role/LabRole
+  role: arn:aws:iam::${aws:accountId}:role/LabRole
   logRetentionInDays: ${self:custom.stageConfig.logRetentionInDays}
   tracing:
     lambda: true
