@@ -13,7 +13,6 @@
     "dev": "uvicorn src.handlers.api:app --reload --host 0.0.0.0 --port 8000"
   },
   "devDependencies": {
-    "serverless": "^4.18.2",
-    "serverless-python-requirements": "^8.1.0"
+    "serverless": "^4.18.2"
   }
 }

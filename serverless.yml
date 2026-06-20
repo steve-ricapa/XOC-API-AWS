@@ -2,9 +2,6 @@ service: xoc-api-core
 
 frameworkVersion: '4'
 
-plugins:
-  - serverless-python-requirements
-
 custom:
   stage: ${opt:stage, 'dev'}
   stageConfig: ${file(./serverless/stages/${self:custom.stage}.yml)}
