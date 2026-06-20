@@ -4,7 +4,7 @@ logRetentionInDays: 30
 corsAllowedOrigins:
   - https://staging.example.com
 corsAllowedOriginsCsv: https://staging.example.com
-jwtSecretKeySsmPath: /xoc/api/staging/jwt-secret-key
+jwtSecretKey: xoc-demo-staging-jwt-secret-change-me
 databaseSecretArn: arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:xoc/api/staging/database
 snapshotsBucketName: xoc-staging-snapshots-placeholder
 snapshotsBucketArn: arn:aws:s3:::xoc-staging-snapshots-placeholder

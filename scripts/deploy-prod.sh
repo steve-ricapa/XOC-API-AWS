@@ -39,21 +39,14 @@ STACK_STORAGE="xoc-infra-storage-prod"
 SERVICE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Generar secretos
-JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))")
 DB_PASSWORD=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
 
 # ─────────────────────────────────────────────────────────
-# Paso 1: JWT secret en SSM
+# Paso 1: Confirmar configuración demo JWT
 # ─────────────────────────────────────────────────────────
-step "1 de 8" "Crear JWT secret en SSM Parameter Store"
+step "1 de 8" "Confirmar JWT secret directo en environment"
 
-aws ssm put-parameter \
-  --name "/xoc/api/prod/jwt-secret-key" \
-  --type "SecureString" \
-  --value "$JWT_SECRET" \
-  --overwrite > /dev/null
-
-ok "SSM parameter /xoc/api/prod/jwt-secret-key creado"
+ok "JWT secret se inyecta desde serverless/stages/prod.yml (sin SSM)"
 confirm
 
 # ─────────────────────────────────────────────────────────
@@ -256,7 +249,7 @@ echo -e "${GREEN}  ¡Deploy completado!${NC}"
 echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
 echo ""
 echo "  Resumen:"
-echo "    JWT secret:   SSM /xoc/api/prod/jwt-secret-key"
+echo "    JWT secret:   environment variable JWT_SECRET_KEY"
 echo "    DB secret:    $DB_SECRET_ARN"
 echo "    Region:       $AWS_REGION"
 echo ""

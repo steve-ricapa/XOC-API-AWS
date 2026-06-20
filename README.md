@@ -221,7 +221,7 @@ pip install -r requirements.txt
 
 ### SSM
 
-- `/xoc/api/prod/jwt-secret-key` (crear manualmente antes del deploy)
+- no requerido para el JWT en el flujo demo/AWS Academy
 
 ### Secrets Manager
 
@@ -231,7 +231,7 @@ pip install -r requirements.txt
 
 - `APP_STAGE`
 - `APP_REGION`
-- `JWT_SECRET_KEY_SSM_PATH`
+- `JWT_SECRET_KEY`
 - `DATABASE_SECRET_ARN`
 - `SNAPSHOTS_BUCKET_NAME`
 - `CORS_ALLOWED_ORIGINS`
@@ -241,15 +241,9 @@ pip install -r requirements.txt
 
 No desplegar backend antes de tener los tres stacks de infra.
 
-### 1. Crear secret JWT prod
+### 1. Confirmar JWT secret demo
 
-```bash
-aws ssm put-parameter \
-  --name "/xoc/api/prod/jwt-secret-key" \
-  --type "SecureString" \
-  --value "REEMPLAZAR_CON_UN_SECRETO_REAL" \
-  --overwrite
-```
+En AWS Academy el usuario suele tener `ssm:PutParameter` bloqueado. Para esta demo el JWT secret viaja directo en `serverless/stages/prod.yml` como `jwtSecretKey`.
 
 ### 2. Desplegar red
 
@@ -468,7 +462,7 @@ Si lo vas a desplegar desde una MV, el flujo correcto es:
 1. clonar repo
 2. instalar dependencias
 3. configurar AWS CLI
-4. crear JWT secret en SSM
+4. confirmar `jwtSecretKey` en `serverless/stages/prod.yml`
 5. desplegar `network`
 6. desplegar `data`
 7. desplegar `storage`

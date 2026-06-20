@@ -26,7 +26,7 @@ provider:
     POWERTOOLS_SERVICE_NAME: ${self:service}
     POWERTOOLS_LOG_LEVEL: ${self:custom.stageConfig.logLevel}
     POWERTOOLS_METRICS_NAMESPACE: XOC/API
-    JWT_SECRET_KEY_SSM_PATH: ${self:custom.stageConfig.jwtSecretKeySsmPath}
+    JWT_SECRET_KEY: ${self:custom.stageConfig.jwtSecretKey}
     DATABASE_SECRET_ARN: ${self:custom.stageConfig.databaseSecretArn}
     SNAPSHOTS_BUCKET_NAME: ${self:custom.stageConfig.snapshotsBucketName}
     CORS_ALLOWED_ORIGINS: ${self:custom.stageConfig.corsAllowedOriginsCsv}

@@ -4,7 +4,7 @@ logRetentionInDays: 90
 corsAllowedOrigins:
   - https://api.example.com
 corsAllowedOriginsCsv: https://api.example.com
-jwtSecretKeySsmPath: /xoc/api/prod/jwt-secret-key
+jwtSecretKey: xoc-demo-prod-jwt-secret-change-me
 databaseSecretArn: ${cf:xoc-infra-data-prod.DatabaseSecretArn}
 snapshotsBucketName: ${cf:xoc-infra-storage-prod.SnapshotsBucketName}
 snapshotsBucketArn: ${cf:xoc-infra-storage-prod.SnapshotsBucketArn}
