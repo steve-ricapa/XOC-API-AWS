@@ -1,10 +1,6 @@
-```yaml
 service: xoc-api-core
 
 frameworkVersion: '4'
-
-plugins:
-  - serverless-python-requirements
 
 custom:
   stage: ${opt:stage, 'dev'}
@@ -23,8 +19,6 @@ provider:
   architecture: x86_64
   stage: ${self:custom.stage}
   region: ${self:custom.stageConfig.region}
-
-  role: arn:aws:iam::${aws:accountId}:role/LabRole
 
   logRetentionInDays: ${self:custom.stageConfig.logRetentionInDays}
 
@@ -47,6 +41,40 @@ provider:
     EVENT_BUS_NAME: ${self:service}-${self:custom.stage}-bus
 
     AGENT_KEY_ENCRYPTION_KEY: ${env:AGENT_KEY_ENCRYPTION_KEY, ''}
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource:
+            - ${self:custom.stageConfig.databaseSecretArn}
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+            - s3:PutObject
+            - s3:DeleteObject
+          Resource:
+            - ${self:custom.stageConfig.snapshotsBucketArn}/*
+        - Effect: Allow
+          Action:
+            - s3:ListBucket
+          Resource:
+            - ${self:custom.stageConfig.snapshotsBucketArn}
+        - Effect: Allow
+          Action:
+            - events:PutEvents
+          Resource:
+            - arn:aws:events:${aws:region}:${aws:accountId}:event-bus/${self:service}-${self:custom.stage}-bus
+        - Effect: Allow
+          Action:
+            - ec2:CreateNetworkInterface
+            - ec2:DescribeNetworkInterfaces
+            - ec2:DeleteNetworkInterface
+            - ec2:AssignPrivateIpAddresses
+            - ec2:UnassignPrivateIpAddresses
+          Resource: '*'
 
   httpApi:
     cors:
@@ -93,4 +121,3 @@ package:
 functions: ${file(./serverless/functions.yml)}
 
 resources: ${file(./serverless/resources.yml)}
-```
