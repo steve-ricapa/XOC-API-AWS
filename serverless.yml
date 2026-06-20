@@ -13,7 +13,7 @@ custom:
 provider:
   name: aws
   runtime: python3.12
-  architecture: arm64
+  architecture: x86_64
   stage: ${self:custom.stage}
   region: ${self:custom.stageConfig.region}
   role: arn:aws:iam::${aws:accountId}:role/LabRole
@@ -56,6 +56,7 @@ provider:
         enableSimpleResponses: true
         identitySource:
           - $request.header.Authorization
+
 package:
   individually: true
   patterns:
@@ -64,6 +65,10 @@ package:
     - '!README.md'
     - '!tests/**'
     - '!txdxai_Flask/**'
+    - '!.git/**'
+    - '!.opencode/**'
+    - '!__pycache__/**'
+    - '!**/__pycache__/**'
 
 functions: ${file(./serverless/functions.yml)}
 resources: ${file(./serverless/resources.yml)}
