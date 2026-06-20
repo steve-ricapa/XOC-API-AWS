@@ -16,6 +16,7 @@ provider:
   architecture: arm64
   stage: ${self:custom.stage}
   region: ${self:custom.stageConfig.region}
+  role: arn:aws:iam::720537963320:role/LabRole
   logRetentionInDays: ${self:custom.stageConfig.logRetentionInDays}
   tracing:
     lambda: true
@@ -55,45 +56,6 @@ provider:
         enableSimpleResponses: true
         identitySource:
           - $request.header.Authorization
-  iam:
-    role:
-      statements:
-        - Effect: Allow
-          Action:
-            - ssm:GetParameter
-          Resource:
-            - arn:aws:ssm:${aws:region}:${aws:accountId}:parameter${self:custom.stageConfig.jwtSecretKeySsmPath}
-        - Effect: Allow
-          Action:
-            - secretsmanager:GetSecretValue
-          Resource:
-            - ${self:custom.stageConfig.databaseSecretArn}
-        - Effect: Allow
-          Action:
-            - s3:GetObject
-            - s3:PutObject
-            - s3:DeleteObject
-          Resource:
-            - ${self:custom.stageConfig.snapshotsBucketArn}/*
-        - Effect: Allow
-          Action:
-            - s3:ListBucket
-          Resource:
-            - ${self:custom.stageConfig.snapshotsBucketArn}
-        - Effect: Allow
-          Action:
-            - events:PutEvents
-          Resource:
-            - arn:aws:events:${aws:region}:${aws:accountId}:event-bus/${self:service}-${self:custom.stage}-bus
-        - Effect: Allow
-          Action:
-            - ec2:CreateNetworkInterface
-            - ec2:DescribeNetworkInterfaces
-            - ec2:DeleteNetworkInterface
-            - ec2:AssignPrivateIpAddresses
-            - ec2:UnassignPrivateIpAddresses
-          Resource: '*'
-
 package:
   individually: true
   patterns:
