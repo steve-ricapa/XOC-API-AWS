@@ -63,13 +63,6 @@ Resources:
           "database_url": "postgresql+psycopg2://${DatabaseUsername}:${DatabasePassword}@${Database.Endpoint.Address}:${Database.Endpoint.Port}/${DatabaseName}"
         }
 
-  DatabaseUrlParameter:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Name: /xoc/api/prod/database-url
-      Type: SecureString
-      Value: !Sub postgresql+psycopg2://${DatabaseUsername}:${DatabasePassword}@${Database.Endpoint.Address}:${Database.Endpoint.Port}/${DatabaseName}
-
   Database:
     Type: AWS::RDS::DBInstance
     DeletionPolicy: Snapshot
@@ -98,8 +91,6 @@ Resources:
 Outputs:
   DatabaseSecretArn:
     Value: !Ref DatabaseSecret
-  DatabaseUrlSsmPath:
-    Value: !Ref DatabaseUrlParameter
   DatabaseEndpoint:
     Value: !GetAtt Database.Endpoint.Address
   DatabasePort:

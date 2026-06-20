@@ -6,7 +6,6 @@ corsAllowedOrigins:
 corsAllowedOriginsCsv: https://staging.example.com
 jwtSecretKeySsmPath: /xoc/api/staging/jwt-secret-key
 databaseSecretArn: arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:xoc/api/staging/database
-databaseUrlSsmPath: /xoc/api/staging/database-url
 snapshotsBucketName: xoc-staging-snapshots-placeholder
 snapshotsBucketArn: arn:aws:s3:::xoc-staging-snapshots-placeholder
 apiVpc: ~

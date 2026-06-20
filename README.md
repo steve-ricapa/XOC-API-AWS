@@ -221,12 +221,11 @@ pip install -r requirements.txt
 
 ### SSM
 
-- `/xoc/api/prod/jwt-secret-key`
-- `/xoc/api/prod/database-url` (lo crea `infra/data-prod.yml`)
+- `/xoc/api/prod/jwt-secret-key` (crear manualmente antes del deploy)
 
 ### Secrets Manager
 
-- secret de base de datos prod (lo crea `infra/data-prod.yml`)
+- secret de base de datos prod (lo crea `infra/data-prod.yml`) — contiene `database_url` que el código lee automáticamente
 
 ### Env inyectadas por `serverless.yml`
 
@@ -234,7 +233,6 @@ pip install -r requirements.txt
 - `APP_REGION`
 - `JWT_SECRET_KEY_SSM_PATH`
 - `DATABASE_SECRET_ARN`
-- `DATABASE_URL_SSM_PATH`
 - `SNAPSHOTS_BUCKET_NAME`
 - `CORS_ALLOWED_ORIGINS`
 - `EVENT_BUS_NAME`

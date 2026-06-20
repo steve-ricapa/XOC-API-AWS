@@ -8,7 +8,6 @@ corsAllowedOrigins:
 corsAllowedOriginsCsv: http://localhost:3000,http://localhost:5173,http://localhost:5000
 jwtSecretKeySsmPath: /xoc/api/dev/jwt-secret-key
 databaseSecretArn: arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:xoc/api/dev/database
-databaseUrlSsmPath: /xoc/api/dev/database-url
 snapshotsBucketName: xoc-dev-snapshots-placeholder
 snapshotsBucketArn: arn:aws:s3:::xoc-dev-snapshots-placeholder
 apiVpc: ~

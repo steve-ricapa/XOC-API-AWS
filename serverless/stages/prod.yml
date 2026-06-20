@@ -6,7 +6,6 @@ corsAllowedOrigins:
 corsAllowedOriginsCsv: https://api.example.com
 jwtSecretKeySsmPath: /xoc/api/prod/jwt-secret-key
 databaseSecretArn: ${cf:xoc-infra-data-prod.DatabaseSecretArn}
-databaseUrlSsmPath: ${cf:xoc-infra-data-prod.DatabaseUrlSsmPath}
 snapshotsBucketName: ${cf:xoc-infra-storage-prod.SnapshotsBucketName}
 snapshotsBucketArn: ${cf:xoc-infra-storage-prod.SnapshotsBucketArn}
 apiVpc:
