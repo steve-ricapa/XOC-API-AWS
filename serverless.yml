@@ -1,14 +1,21 @@
+```yaml
 service: xoc-api-core
 
 frameworkVersion: '4'
 
+plugins:
+  - serverless-python-requirements
+
 custom:
   stage: ${opt:stage, 'dev'}
   stageConfig: ${file(./serverless/stages/${self:custom.stage}.yml)}
+
   pythonRequirements:
-    dockerizePip: false
+    dockerizePip: true
     slim: true
     layer: false
+    useDownloadCache: true
+    useStaticCache: true
 
 provider:
   name: aws
@@ -16,21 +23,31 @@ provider:
   architecture: x86_64
   stage: ${self:custom.stage}
   region: ${self:custom.stageConfig.region}
+
   role: arn:aws:iam::${aws:accountId}:role/LabRole
+
   logRetentionInDays: ${self:custom.stageConfig.logRetentionInDays}
+
   tracing:
     lambda: true
+
   environment:
     APP_STAGE: ${self:custom.stage}
     APP_REGION: ${aws:region}
+
     POWERTOOLS_SERVICE_NAME: ${self:service}
     POWERTOOLS_LOG_LEVEL: ${self:custom.stageConfig.logLevel}
     POWERTOOLS_METRICS_NAMESPACE: XOC/API
+
     JWT_SECRET_KEY: ${self:custom.stageConfig.jwtSecretKey}
     DATABASE_SECRET_ARN: ${self:custom.stageConfig.databaseSecretArn}
     SNAPSHOTS_BUCKET_NAME: ${self:custom.stageConfig.snapshotsBucketName}
     CORS_ALLOWED_ORIGINS: ${self:custom.stageConfig.corsAllowedOriginsCsv}
+
     EVENT_BUS_NAME: ${self:service}-${self:custom.stage}-bus
+
+    AGENT_KEY_ENCRYPTION_KEY: ${env:AGENT_KEY_ENCRYPTION_KEY, ''}
+
   httpApi:
     cors:
       allowedOrigins: ${self:custom.stageConfig.corsAllowedOrigins}
@@ -49,6 +66,7 @@ provider:
       exposedResponseHeaders:
         - X-Request-Id
       allowCredentials: true
+
     authorizers:
       jwtRequestAuthorizer:
         type: request
@@ -69,6 +87,10 @@ package:
     - '!.opencode/**'
     - '!__pycache__/**'
     - '!**/__pycache__/**'
+    - '!*.pyc'
+    - '!**/*.pyc'
 
 functions: ${file(./serverless/functions.yml)}
+
 resources: ${file(./serverless/resources.yml)}
+```

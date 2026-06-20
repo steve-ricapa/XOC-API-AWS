@@ -1,51 +1,102 @@
+```yaml
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Plantilla para crear una Maquina Virtual en EC2 usando una AMI especifica (Cloud9Ubuntu22-2026-03-24T19-59)"
+
+Description: "Plantilla para crear una Maquina Virtual EC2 con Ubuntu Server 24.04 LTS Noble amd64 para despliegue de XOC API"
 
 Parameters:
   InstanceName:
     Type: String
-    Default: "MV Desarrollo"
-    Description: "MV para desarrollo de aplicaciones en AWS"
+    Default: "MV-XOC-API-Deploy"
+    Description: "Nombre de la instancia EC2"
+
   AMI:
     Type: String
-    Default: "ami-0b33d2f1547e52c78"
-    Description: "ID de AMI"
+    Default: "ami-0021ac0c2e69d9c55"
+    Description: "Ubuntu Server 24.04 LTS Noble amd64 para us-east-1"
+
+  InstanceType:
+    Type: String
+    Default: "t3.micro"
+    Description: "Tipo de instancia EC2"
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: "vockey"
+    Description: "Key Pair para conectarse por SSH"
 
 Resources:
-  EC2Instance:
-    Type: "AWS::EC2::Instance"
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
     Properties:
+      GroupDescription: "Permitir acceso SSH y HTTP para la MV de despliegue"
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 22
+          ToPort: 22
+          CidrIp: "0.0.0.0/0"
+
+        - IpProtocol: "tcp"
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+
+        - IpProtocol: "tcp"
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${InstanceName}-sg"
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AMI
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            DeleteOnTermination: true
+
       Tags:
         - Key: "Name"
           Value: !Ref InstanceName
-      ImageId: !Ref AMI
-      InstanceType: "t3.micro"
-      KeyName: "vockey"
-      SecurityGroupIds:
-        - !Ref InstanceSecurityGroup
-      BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-            VolumeSize: "20"
 
-  InstanceSecurityGroup:
-    Type: "AWS::EC2::SecurityGroup"
-    Properties:
-      GroupDescription: "Permitir trafico SSH y HTTP desde cualquier lugar"
-      SecurityGroupIngress:
-        - IpProtocol: "tcp"
-          FromPort: "22"
-          ToPort: "22"
-          CidrIp: "0.0.0.0/0"
-        - IpProtocol: "tcp"
-          FromPort: "80"
-          ToPort: "80"
-          CidrIp: "0.0.0.0/0"
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt update -y
+          apt install -y curl unzip git nano python3 python3-pip python3-venv nodejs npm docker.io
+
+          systemctl enable docker
+          systemctl start docker
+
+          usermod -aG docker ubuntu
+
+          npm install -g serverless
 
 Outputs:
   InstanceId:
-    Description: "ID de la instancia EC2"
+    Description: "ID de la instancia EC2 creada"
     Value: !Ref EC2Instance
+
   InstancePublicIP:
-    Description: "IP publica de la instancia"
+    Description: "IP publica de la instancia EC2"
     Value: !GetAtt EC2Instance.PublicIp
+
+  InstancePublicDNS:
+    Description: "DNS publico de la instancia EC2"
+    Value: !GetAtt EC2Instance.PublicDnsName
+
+  SSHCommand:
+    Description: "Comando para conectarse por SSH"
+    Value: !Sub "ssh -i ${KeyName}.pem ubuntu@${EC2Instance.PublicDnsName}"
+```
