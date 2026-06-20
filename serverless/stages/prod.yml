@@ -5,5 +5,13 @@ corsAllowedOrigins:
   - https://api.example.com
 corsAllowedOriginsCsv: https://api.example.com
 jwtSecretKeySsmPath: /xoc/api/prod/jwt-secret-key
-databaseSecretArn: arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:xoc/api/prod/database
-databaseUrlSsmPath: /xoc/api/prod/database-url
+databaseSecretArn: ${cf:xoc-infra-data-prod.DatabaseSecretArn}
+databaseUrlSsmPath: ${cf:xoc-infra-data-prod.DatabaseUrlSsmPath}
+snapshotsBucketName: ${cf:xoc-infra-storage-prod.SnapshotsBucketName}
+snapshotsBucketArn: ${cf:xoc-infra-storage-prod.SnapshotsBucketArn}
+apiVpc:
+  securityGroupIds:
+    - ${cf:xoc-infra-network-prod.LambdaSecurityGroupId}
+  subnetIds:
+    - ${cf:xoc-infra-network-prod.LambdaPrivateSubnetAId}
+    - ${cf:xoc-infra-network-prod.LambdaPrivateSubnetBId}

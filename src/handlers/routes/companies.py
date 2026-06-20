@@ -1,13 +1,16 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
-from src.persistence.models import Company, CompanyRuntimeSettings, User
-from src.shared.dependencies import get_current_company_id, get_current_user
-from src.shared.errors import ForbiddenError, ValidationError
+from src.persistence.models import AgentApiKey, Company, CompanyRuntimeSettings, User
+from src.shared.dependencies import get_current_user
+from src.shared.encryption import encrypt_agent_key
+from src.shared.errors import ForbiddenError, NotFoundError, ValidationError
+from src.shared.integration_types import OFFICIAL_INTEGRATION_TYPES, normalize_integration_type
+from src.shared.security_keys import generate_access_key, hash_access_key
 from src.shared.schemas import CompaniesListResponse, CompanyResponse, RuntimeSettingsEnvelope, RuntimeSettingsResponse, UpdateCompanyRequest, UpdateCompanyResponse, UpsertRuntimeSettingsRequest, UpsertRuntimeSettingsResponse
 from src.shared.context import get_company, log_audit, require_admin, require_same_company
 
@@ -32,6 +35,13 @@ def _serialize_runtime_settings(runtime_settings: CompanyRuntimeSettings | None)
         created_at=runtime_settings.created_at.isoformat() if runtime_settings.created_at else None,
         updated_at=runtime_settings.updated_at.isoformat() if runtime_settings.updated_at else None,
     )
+
+
+def _get_agent_key_or_404(session: Session, company_id: int, key_id: int) -> AgentApiKey:
+    agent_key = session.scalar(select(AgentApiKey).where(AgentApiKey.id == key_id, AgentApiKey.company_id == company_id))
+    if not agent_key:
+        raise NotFoundError("Agent API key not found")
+    return agent_key
 
 
 @router.get("", response_model=CompaniesListResponse)
@@ -61,6 +71,112 @@ def update_company(company_id: int, payload: UpdateCompanyRequest, current_user:
     log_audit(session, actor_user_id=current_user.id, action="UPDATE", entity_type="COMPANY", entity_id=company.id, payload={"name": company.name})
     session.commit()
     return UpdateCompanyResponse(message="Company updated successfully", company=CompanyResponse(**company.to_dict()))
+
+
+@router.get("/{company_id}/agent-keys")
+def list_agent_api_keys(company_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
+    require_admin(current_user)
+    if current_user.company_id != company_id:
+        raise ForbiddenError("Not authorized")
+
+    agent_keys = session.scalars(
+        select(AgentApiKey).where(AgentApiKey.company_id == company_id).order_by(AgentApiKey.created_at.desc())
+    ).all()
+    return {"agent_keys": [key.to_dict() for key in agent_keys], "count": len(agent_keys)}
+
+
+@router.post("/{company_id}/agent-keys", status_code=status.HTTP_201_CREATED)
+def create_agent_api_key(company_id: int, payload: dict, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
+    require_admin(current_user)
+    if current_user.company_id != company_id:
+        raise ForbiddenError("Not authorized")
+
+    company = session.get(Company, company_id)
+    if not company:
+        raise NotFoundError("Company not found")
+    if not payload:
+        raise ValidationError("Request body is required")
+
+    name = payload.get("name")
+    integration_type_raw = payload.get("integration_type") or payload.get("integrationType")
+    if not name or not str(name).strip():
+        raise ValidationError('Field "name" is required')
+    if not integration_type_raw:
+        raise ValidationError('Field "integration_type" is required')
+
+    integration_type = normalize_integration_type(integration_type_raw)
+    if not integration_type:
+        raise ValidationError(f'Invalid integration_type. Allowed: {", ".join(OFFICIAL_INTEGRATION_TYPES)}')
+
+    trimmed_name = str(name).strip()
+    existing = session.scalar(select(AgentApiKey).where(AgentApiKey.company_id == company_id, AgentApiKey.name == trimmed_name))
+    if existing:
+        raise ValidationError(f'An agent key with name "{trimmed_name}" already exists')
+
+    new_key = generate_access_key(40)
+    agent_key = AgentApiKey(
+        company_id=company_id,
+        name=trimmed_name,
+        integration_type=integration_type,
+        api_key_hash=hash_access_key(new_key),
+        api_key_encrypted=encrypt_agent_key(new_key),
+        is_active=True,
+    )
+    session.add(agent_key)
+    session.flush()
+    log_audit(session, actor_user_id=current_user.id, action="CREATE", entity_type="AGENT_API_KEY", entity_id=agent_key.id, payload={"name": trimmed_name, "integration_type": integration_type})
+    session.commit()
+    return {"message": "Agent API key created successfully", "agent_key": {**agent_key.to_dict(), "api_key": new_key}}
+
+
+@router.get("/{company_id}/agent-keys/{key_id}")
+def get_agent_api_key(company_id: int, key_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
+    require_admin(current_user)
+    if current_user.company_id != company_id:
+        raise ForbiddenError("Not authorized")
+    return _get_agent_key_or_404(session, company_id, key_id).to_dict()
+
+
+@router.delete("/{company_id}/agent-keys/{key_id}")
+def delete_agent_api_key(company_id: int, key_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
+    require_admin(current_user)
+    if current_user.company_id != company_id:
+        raise ForbiddenError("Not authorized")
+
+    agent_key = _get_agent_key_or_404(session, company_id, key_id)
+    log_audit(session, actor_user_id=current_user.id, action="DELETE", entity_type="AGENT_API_KEY", entity_id=key_id, payload={"name": agent_key.name})
+    session.delete(agent_key)
+    session.commit()
+    return {"message": "Agent API key deleted successfully"}
+
+
+@router.post("/{company_id}/agent-keys/{key_id}/regenerate")
+def regenerate_agent_api_key(company_id: int, key_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
+    require_admin(current_user)
+    if current_user.company_id != company_id:
+        raise ForbiddenError("Not authorized")
+
+    agent_key = _get_agent_key_or_404(session, company_id, key_id)
+    new_key = generate_access_key(40)
+    agent_key.api_key_hash = hash_access_key(new_key)
+    agent_key.api_key_encrypted = encrypt_agent_key(new_key)
+    log_audit(session, actor_user_id=current_user.id, action="REGENERATE", entity_type="AGENT_API_KEY", entity_id=key_id, payload={"name": agent_key.name})
+    session.commit()
+    return {"message": "Agent API key regenerated successfully", "agent_key": {**agent_key.to_dict(), "api_key": new_key}}
+
+
+@router.post("/{company_id}/agent-keys/{key_id}/toggle")
+def toggle_agent_api_key(company_id: int, key_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
+    require_admin(current_user)
+    if current_user.company_id != company_id:
+        raise ForbiddenError("Not authorized")
+
+    agent_key = _get_agent_key_or_404(session, company_id, key_id)
+    agent_key.is_active = not agent_key.is_active
+    status = "activated" if agent_key.is_active else "deactivated"
+    log_audit(session, actor_user_id=current_user.id, action="TOGGLE", entity_type="AGENT_API_KEY", entity_id=key_id, payload={"name": agent_key.name, "is_active": agent_key.is_active})
+    session.commit()
+    return {"message": f"Agent API key {status} successfully", "agent_key": agent_key.to_dict()}
 
 
 @router.get("/{company_id}/runtime-settings", response_model=RuntimeSettingsEnvelope)

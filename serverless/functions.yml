@@ -15,6 +15,7 @@ apiHttp:
   description: FastAPI HTTP entrypoint for XOC API
   memorySize: 512
   timeout: 20
+  vpc: ${self:custom.stageConfig.apiVpc}
   events:
     - httpApi:
         method: GET

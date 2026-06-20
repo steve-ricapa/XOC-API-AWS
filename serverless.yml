@@ -31,6 +31,7 @@ provider:
     JWT_SECRET_KEY_SSM_PATH: ${self:custom.stageConfig.jwtSecretKeySsmPath}
     DATABASE_SECRET_ARN: ${self:custom.stageConfig.databaseSecretArn}
     DATABASE_URL_SSM_PATH: ${self:custom.stageConfig.databaseUrlSsmPath}
+    SNAPSHOTS_BUCKET_NAME: ${self:custom.stageConfig.snapshotsBucketName}
     CORS_ALLOWED_ORIGINS: ${self:custom.stageConfig.corsAllowedOriginsCsv}
     EVENT_BUS_NAME: ${self:service}-${self:custom.stage}-bus
   httpApi:
@@ -40,6 +41,7 @@ provider:
         - Content-Type
         - Authorization
         - X-Request-Id
+        - X-Superadmin-Confirm
       allowedMethods:
         - GET
         - POST
@@ -73,9 +75,29 @@ provider:
             - ${self:custom.stageConfig.databaseSecretArn}
         - Effect: Allow
           Action:
+            - s3:GetObject
+            - s3:PutObject
+            - s3:DeleteObject
+          Resource:
+            - ${self:custom.stageConfig.snapshotsBucketArn}/*
+        - Effect: Allow
+          Action:
+            - s3:ListBucket
+          Resource:
+            - ${self:custom.stageConfig.snapshotsBucketArn}
+        - Effect: Allow
+          Action:
             - events:PutEvents
           Resource:
             - arn:aws:events:${aws:region}:${aws:accountId}:event-bus/${self:service}-${self:custom.stage}-bus
+        - Effect: Allow
+          Action:
+            - ec2:CreateNetworkInterface
+            - ec2:DescribeNetworkInterfaces
+            - ec2:DeleteNetworkInterface
+            - ec2:AssignPrivateIpAddresses
+            - ec2:UnassignPrivateIpAddresses
+          Resource: '*'
 
 package:
   individually: true

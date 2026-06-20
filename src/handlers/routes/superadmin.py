@@ -27,6 +27,7 @@ router = APIRouter(prefix="/api/superadmin", tags=["superadmin"])
 
 DEMO_PLAN_STATUS = "DEMO"
 DEMO_FUNCTION_ROUTE_DEFAULT = "/api/agents/SophiaDurableAgent/run"
+VALID_PLAN_STATUSES = {"DEMO", "ACTIVE", "EXPIRED", "INACTIVE"}
 
 
 def _get_demo_function_settings() -> dict:
@@ -39,6 +40,13 @@ def _get_demo_function_settings() -> dict:
 
 def _normalize_provider(value: str) -> str:
     return value.strip().lower() if value else ""
+
+
+def _normalize_plan_status(value: str | None, *, default: str | None = None) -> str:
+    plan_status = (value or default or "").strip().upper()
+    if plan_status not in VALID_PLAN_STATUSES:
+        raise ValidationError("plan_status must be one of: DEMO, ACTIVE, EXPIRED, INACTIVE")
+    return plan_status
 
 
 def _parse_bool(value, field_name: str) -> bool:
@@ -291,10 +299,10 @@ def create_company(
     name = (payload.get("name") or "").strip()
     if not name:
         raise ValidationError("name is required")
-    existing = session.query(Company).filter(Company.name == name).first()
+    existing = session.query(Company).filter(func.lower(Company.name) == name.lower()).first()
     if existing:
-        raise ConflictError("Company name already exists")
-    plan_status = (payload.get("plan_status") or "INACTIVE").strip().upper()
+        raise ConflictError("Company already exists")
+    plan_status = _normalize_plan_status(payload.get("plan_status") or payload.get("planStatus"), default="ACTIVE")
     company = Company(name=name, plan_status=plan_status)
     session.add(company)
     session.flush()
@@ -325,7 +333,7 @@ def get_company(
     data["integrations_count"] = integrations_count
     data["tickets_count"] = tickets_count
     data["sessions_count"] = agent_sessions_count
-    data["agents_count"] = agent_instances_count
+    data["agent_instances_count"] = agent_instances_count
     return data
 
 
@@ -345,18 +353,20 @@ def update_company(
     if "name" in payload:
         name = (payload["name"] or "").strip()
         if not name:
-            raise ValidationError("name cannot be empty")
-        existing = session.query(Company).filter(Company.name == name, Company.id != company_id).first()
+            raise ValidationError("name is required")
+        existing = session.query(Company).filter(func.lower(Company.name) == name.lower(), Company.id != company_id).first()
         if existing:
-            raise ConflictError("Company name already exists")
+            raise ConflictError("Company already exists")
         company.name = name
-    if "plan_status" in payload:
-        plan_status = payload["plan_status"].strip().upper()
+    plan_status_value = None
+    if "plan_status" in payload or "planStatus" in payload:
+        plan_status_value = payload.get("plan_status") or payload.get("planStatus")
+        plan_status = _normalize_plan_status(plan_status_value)
         company.plan_status = plan_status
+        if plan_status == DEMO_PLAN_STATUS:
+            _ensure_demo_agent_instance(company.id, session)
     log_audit(session, actor_user_id=current_user.id, action="UPDATE", entity_type="COMPANY", entity_id=company.id, payload={"name": company.name, "plan_status": company.plan_status})
     session.commit()
-    if company.plan_status == DEMO_PLAN_STATUS:
-        _ensure_demo_agent_instance(company.id, session)
     return {"message": "Company updated successfully", "company": company.to_dict()}
 
 

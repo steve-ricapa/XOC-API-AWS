@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
@@ -12,6 +12,19 @@ from src.shared.schemas import ErrorResponse, LoginRequest, LoginResponse, Onboa
 
 
 router = APIRouter(prefix="/api", tags=["auth"])
+
+
+def _build_username_from_email(session: Session, email: str) -> str:
+    local_part = email.split("@", 1)[0].strip().lower()
+    normalized = "".join(ch if (ch.isalnum() or ch in ("_", "-", ".")) else "_" for ch in local_part)
+    normalized = normalized.strip("._-") or "admin"
+
+    candidate = normalized
+    counter = 1
+    while session.scalar(select(User).where(func.lower(User.username) == candidate.lower())):
+        counter += 1
+        candidate = f"{normalized}_{counter}"
+    return candidate
 
 
 @router.post("/auth/register", responses={410: {"model": ErrorResponse}})

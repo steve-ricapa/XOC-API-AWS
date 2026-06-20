@@ -334,8 +334,10 @@ class ScanSummary(Base):
     received_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
     meta_info: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    agent_api_key: Mapped[AgentApiKey | None] = relationship("AgentApiKey")
+
     def to_dict(self) -> dict:
-        return {
+        data = {
             "id": self.id,
             "company_id": self.company_id,
             "agent_api_key_id": self.agent_api_key_id,
@@ -356,6 +358,9 @@ class ScanSummary(Base):
             "received_at": self.received_at.isoformat() if self.received_at else None,
             "meta_info": self.meta_info,
         }
+        if self.agent_api_key:
+            data["agent_name"] = self.agent_api_key.name
+        return data
 
 
 class ScanSummaryNoc(Base):
@@ -380,8 +385,10 @@ class ScanSummaryNoc(Base):
     received_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
     meta_info: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    agent_api_key: Mapped[AgentApiKey | None] = relationship("AgentApiKey")
+
     def to_dict(self) -> dict:
-        return {
+        data = {
             "id": self.id,
             "company_id": self.company_id,
             "agent_api_key_id": self.agent_api_key_id,
@@ -401,6 +408,60 @@ class ScanSummaryNoc(Base):
             "scanned_at": self.scanned_at.isoformat() if self.scanned_at else None,
             "received_at": self.received_at.isoformat() if self.received_at else None,
             "meta_info": self.meta_info,
+        }
+        if self.agent_api_key:
+            data["agent_name"] = self.agent_api_key.name
+        return data
+
+
+class SnapshotArtifact(Base):
+    __tablename__ = "snapshot_artifacts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    integration_id: Mapped[int | None] = mapped_column(ForeignKey("integrations.id", ondelete="SET NULL"), nullable=True)
+    provider: Mapped[str] = mapped_column(String(100), nullable=False)
+    snapshot_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    domain: Mapped[str] = mapped_column(String(10), nullable=False, default="soc")
+    source: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="stored")
+    scan_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    scan_summary_soc_id: Mapped[int | None] = mapped_column(ForeignKey("scan_summaries_soc.id", ondelete="SET NULL"), nullable=True)
+    scan_summary_noc_id: Mapped[int | None] = mapped_column(ForeignKey("scan_summaries_noc.id", ondelete="SET NULL"), nullable=True)
+    s3_bucket: Mapped[str] = mapped_column(String(255), nullable=False)
+    s3_key: Mapped[str] = mapped_column(String(1024), nullable=False, unique=True)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False, default="application/json")
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    summary_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    captured_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "company_id": self.company_id,
+            "integration_id": self.integration_id,
+            "provider": self.provider,
+            "snapshot_type": self.snapshot_type,
+            "domain": self.domain,
+            "source": self.source,
+            "status": self.status,
+            "scan_id": self.scan_id,
+            "external_id": self.external_id,
+            "scan_summary_soc_id": self.scan_summary_soc_id,
+            "scan_summary_noc_id": self.scan_summary_noc_id,
+            "s3_bucket": self.s3_bucket,
+            "s3_key": self.s3_key,
+            "content_type": self.content_type,
+            "size_bytes": self.size_bytes,
+            "checksum": self.checksum,
+            "summary_json": self.summary_json,
+            "captured_at": self.captured_at.isoformat() if self.captured_at else None,
+            "received_at": self.received_at.isoformat() if self.received_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
 

@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: XOC production PostgreSQL RDS stack.
+
+Parameters:
+  DbSubnetAId:
+    Type: AWS::EC2::Subnet::Id
+  DbSubnetBId:
+    Type: AWS::EC2::Subnet::Id
+  RdsSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  DatabaseName:
+    Type: String
+    Default: xoc
+  DatabaseUsername:
+    Type: String
+    Default: xocapp
+    NoEcho: true
+  DatabasePassword:
+    Type: String
+    NoEcho: true
+    MinLength: 12
+  DatabaseInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+  AllocatedStorage:
+    Type: Number
+    Default: 20
+  EngineVersion:
+    Type: String
+    Default: '16.4'
+  MultiAZ:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+
+Conditions:
+  IsMultiAz: !Equals [!Ref MultiAZ, 'true']
+
+Resources:
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: XOC prod DB subnet group
+      SubnetIds:
+        - !Ref DbSubnetAId
+        - !Ref DbSubnetBId
+      Tags:
+        - Key: Name
+          Value: xoc-prod-db-subnet-group
+
+  DatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: xoc/api/prod/database
+      Description: XOC production PostgreSQL connection secret
+      SecretString: !Sub |
+        {
+          "username": "${DatabaseUsername}",
+          "password": "${DatabasePassword}",
+          "host": "${Database.Endpoint.Address}",
+          "port": "${Database.Endpoint.Port}",
+          "dbname": "${DatabaseName}",
+          "database_url": "postgresql+psycopg2://${DatabaseUsername}:${DatabasePassword}@${Database.Endpoint.Address}:${Database.Endpoint.Port}/${DatabaseName}"
+        }
+
+  DatabaseUrlParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /xoc/api/prod/database-url
+      Type: SecureString
+      Value: !Sub postgresql+psycopg2://${DatabaseUsername}:${DatabasePassword}@${Database.Endpoint.Address}:${Database.Endpoint.Port}/${DatabaseName}
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: xoc-prod-postgres
+      DBName: !Ref DatabaseName
+      Engine: postgres
+      EngineVersion: !Ref EngineVersion
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      AllocatedStorage: !Ref AllocatedStorage
+      MasterUsername: !Ref DatabaseUsername
+      MasterUserPassword: !Ref DatabasePassword
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RdsSecurityGroupId
+      PubliclyAccessible: false
+      MultiAZ: !If [IsMultiAz, true, false]
+      StorageEncrypted: true
+      BackupRetentionPeriod: 7
+      AutoMinorVersionUpgrade: true
+      DeletionProtection: true
+      CopyTagsToSnapshot: true
+      EnablePerformanceInsights: false
+
+Outputs:
+  DatabaseSecretArn:
+    Value: !Ref DatabaseSecret
+  DatabaseUrlSsmPath:
+    Value: !Ref DatabaseUrlParameter
+  DatabaseEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+  DatabasePort:
+    Value: !GetAtt Database.Endpoint.Port
+  DatabaseName:
+    Value: !Ref DatabaseName

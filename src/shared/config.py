@@ -15,6 +15,7 @@ class Settings:
     jwt_secret_key_ssm_path: str | None
     database_secret_arn: str | None
     database_url_ssm_path: str | None
+    snapshots_bucket_name: str | None
     cors_allowed_origins: list[str]
     event_bus_name: str | None
     enable_api_docs: bool
@@ -35,6 +36,7 @@ def get_settings() -> Settings:
         jwt_secret_key_ssm_path=os.environ.get("JWT_SECRET_KEY_SSM_PATH"),
         database_secret_arn=os.environ.get("DATABASE_SECRET_ARN"),
         database_url_ssm_path=os.environ.get("DATABASE_URL_SSM_PATH"),
+        snapshots_bucket_name=os.environ.get("SNAPSHOTS_BUCKET_NAME"),
         cors_allowed_origins=_split_csv(os.environ.get("CORS_ALLOWED_ORIGINS")),
         event_bus_name=os.environ.get("EVENT_BUS_NAME"),
         enable_api_docs=app_stage not in {"prod"},
@@ -90,3 +92,10 @@ def get_jwt_secret_key() -> str:
     if not settings.jwt_secret_key_ssm_path:
         raise ConfigurationError("JWT secret source is not configured")
     return get_ssm_parameter(settings.jwt_secret_key_ssm_path)
+
+
+def get_snapshots_bucket_name() -> str:
+    bucket_name = get_settings().snapshots_bucket_name
+    if not bucket_name:
+        raise ConfigurationError("Snapshots bucket is not configured")
+    return bucket_name
