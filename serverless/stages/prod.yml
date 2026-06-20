@@ -2,8 +2,8 @@ region: us-east-1
 logLevel: INFO
 logRetentionInDays: 90
 corsAllowedOrigins:
-  - https://api.example.com
-corsAllowedOriginsCsv: https://api.example.com
+  - "*"
+corsAllowedOriginsCsv: "*"
 jwtSecretKey: xoc-demo-prod-jwt-secret-change-me
 databaseSecretArn: ${env:DATABASE_SECRET_ARN, 'xoc/api/prod/database'}
 snapshotsBucketName: ${env:SNAPSHOTS_BUCKET_NAME, 'xoc-prod-snapshots-${aws:accountId}'}

@@ -93,7 +93,7 @@ provider:
         - OPTIONS
       exposedResponseHeaders:
         - X-Request-Id
-      allowCredentials: true
+      allowCredentials: false
 
     authorizers:
       jwtRequestAuthorizer:
