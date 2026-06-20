@@ -27,7 +27,7 @@ Parameters:
     Default: 20
   EngineVersion:
     Type: String
-    Default: '16.4'
+    Default: '16.9'
   MultiAZ:
     Type: String
     AllowedValues: ['true', 'false']
