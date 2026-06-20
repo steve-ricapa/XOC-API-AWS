@@ -20,39 +20,56 @@ confirm() {
   case "$yn" in [nN]*) exit 0 ;; esac
 }
 
-get_stack_status() {
-  aws cloudformation list-stacks \
-    --stack-status-filter CREATE_IN_PROGRESS CREATE_COMPLETE CREATE_FAILED ROLLBACK_IN_PROGRESS ROLLBACK_COMPLETE UPDATE_IN_PROGRESS UPDATE_COMPLETE UPDATE_ROLLBACK_IN_PROGRESS UPDATE_ROLLBACK_COMPLETE DELETE_IN_PROGRESS DELETE_FAILED \
-    --query "StackSummaries[?StackName=='$1'].StackStatus | [0]" \
-    --output text 2>/dev/null
-}
-
-ensure_stack_absent() {
-  local status
-  status=$(get_stack_status "$1")
-  if [ -n "$status" ] && [ "$status" != "None" ]; then
-    fail "El stack $1 ya existe con estado $status. En AWS Academy este script asume despliegue limpio; bórralo antes de reintentar."
-  fi
-}
-
-wait_for_stack_create() {
-  local stack_name="$1"
-  while true; do
-    local status
-    status=$(get_stack_status "$stack_name")
-    case "$status" in
-      CREATE_COMPLETE)
-        ok "Stack $stack_name creado"
-        return 0
-        ;;
-      CREATE_IN_PROGRESS|REVIEW_IN_PROGRESS|None)
-        sleep 10
-        ;;
-      *)
-        fail "Stack $stack_name terminó en estado $status"
-        ;;
-    esac
+wait_for_network_resources() {
+  local retries=36
+  while [ "$retries" -gt 0 ]; do
+    LAMBDA_SUBNET_A=$(aws ec2 describe-subnets --filters Name=tag:Name,Values=xoc-prod-lambda-private-a --query "Subnets[0].SubnetId" --output text 2>/dev/null || true)
+    LAMBDA_SUBNET_B=$(aws ec2 describe-subnets --filters Name=tag:Name,Values=xoc-prod-lambda-private-b --query "Subnets[0].SubnetId" --output text 2>/dev/null || true)
+    DB_SUBNET_A=$(aws ec2 describe-subnets --filters Name=tag:Name,Values=xoc-prod-db-private-a --query "Subnets[0].SubnetId" --output text 2>/dev/null || true)
+    DB_SUBNET_B=$(aws ec2 describe-subnets --filters Name=tag:Name,Values=xoc-prod-db-private-b --query "Subnets[0].SubnetId" --output text 2>/dev/null || true)
+    RDS_SG_ID=$(aws ec2 describe-security-groups --filters Name=tag:Name,Values=xoc-prod-rds-sg --query "SecurityGroups[0].GroupId" --output text 2>/dev/null || true)
+    LAMBDA_SG_ID=$(aws ec2 describe-security-groups --filters Name=tag:Name,Values=xoc-prod-lambda-sg --query "SecurityGroups[0].GroupId" --output text 2>/dev/null || true)
+    if [ -n "$LAMBDA_SUBNET_A" ] && [ "$LAMBDA_SUBNET_A" != "None" ] \
+      && [ -n "$LAMBDA_SUBNET_B" ] && [ "$LAMBDA_SUBNET_B" != "None" ] \
+      && [ -n "$DB_SUBNET_A" ] && [ "$DB_SUBNET_A" != "None" ] \
+      && [ -n "$DB_SUBNET_B" ] && [ "$DB_SUBNET_B" != "None" ] \
+      && [ -n "$RDS_SG_ID" ] && [ "$RDS_SG_ID" != "None" ] \
+      && [ -n "$LAMBDA_SG_ID" ] && [ "$LAMBDA_SG_ID" != "None" ]; then
+      ok "Recursos de red disponibles"
+      return 0
+    fi
+    retries=$((retries - 1))
+    sleep 10
   done
+  fail "No aparecieron los recursos de red a tiempo"
+}
+
+wait_for_data_resources() {
+  local retries=54
+  while [ "$retries" -gt 0 ]; do
+    if aws rds describe-db-instances --db-instance-identifier xoc-prod-postgres --query "DBInstances[0].DBInstanceStatus" --output text 2>/dev/null | grep -q '^available$'; then
+      if aws secretsmanager describe-secret --secret-id "$DB_SECRET_ID" >/dev/null 2>&1; then
+        ok "RDS y secret disponibles"
+        return 0
+      fi
+    fi
+    retries=$((retries - 1))
+    sleep 20
+  done
+  fail "RDS o secret no quedaron listos a tiempo"
+}
+
+wait_for_bucket() {
+  local retries=18
+  while [ "$retries" -gt 0 ]; do
+    if aws s3api head-bucket --bucket "$SNAPSHOTS_BUCKET_NAME" >/dev/null 2>&1; then
+      ok "Bucket $SNAPSHOTS_BUCKET_NAME disponible"
+      return 0
+    fi
+    retries=$((retries - 1))
+    sleep 10
+  done
+  fail "Bucket $SNAPSHOTS_BUCKET_NAME no apareció a tiempo"
 }
 
 # ── Preliminares ────────────────────────────────────────
@@ -93,20 +110,11 @@ confirm
 step "2 de 8" "Desplegar infraestructura de red (VPC + NAT)"
 
 cd "$SERVICE_DIR"
-ensure_stack_absent "$STACK_NETWORK"
 aws cloudformation create-stack \
   --stack-name "$STACK_NETWORK" \
   --template-body file://infra/network-prod.yml \
   --capabilities CAPABILITY_IAM > /dev/null
-wait_for_stack_create "$STACK_NETWORK"
-
-# Descubrir recursos de red por tags para evitar cloudformation:DescribeStacks
-LAMBDA_SUBNET_A=$(aws ec2 describe-subnets --filters Name=tag:Name,Values=xoc-prod-lambda-private-a --query "Subnets[0].SubnetId" --output text)
-LAMBDA_SUBNET_B=$(aws ec2 describe-subnets --filters Name=tag:Name,Values=xoc-prod-lambda-private-b --query "Subnets[0].SubnetId" --output text)
-DB_SUBNET_A=$(aws ec2 describe-subnets --filters Name=tag:Name,Values=xoc-prod-db-private-a --query "Subnets[0].SubnetId" --output text)
-DB_SUBNET_B=$(aws ec2 describe-subnets --filters Name=tag:Name,Values=xoc-prod-db-private-b --query "Subnets[0].SubnetId" --output text)
-RDS_SG_ID=$(aws ec2 describe-security-groups --filters Name=tag:Name,Values=xoc-prod-rds-sg --query "SecurityGroups[0].GroupId" --output text)
-LAMBDA_SG_ID=$(aws ec2 describe-security-groups --filters Name=tag:Name,Values=xoc-prod-lambda-sg --query "SecurityGroups[0].GroupId" --output text)
+wait_for_network_resources
 
 ok "Outputs de red capturados"
 echo "  LambdaPrivateSubnetA: $LAMBDA_SUBNET_A"
@@ -122,7 +130,6 @@ confirm
 # ─────────────────────────────────────────────────────────
 step "3 de 8" "Desplegar base de datos RDS PostgreSQL"
 
-ensure_stack_absent "$STACK_DATA"
 aws cloudformation create-stack \
   --stack-name "$STACK_DATA" \
   --template-body file://infra/data-prod.yml \
@@ -132,7 +139,7 @@ aws cloudformation create-stack \
     ParameterKey=RdsSecurityGroupId,ParameterValue="$RDS_SG_ID" \
     ParameterKey=DatabasePassword,ParameterValue="$DB_PASSWORD" \
   --capabilities CAPABILITY_IAM > /dev/null
-wait_for_stack_create "$STACK_DATA"
+wait_for_data_resources
 
 ok "Database secret id: $DB_SECRET_ID"
 confirm
@@ -142,12 +149,11 @@ confirm
 # ─────────────────────────────────────────────────────────
 step "4 de 8" "Desplegar bucket S3 para snapshots"
 
-ensure_stack_absent "$STACK_STORAGE"
 aws cloudformation create-stack \
   --stack-name "$STACK_STORAGE" \
   --template-body file://infra/storage-prod.yml \
   --capabilities CAPABILITY_IAM > /dev/null
-wait_for_stack_create "$STACK_STORAGE"
+wait_for_bucket
 confirm
 
 # ─────────────────────────────────────────────────────────
