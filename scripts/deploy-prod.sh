@@ -20,6 +20,41 @@ confirm() {
   case "$yn" in [nN]*) exit 0 ;; esac
 }
 
+get_stack_status() {
+  aws cloudformation list-stacks \
+    --stack-status-filter CREATE_IN_PROGRESS CREATE_COMPLETE CREATE_FAILED ROLLBACK_IN_PROGRESS ROLLBACK_COMPLETE UPDATE_IN_PROGRESS UPDATE_COMPLETE UPDATE_ROLLBACK_IN_PROGRESS UPDATE_ROLLBACK_COMPLETE DELETE_IN_PROGRESS DELETE_FAILED \
+    --query "StackSummaries[?StackName=='$1'].StackStatus | [0]" \
+    --output text 2>/dev/null
+}
+
+ensure_stack_absent() {
+  local status
+  status=$(get_stack_status "$1")
+  if [ -n "$status" ] && [ "$status" != "None" ]; then
+    fail "El stack $1 ya existe con estado $status. En AWS Academy este script asume despliegue limpio; bórralo antes de reintentar."
+  fi
+}
+
+wait_for_stack_create() {
+  local stack_name="$1"
+  while true; do
+    local status
+    status=$(get_stack_status "$stack_name")
+    case "$status" in
+      CREATE_COMPLETE)
+        ok "Stack $stack_name creado"
+        return 0
+        ;;
+      CREATE_IN_PROGRESS|REVIEW_IN_PROGRESS|None)
+        sleep 10
+        ;;
+      *)
+        fail "Stack $stack_name terminó en estado $status"
+        ;;
+    esac
+  done
+}
+
 # ── Preliminares ────────────────────────────────────────
 
 info "Verificando herramientas..."
@@ -37,6 +72,9 @@ STACK_NETWORK="xoc-infra-network-prod"
 STACK_DATA="xoc-infra-data-prod"
 STACK_STORAGE="xoc-infra-storage-prod"
 SERVICE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+DB_SECRET_ID="xoc/api/prod/database"
+SNAPSHOTS_BUCKET_NAME="xoc-prod-snapshots-$AWS_ACCOUNT"
+SNAPSHOTS_BUCKET_ARN="arn:aws:s3:::$SNAPSHOTS_BUCKET_NAME"
 
 # Generar secretos
 DB_PASSWORD=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
@@ -55,27 +93,20 @@ confirm
 step "2 de 8" "Desplegar infraestructura de red (VPC + NAT)"
 
 cd "$SERVICE_DIR"
-aws cloudformation deploy \
+ensure_stack_absent "$STACK_NETWORK"
+aws cloudformation create-stack \
   --stack-name "$STACK_NETWORK" \
-  --template-file infra/network-prod.yml \
-  --capabilities CAPABILITY_IAM \
-  --no-fail-on-empty-changeset
+  --template-body file://infra/network-prod.yml \
+  --capabilities CAPABILITY_IAM > /dev/null
+wait_for_stack_create "$STACK_NETWORK"
 
-ok "Stack $STACK_NETWORK desplegado"
-
-# Extraer outputs de red
-NET_OUTPUTS=$(aws cloudformation describe-stacks --stack-name "$STACK_NETWORK" --query "Stacks[0].Outputs" --output json)
-
-get_net_output() {
-  echo "$NET_OUTPUTS" | python3 -c "import sys,json; outs=json.load(sys.stdin); print([o['OutputValue'] for o in outs if o['OutputKey']=='$1'][0])"
-}
-
-LAMBDA_SUBNET_A=$(get_net_output LambdaPrivateSubnetAId)
-LAMBDA_SUBNET_B=$(get_net_output LambdaPrivateSubnetBId)
-DB_SUBNET_A=$(get_net_output DbPrivateSubnetAId)
-DB_SUBNET_B=$(get_net_output DbPrivateSubnetBId)
-RDS_SG_ID=$(get_net_output RdsSecurityGroupId)
-LAMBDA_SG_ID=$(get_net_output LambdaSecurityGroupId)
+# Descubrir recursos de red por tags para evitar cloudformation:DescribeStacks
+LAMBDA_SUBNET_A=$(aws ec2 describe-subnets --filters Name=tag:Name,Values=xoc-prod-lambda-private-a --query "Subnets[0].SubnetId" --output text)
+LAMBDA_SUBNET_B=$(aws ec2 describe-subnets --filters Name=tag:Name,Values=xoc-prod-lambda-private-b --query "Subnets[0].SubnetId" --output text)
+DB_SUBNET_A=$(aws ec2 describe-subnets --filters Name=tag:Name,Values=xoc-prod-db-private-a --query "Subnets[0].SubnetId" --output text)
+DB_SUBNET_B=$(aws ec2 describe-subnets --filters Name=tag:Name,Values=xoc-prod-db-private-b --query "Subnets[0].SubnetId" --output text)
+RDS_SG_ID=$(aws ec2 describe-security-groups --filters Name=tag:Name,Values=xoc-prod-rds-sg --query "SecurityGroups[0].GroupId" --output text)
+LAMBDA_SG_ID=$(aws ec2 describe-security-groups --filters Name=tag:Name,Values=xoc-prod-lambda-sg --query "SecurityGroups[0].GroupId" --output text)
 
 ok "Outputs de red capturados"
 echo "  LambdaPrivateSubnetA: $LAMBDA_SUBNET_A"
@@ -91,23 +122,19 @@ confirm
 # ─────────────────────────────────────────────────────────
 step "3 de 8" "Desplegar base de datos RDS PostgreSQL"
 
-aws cloudformation deploy \
+ensure_stack_absent "$STACK_DATA"
+aws cloudformation create-stack \
   --stack-name "$STACK_DATA" \
-  --template-file infra/data-prod.yml \
-  --parameter-overrides \
-    DbSubnetAId="$DB_SUBNET_A" \
-    DbSubnetBId="$DB_SUBNET_B" \
-    RdsSecurityGroupId="$RDS_SG_ID" \
-    DatabasePassword="$DB_PASSWORD" \
-  --capabilities CAPABILITY_IAM \
-  --no-fail-on-empty-changeset
+  --template-body file://infra/data-prod.yml \
+  --parameters \
+    ParameterKey=DbSubnetAId,ParameterValue="$DB_SUBNET_A" \
+    ParameterKey=DbSubnetBId,ParameterValue="$DB_SUBNET_B" \
+    ParameterKey=RdsSecurityGroupId,ParameterValue="$RDS_SG_ID" \
+    ParameterKey=DatabasePassword,ParameterValue="$DB_PASSWORD" \
+  --capabilities CAPABILITY_IAM > /dev/null
+wait_for_stack_create "$STACK_DATA"
 
-ok "Stack $STACK_DATA desplegado"
-
-DATA_OUTPUTS=$(aws cloudformation describe-stacks --stack-name "$STACK_DATA" --query "Stacks[0].Outputs" --output json)
-DB_SECRET_ARN=$(echo "$DATA_OUTPUTS" | python3 -c "import sys,json; outs=json.load(sys.stdin); print([o['OutputValue'] for o in outs if o['OutputKey']=='DatabaseSecretArn'][0])")
-
-ok "DatabaseSecretArn: $DB_SECRET_ARN"
+ok "Database secret id: $DB_SECRET_ID"
 confirm
 
 # ─────────────────────────────────────────────────────────
@@ -115,13 +142,12 @@ confirm
 # ─────────────────────────────────────────────────────────
 step "4 de 8" "Desplegar bucket S3 para snapshots"
 
-aws cloudformation deploy \
+ensure_stack_absent "$STACK_STORAGE"
+aws cloudformation create-stack \
   --stack-name "$STACK_STORAGE" \
-  --template-file infra/storage-prod.yml \
-  --capabilities CAPABILITY_IAM \
-  --no-fail-on-empty-changeset
-
-ok "Stack $STACK_STORAGE desplegado"
+  --template-body file://infra/storage-prod.yml \
+  --capabilities CAPABILITY_IAM > /dev/null
+wait_for_stack_create "$STACK_STORAGE"
 confirm
 
 # ─────────────────────────────────────────────────────────
@@ -151,6 +177,13 @@ fi
 step "6 de 8" "Desplegar backend con Serverless Framework"
 
 cd "$SERVICE_DIR"
+
+export DATABASE_SECRET_ARN="$DB_SECRET_ID"
+export SNAPSHOTS_BUCKET_NAME="$SNAPSHOTS_BUCKET_NAME"
+export SNAPSHOTS_BUCKET_ARN="$SNAPSHOTS_BUCKET_ARN"
+export LAMBDA_SECURITY_GROUP_ID="$LAMBDA_SG_ID"
+export LAMBDA_PRIVATE_SUBNET_A_ID="$LAMBDA_SUBNET_A"
+export LAMBDA_PRIVATE_SUBNET_B_ID="$LAMBDA_SUBNET_B"
 
 # Validar que serverless tiene sesión
 serverless info --stage prod 2>/dev/null || true
@@ -197,7 +230,7 @@ case "${bootstrap_choice:-2}" in
     echo "     o usa SSM Port Forwarding."
     echo ""
     echo "  2. Obtén la DB URL del Secrets Manager:"
-    echo "     aws secretsmanager get-secret-value --secret-id $DB_SECRET_ARN"
+    echo "     aws secretsmanager get-secret-value --secret-id $DB_SECRET_ID"
     echo ""
     echo "  3. Ejecuta:"
     echo "     DATABASE_URL='<postgresql+psycopg2://...>' python3 scripts/bootstrap_schema.py"
@@ -250,7 +283,7 @@ echo -e "${GREEN}═════════════════════
 echo ""
 echo "  Resumen:"
 echo "    JWT secret:   environment variable JWT_SECRET_KEY"
-echo "    DB secret:    $DB_SECRET_ARN"
+echo "    DB secret:    $DB_SECRET_ID"
 echo "    Region:       $AWS_REGION"
 echo ""
 echo "  ⚠️  La DB password está en Secrets Manager. No la compartas."

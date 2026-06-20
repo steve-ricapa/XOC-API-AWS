@@ -5,12 +5,12 @@ corsAllowedOrigins:
   - https://api.example.com
 corsAllowedOriginsCsv: https://api.example.com
 jwtSecretKey: xoc-demo-prod-jwt-secret-change-me
-databaseSecretArn: ${cf:xoc-infra-data-prod.DatabaseSecretArn}
-snapshotsBucketName: ${cf:xoc-infra-storage-prod.SnapshotsBucketName}
-snapshotsBucketArn: ${cf:xoc-infra-storage-prod.SnapshotsBucketArn}
+databaseSecretArn: ${env:DATABASE_SECRET_ARN, 'xoc/api/prod/database'}
+snapshotsBucketName: ${env:SNAPSHOTS_BUCKET_NAME, 'xoc-prod-snapshots-${aws:accountId}'}
+snapshotsBucketArn: ${env:SNAPSHOTS_BUCKET_ARN, 'arn:aws:s3:::xoc-prod-snapshots-${aws:accountId}'}
 apiVpc:
   securityGroupIds:
-    - ${cf:xoc-infra-network-prod.LambdaSecurityGroupId}
+    - ${env:LAMBDA_SECURITY_GROUP_ID}
   subnetIds:
-    - ${cf:xoc-infra-network-prod.LambdaPrivateSubnetAId}
-    - ${cf:xoc-infra-network-prod.LambdaPrivateSubnetBId}
+    - ${env:LAMBDA_PRIVATE_SUBNET_A_ID}
+    - ${env:LAMBDA_PRIVATE_SUBNET_B_ID}
