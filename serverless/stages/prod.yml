@@ -2,8 +2,23 @@ region: us-east-1
 logLevel: INFO
 logRetentionInDays: 90
 corsAllowedOrigins:
-  - "*"
-corsAllowedOriginsCsv: "*"
+  - https://xoc-frontend.web.app
+  - http://xoc-frontend.web.app
+  - https://www.xoc-frontend.web.app
+  - http://www.xoc-frontend.web.app
+  - https://xoc-frontend.firebaseapp.com
+  - http://xoc-frontend.firebaseapp.com
+  - https://www.xoc-frontend.firebaseapp.com
+  - http://www.xoc-frontend.firebaseapp.com
+  - http://localhost:3000
+  - https://localhost:3000
+  - http://localhost:5173
+  - https://localhost:5173
+  - http://127.0.0.1:3000
+  - https://127.0.0.1:3000
+  - http://127.0.0.1:5173
+  - https://127.0.0.1:5173
+corsAllowedOriginsCsv: https://xoc-frontend.web.app,http://xoc-frontend.web.app,https://www.xoc-frontend.web.app,http://www.xoc-frontend.web.app,https://xoc-frontend.firebaseapp.com,http://xoc-frontend.firebaseapp.com,https://www.xoc-frontend.firebaseapp.com,http://www.xoc-frontend.firebaseapp.com,http://localhost:3000,https://localhost:3000,http://localhost:5173,https://localhost:5173,http://127.0.0.1:3000,https://127.0.0.1:3000,http://127.0.0.1:5173,https://127.0.0.1:5173
 jwtSecretKey: xoc-demo-prod-jwt-secret-change-me
 databaseSecretArn: ${cf:xoc-infra-data-prod.DatabaseSecretArn}
 snapshotsBucketName: ${cf:xoc-infra-storage-prod.SnapshotsBucketName}
