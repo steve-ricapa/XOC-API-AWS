@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from src.integrations.summary_store import build_dashboard_summary
 from src.integrations import nessus_client, uptime_kuma_client, wazuh_client, zabbix_client
 from src.persistence.db import get_db_session
 from src.persistence.models import Integration, User
@@ -55,22 +56,7 @@ def get_uptime_kuma_summary(current_user: User = Depends(get_current_user), sess
 
 @router.get("/dashboard/summary")
 def get_dashboard_summary(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
-    zabbix_summary = zabbix_client.get_summary(session, current_user.company_id)
-    wazuh_summary = wazuh_client.get_summary(session, current_user.company_id)
-    nessus_summary = nessus_client.get_summary(session, current_user.company_id)
-    uptime_kuma_summary = uptime_kuma_client.get_summary(session, current_user.company_id)
-    return {
-        "zabbix": zabbix_summary,
-        "wazuh": wazuh_summary,
-        "nessus": nessus_summary,
-        "uptime_kuma": uptime_kuma_summary,
-        "summary": {
-            "total_integrations_configured": sum(1 for s in [zabbix_summary, wazuh_summary, nessus_summary, uptime_kuma_summary] if s.get("configured", False)),
-            "total_alerts": (zabbix_summary.get("alerts", 0) if zabbix_summary.get("configured") and "error" not in zabbix_summary else 0) + (wazuh_summary.get("alerts", {}).get("total", 0) if wazuh_summary.get("configured") and "error" not in wazuh_summary else 0),
-            "critical_vulnerabilities": nessus_summary.get("vulnerabilities", {}).get("critical", 0) if nessus_summary.get("configured") and "error" not in nessus_summary else 0,
-            "services_down": uptime_kuma_summary.get("services", {}).get("down", 0) if uptime_kuma_summary.get("configured") and "error" not in uptime_kuma_summary else 0,
-        },
-    }
+    return build_dashboard_summary(session, current_user.company_id)
 
 
 @router.get("/{integration_id}")
