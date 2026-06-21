@@ -14,6 +14,7 @@ from src.persistence.db import get_db_session
 from src.persistence.models import AgentSession, Company, CompanyRuntimeSettings
 from src.shared.auth import create_access_token
 from src.shared.capabilities import collect_automation_capabilities
+from src.shared.config import get_settings
 from src.shared.dependencies import get_current_user
 from src.shared.errors import AppError, UnauthorizedError, ValidationError
 
@@ -41,6 +42,33 @@ def _get_runtime_settings(session: Session, company_id: int) -> CompanyRuntimeSe
     if not settings:
         raise UnauthorizedError(_RUNTIME_SETTINGS_MISSING_MESSAGE)
     return settings
+
+
+def _resolve_agent_routes(session: Session, company_id: int) -> dict[str, str]:
+    settings = get_settings()
+    global_base_url = (settings.agents_function_base_url or "").strip()
+    global_sophia = (settings.agents_function_route_sophia or "/api/agents/SophiaDurableAgent/run").strip()
+    global_history = (settings.agents_function_route_sophia_history or "/api/agents/SophiaDurableAgent/history").strip()
+    global_delete = (settings.agents_function_route_sophia_delete or "/api/agents/SophiaDurableAgent/threads").strip()
+    global_victor = (settings.agents_function_route_victor or "/api/agents/VictorDurableAgent/run").strip()
+
+    if global_base_url:
+        return {
+            "function_base_url": global_base_url,
+            "function_route_sophia": global_sophia,
+            "function_route_sophia_history": global_history,
+            "function_route_sophia_delete": global_delete,
+            "function_route_victor": global_victor,
+        }
+
+    runtime_settings = _get_runtime_settings(session, company_id)
+    return {
+        "function_base_url": runtime_settings.function_base_url,
+        "function_route_sophia": runtime_settings.function_route_sophia or "/api/agents/SophiaDurableAgent/run",
+        "function_route_sophia_history": runtime_settings.function_route_sophia_history or "/api/agents/SophiaDurableAgent/history",
+        "function_route_sophia_delete": runtime_settings.function_route_sophia_delete or "/api/agents/SophiaDurableAgent/threads",
+        "function_route_victor": runtime_settings.function_route_victor or "/api/agents/VictorDurableAgent/run",
+    }
 
 
 def _is_demo_company(current_user, db_session: Session) -> bool:
@@ -211,9 +239,9 @@ def chat_history(
     if not resolved_thread_id:
         raise ValidationError("thread_id or session_id is required")
 
-    runtime_settings = _get_runtime_settings(db_session, int(company_id))
-    function_base_url = runtime_settings.function_base_url
-    history_route = runtime_settings.function_route_sophia_history or "/api/agents/SophiaDurableAgent/history"
+    runtime_settings = _resolve_agent_routes(db_session, int(company_id))
+    function_base_url = runtime_settings["function_base_url"]
+    history_route = runtime_settings["function_route_sophia_history"]
 
     if not function_base_url:
         raise ValidationError("SVAFUNC function_base_url is not configured for this company")
@@ -262,9 +290,9 @@ def delete_chat_session(
     if not chat_session:
         raise ValidationError("Agent session not found")
 
-    runtime_settings = _get_runtime_settings(db_session, current_user.company_id)
-    function_base_url = runtime_settings.function_base_url
-    delete_route = runtime_settings.function_route_sophia_delete or "/api/agents/SophiaDurableAgent/threads"
+    runtime_settings = _resolve_agent_routes(db_session, current_user.company_id)
+    function_base_url = runtime_settings["function_base_url"]
+    delete_route = runtime_settings["function_route_sophia_delete"]
 
     if not function_base_url:
         raise ValidationError("SVAFUNC function_base_url is not configured for this company")
@@ -316,7 +344,7 @@ def proxy_chat(
     company_id = payload.get("companyId") or current_user.company_id
     demo_mode = _is_demo_company(current_user, db_session)
 
-    runtime_settings = _get_runtime_settings(db_session, int(company_id))
+    runtime_settings = _resolve_agent_routes(db_session, int(company_id))
 
     chat_session = None
     session_id = payload.get("sessionId") or payload.get("session_id")
@@ -353,8 +381,8 @@ def proxy_chat(
             ).order_by(AgentSession.last_activity_at.desc())
         ).scalars().first()
 
-    function_base_url = runtime_settings.function_base_url
-    function_route = runtime_settings.function_route_sophia or "/api/agents/SophiaDurableAgent/run"
+    function_base_url = runtime_settings["function_base_url"]
+    function_route = runtime_settings["function_route_sophia"]
 
     if not function_base_url:
         raise ValidationError("SVAFUNC function_base_url is not configured for this company")

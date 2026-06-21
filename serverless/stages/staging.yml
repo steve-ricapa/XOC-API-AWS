@@ -5,6 +5,11 @@ corsAllowedOrigins:
   - https://staging.example.com
 corsAllowedOriginsCsv: https://staging.example.com
 jwtSecretKey: xoc-demo-staging-jwt-secret-change-me
+agentsFunctionBaseUrl: ""
+agentsFunctionRouteSophia: /api/agents/SophiaDurableAgent/run
+agentsFunctionRouteSophiaHistory: /api/agents/SophiaDurableAgent/history
+agentsFunctionRouteSophiaDelete: /api/agents/SophiaDurableAgent/threads
+agentsFunctionRouteVictor: /api/agents/VictorDurableAgent/run
 databaseSecretArn: arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:xoc/api/staging/database
 snapshotsBucketName: xoc-staging-snapshots-placeholder
 snapshotsBucketArn: arn:aws:s3:::xoc-staging-snapshots-placeholder

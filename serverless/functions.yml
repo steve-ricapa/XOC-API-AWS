@@ -34,7 +34,26 @@ apiHttp:
         method: POST
         path: /api/onboarding/tenant
     - httpApi:
-        method: '*'
+        method: OPTIONS
+        path: /api/{proxy+}
+    - httpApi:
+        method: GET
+        path: /api/{proxy+}
+        authorizer: jwtRequestAuthorizer
+    - httpApi:
+        method: POST
+        path: /api/{proxy+}
+        authorizer: jwtRequestAuthorizer
+    - httpApi:
+        method: PUT
+        path: /api/{proxy+}
+        authorizer: jwtRequestAuthorizer
+    - httpApi:
+        method: PATCH
+        path: /api/{proxy+}
+        authorizer: jwtRequestAuthorizer
+    - httpApi:
+        method: DELETE
         path: /api/{proxy+}
         authorizer: jwtRequestAuthorizer
   package:

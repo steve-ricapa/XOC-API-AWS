@@ -37,6 +37,11 @@ provider:
     DATABASE_SECRET_ARN: ${self:custom.stageConfig.databaseSecretArn}
     SNAPSHOTS_BUCKET_NAME: ${self:custom.stageConfig.snapshotsBucketName}
     CORS_ALLOWED_ORIGINS: ${self:custom.stageConfig.corsAllowedOriginsCsv}
+    AGENTS_FUNCTION_BASE_URL: ${self:custom.stageConfig.agentsFunctionBaseUrl}
+    AGENTS_FUNCTION_ROUTE_SOPHIA: ${self:custom.stageConfig.agentsFunctionRouteSophia}
+    AGENTS_FUNCTION_ROUTE_SOPHIA_HISTORY: ${self:custom.stageConfig.agentsFunctionRouteSophiaHistory}
+    AGENTS_FUNCTION_ROUTE_SOPHIA_DELETE: ${self:custom.stageConfig.agentsFunctionRouteSophiaDelete}
+    AGENTS_FUNCTION_ROUTE_VICTOR: ${self:custom.stageConfig.agentsFunctionRouteVictor}
 
     EVENT_BUS_NAME: ${self:service}-${self:custom.stage}-bus
 
