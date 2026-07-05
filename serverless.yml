@@ -5,6 +5,10 @@ frameworkVersion: '4'
 custom:
   stage: ${opt:stage, 'dev'}
   stageConfig: ${file(./serverless/stages/${self:custom.stage}.yml)}
+  functionsFileByStage:
+    dev: ./serverless/functions.yml
+    staging: ./serverless/functions.yml
+    prod: ./serverless/functions-prod.yml
 
   pythonRequirements:
     dockerizePip: true
@@ -134,6 +138,6 @@ package:
     - '!*.pyc'
     - '!**/*.pyc'
 
-functions: ${file(./serverless/functions.yml)}
+functions: ${file(${self:custom.functionsFileByStage.${self:custom.stage}})}
 
 resources: ${file(./serverless/resources.yml)}
