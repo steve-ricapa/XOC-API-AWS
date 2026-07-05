@@ -44,6 +44,7 @@ provider:
     AGENTS_FUNCTION_ROUTE_VICTOR: ${self:custom.stageConfig.agentsFunctionRouteVictor}
 
     EVENT_BUS_NAME: ${self:service}-${self:custom.stage}-bus
+    TICKETS_TABLE_NAME: ${self:service}-${self:custom.stage}-tickets
 
     AGENT_KEY_ENCRYPTION_KEY: ${env:AGENT_KEY_ENCRYPTION_KEY, ''}
 
@@ -72,6 +73,16 @@ provider:
             - events:PutEvents
           Resource:
             - arn:aws:events:${aws:region}:${aws:accountId}:event-bus/${self:service}-${self:custom.stage}-bus
+        - Effect: Allow
+          Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:Query
+          Resource:
+            - arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/${self:service}-${self:custom.stage}-tickets
+            - arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/${self:service}-${self:custom.stage}-tickets/index/*
         - Effect: Allow
           Action:
             - ec2:CreateNetworkInterface

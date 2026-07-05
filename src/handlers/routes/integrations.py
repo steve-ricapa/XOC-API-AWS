@@ -11,52 +11,52 @@ from src.shared.encryption import decrypt_credentials, encrypt_credentials
 from src.shared.errors import NotFoundError, ValidationError
 
 
-router = APIRouter(prefix="/api/integrations", tags=["integrations"])
+router = APIRouter(prefix="/integrations", tags=["integrations"])
 
 VALID_PROVIDERS = ["palo_alto", "splunk", "wazuh", "meraki", "zabbix", "nessus", "uptime_kuma"]
 
 
 def _get_integration_or_404(session: Session, user: User, integration_id: int) -> Integration:
     integration = session.get(Integration, integration_id)
-    if not integration or integration.company_id != user.company_id:
+    if not integration or integration.tenant_id != user.tenant_id:
         raise NotFoundError("Integration not found")
     return integration
 
 
 @router.get("")
 def get_integrations(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
-    integrations = session.query(Integration).filter_by(company_id=current_user.company_id).all()
+    integrations = session.query(Integration).filter_by(tenant_id=current_user.tenant_id).all()
     return {"integrations": [integration.to_dict() for integration in integrations]}
 
 
 @router.get("/zabbix/summary")
 def get_zabbix_summary(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
-    return zabbix_client.get_summary(session, current_user.company_id)
+    return zabbix_client.get_summary(session, current_user.tenant_id)
 
 
 @router.get("/zabbix/detailed")
 def get_zabbix_detailed(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
-    return zabbix_client.get_detailed_metrics(session, current_user.company_id)
+    return zabbix_client.get_detailed_metrics(session, current_user.tenant_id)
 
 
 @router.get("/wazuh/summary")
 def get_wazuh_summary(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
-    return wazuh_client.get_summary(session, current_user.company_id)
+    return wazuh_client.get_summary(session, current_user.tenant_id)
 
 
 @router.get("/nessus/summary")
 def get_nessus_summary(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
-    return nessus_client.get_summary(session, current_user.company_id)
+    return nessus_client.get_summary(session, current_user.tenant_id)
 
 
 @router.get("/uptime_kuma/summary")
 def get_uptime_kuma_summary(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
-    return uptime_kuma_client.get_summary(session, current_user.company_id)
+    return uptime_kuma_client.get_summary(session, current_user.tenant_id)
 
 
 @router.get("/dashboard/summary")
 def get_dashboard_summary(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
-    return build_dashboard_summary(session, current_user.company_id)
+    return build_dashboard_summary(session, current_user.tenant_id)
 
 
 @router.get("/{integration_id}")
@@ -80,7 +80,7 @@ def create_integration(payload: dict, current_user: User = Depends(get_current_u
     if provider not in VALID_PROVIDERS:
         raise ValidationError(f'provider must be one of: {", ".join(VALID_PROVIDERS)}')
     credentials_encrypted = encrypt_credentials(credentials)
-    integration = Integration(company_id=current_user.company_id, provider=provider, credentials_encrypted=credentials_encrypted, extra_json=extra_json)
+    integration = Integration(tenant_id=current_user.tenant_id, provider=provider, credentials_encrypted=credentials_encrypted, extra_json=extra_json)
     session.add(integration)
     session.flush()
     log_audit(session, actor_user_id=current_user.id, action="CREATE", entity_type="INTEGRATION", entity_id=integration.id, payload={"provider": provider})

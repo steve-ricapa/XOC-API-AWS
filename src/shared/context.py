@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.persistence.models import AuditLog, Company, User
+from src.persistence.models import AuditLog, Tenant, User
 from src.shared.errors import ForbiddenError, NotFoundError, UnauthorizedError
 from src.shared.http import get_authorizer_context
 
@@ -27,9 +27,9 @@ def require_superadmin(user: User) -> None:
         raise ForbiddenError("Superadmin access required")
 
 
-def require_same_company(user: User, company_id: int) -> None:
-    if int(user.company_id) != int(company_id):
-        raise NotFoundError("Company not found")
+def require_same_tenant(user: User, tenant_id: int) -> None:
+    if int(user.tenant_id) != int(tenant_id):
+        raise NotFoundError("Tenant not found")
 
 
 def log_audit(session: Session, *, actor_user_id: int | None, action: str, entity_type: str, entity_id: str | int | None = None, payload: dict | list | None = None) -> None:
@@ -44,11 +44,11 @@ def log_audit(session: Session, *, actor_user_id: int | None, action: str, entit
     )
 
 
-def get_company(session: Session, company_id: int) -> Company:
-    company = session.get(Company, company_id)
-    if not company:
-        raise NotFoundError("Company not found")
-    return company
+def get_tenant(session: Session, tenant_id: int) -> Tenant:
+    tenant = session.get(Tenant, tenant_id)
+    if not tenant:
+        raise NotFoundError("Tenant not found")
+    return tenant
 
 
 def get_user_by_email(session: Session, email: str) -> User | None:

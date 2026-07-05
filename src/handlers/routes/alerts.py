@@ -11,7 +11,7 @@ from src.shared.dependencies import get_current_user
 from src.shared.errors import NotFoundError, ValidationError
 
 
-router = APIRouter(prefix="/api/alerts", tags=["alerts"])
+router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 
 @router.get("/active")
@@ -21,7 +21,7 @@ def get_active_alerts(
     since: str | None = None,
     limit: int = 100,
 ) -> dict:
-    query = select(Alert).where(Alert.company_id == current_user.company_id, Alert.status == "active")
+    query = select(Alert).where(Alert.tenant_id == current_user.tenant_id, Alert.status == "active")
     if since:
         try:
             since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
@@ -38,7 +38,7 @@ def get_active_alerts(
 @router.post("/{alert_id}/resolve")
 def resolve_alert(alert_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
     alert = session.get(Alert, alert_id)
-    if not alert or alert.company_id != current_user.company_id:
+    if not alert or alert.tenant_id != current_user.tenant_id:
         raise NotFoundError("Alert not found")
     if alert.status == "resolved":
         raise ValidationError("Alert is already resolved")

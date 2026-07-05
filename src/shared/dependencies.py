@@ -36,27 +36,27 @@ def require_refresh_claims(claims: dict[str, Any] = Depends(get_request_claims))
     return claims
 
 
-def get_current_company_id(claims: dict[str, Any] = Depends(require_access_claims)) -> int:
-    company_id = claims.get("companyId") or claims.get("company_id")
-    if not company_id:
-        raise UnauthorizedError("Company not found in request context")
-    return int(company_id)
+def get_current_tenant_id(claims: dict[str, Any] = Depends(require_access_claims)) -> int:
+    tenant_id = claims.get("tenantId") or claims.get("tenant_id")
+    if not tenant_id:
+        raise UnauthorizedError("Tenant not found in request context")
+    return int(tenant_id)
 
 
-def get_request_company_context(claims: dict[str, Any] = Depends(require_access_claims)) -> tuple[int, str]:
+def get_request_tenant_context(claims: dict[str, Any] = Depends(require_access_claims)) -> tuple[int, str]:
     scopes = claims.get("scopes") or []
     if isinstance(scopes, str):
         scopes = [scopes]
     if "agent:invoke" in scopes:
-        company_id = claims.get("companyId") or claims.get("company_id")
-        if not company_id:
-            raise UnauthorizedError("company_id not found in token")
-        return int(company_id), "agent"
+        tenant_id = claims.get("tenantId") or claims.get("tenant_id")
+        if not tenant_id:
+            raise UnauthorizedError("tenant_id not found in token")
+        return int(tenant_id), "agent"
 
-    company_id = claims.get("companyId") or claims.get("company_id")
-    if not company_id:
-        raise UnauthorizedError("Company not found in request context")
-    return int(company_id), "user"
+    tenant_id = claims.get("tenantId") or claims.get("tenant_id")
+    if not tenant_id:
+        raise UnauthorizedError("Tenant not found in request context")
+    return int(tenant_id), "user"
 
 
 def get_current_user_id(claims: dict[str, Any] = Depends(get_request_claims)) -> int:

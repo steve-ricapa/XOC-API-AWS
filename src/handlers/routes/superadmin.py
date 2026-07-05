@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 from src.persistence.db import get_db_session
 from src.persistence.models import (
     AgentInstance, AgentSession, ActivationKey, AgentApiKey,
-    AuditLog, Company, Integration, IntegrationCapabilityTemplate,
-    IntegrationCapabilityTemplateAssignment, Ticket, User,
+    AuditLog, Tenant, Integration, IntegrationCapabilityTemplate,
+    IntegrationCapabilityTemplateAssignment, User,
 )
 from src.shared.context import log_audit, require_superadmin, get_user_by_email
 from src.shared.dependencies import get_current_user
@@ -20,9 +20,10 @@ from src.shared.errors import NotFoundError, ValidationError, ConflictError, For
 from src.shared.integration_types import OFFICIAL_INTEGRATION_TYPES, normalize_integration_type
 from src.shared.encryption import encrypt_agent_key, decrypt_agent_key, encrypt_credentials, decrypt_credentials
 from src.shared.security_keys import generate_access_key, hash_access_key
+from src.shared.tickets_store import count_tenant_tickets, get_ticket_by_id_or_none, list_superadmin_tickets, serialize_ticket, update_ticket_fields
 
 
-router = APIRouter(prefix="/api/superadmin", tags=["superadmin"])
+router = APIRouter(prefix="/superadmin", tags=["superadmin"])
 
 
 DEMO_PLAN_STATUS = "DEMO"
@@ -141,7 +142,7 @@ def _parse_iso_datetime(value, field_name: str):
 def _serialize_user(user: User) -> dict:
     return {
         "id": user.id,
-        "company_id": user.company_id,
+        "tenant_id": user.tenant_id,
         "username": user.username,
         "email": user.email,
         "role": user.role,
@@ -149,11 +150,11 @@ def _serialize_user(user: User) -> dict:
     }
 
 
-def _serialize_company(company: Company) -> dict:
+def _serialize_tenant(tenant: Tenant) -> dict:
     return {
-        "id": company.id,
-        "name": company.name,
-        "created_at": company.created_at.isoformat() if company.created_at else None,
+        "id": tenant.id,
+        "name": tenant.name,
+        "created_at": tenant.created_at.isoformat() if tenant.created_at else None,
     }
 
 
@@ -163,7 +164,7 @@ def _build_assignments_map(assignments: list) -> dict:
         t_id = a.template_id
         if t_id not in result:
             result[t_id] = set()
-        result[t_id].add(a.company_id)
+        result[t_id].add(a.tenant_id)
     return result
 
 
@@ -173,16 +174,16 @@ def _template_scope(template_id: int, assignments_by_template: dict) -> str:
     return "all"
 
 
-def _template_applies(template, company_id: int, assignments_by_template: dict) -> bool:
+def _template_applies(template, tenant_id: int, assignments_by_template: dict) -> bool:
     tid = template.id
     if tid in assignments_by_template:
-        return company_id in assignments_by_template[tid]
+        return tenant_id in assignments_by_template[tid]
     return True
 
 
-def _parse_company_ids(value) -> list[int]:
+def _parse_tenant_ids(value) -> list[int]:
     if not isinstance(value, list):
-        raise ValidationError("companies must be a list of integers")
+        raise ValidationError("tenants must be a list of integers")
     if not value:
         return []
     seen = set()
@@ -191,9 +192,9 @@ def _parse_company_ids(value) -> list[int]:
         try:
             cid = int(item)
         except (TypeError, ValueError):
-            raise ValidationError("companies must contain only integers")
+            raise ValidationError("tenants must contain only integers")
         if cid in seen:
-            raise ValidationError("Duplicate company_id in companies")
+            raise ValidationError("Duplicate tenant_id in tenants")
         seen.add(cid)
         result.append(cid)
     return result
@@ -205,18 +206,18 @@ def _require_confirm(x_superadmin_confirm: bool = Header(None, alias="X-Superadm
     return True
 
 
-def _ensure_demo_agent_instance(company_id: int, session: Session):
+def _ensure_demo_agent_instance(tenant_id: int, session: Session):
     demo_settings = _get_demo_function_settings()
     if not demo_settings["base_url"]:
         return
-    existing = session.query(AgentInstance).filter_by(company_id=company_id, agent_type="SVAFUNC").first()
+    existing = session.query(AgentInstance).filter_by(tenant_id=tenant_id, agent_type="SVAFUNC").first()
     if existing:
         return
     access_key = generate_access_key()
     access_key_hash = hash_access_key(access_key)
     access_key_encrypted = encrypt_agent_key(access_key)
     instance = AgentInstance(
-        company_id=company_id,
+        tenant_id=tenant_id,
         agent_type="SVAFUNC",
         client_access_key_hash=access_key_hash,
         client_access_key_encrypted=access_key_encrypted,
@@ -231,12 +232,12 @@ def _ensure_demo_agent_instance(company_id: int, session: Session):
     session.flush()
 
 
-def _get_active_agent_instance(company_id: int, session: Session):
-    return session.query(AgentInstance).filter_by(company_id=company_id, agent_type="SVAFUNC", status="ACTIVE").first()
+def _get_active_agent_instance(tenant_id: int, session: Session):
+    return session.query(AgentInstance).filter_by(tenant_id=tenant_id, agent_type="SVAFUNC", status="ACTIVE").first()
 
 
 def _build_integration_capability_payload(
-    integration, templates_by_provider, assignments_by_template, company_id,
+    integration, templates_by_provider, assignments_by_template, tenant_id,
     include_templates=True, include_effective=True,
 ) -> dict:
     data = integration.to_dict()
@@ -246,21 +247,21 @@ def _build_integration_capability_payload(
         for t in templates_by_provider[provider]:
             tdata = t.to_dict()
             tdata["scope"] = _template_scope(t.id, assignments_by_template)
-            tdata["applies"] = _template_applies(t, company_id, assignments_by_template)
+            tdata["applies"] = _template_applies(t, tenant_id, assignments_by_template)
             template_list.append(tdata)
         data["templates"] = template_list
     if include_effective:
         caps = _flatten_capabilities(integration.capabilities) if integration.capabilities else []
         if provider in templates_by_provider:
             for t in templates_by_provider[provider]:
-                if _template_applies(t, company_id, assignments_by_template):
+                if _template_applies(t, tenant_id, assignments_by_template):
                     caps.extend(_flatten_capabilities(t.capabilities))
         data["effective_capabilities"] = list(sorted(set(caps)))
     return data
 
 
-@router.get("/companies")
-def list_companies(
+@router.get("/tenants")
+def list_tenants(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
     q: str = None,
@@ -270,25 +271,25 @@ def list_companies(
     offset: int = None,
 ) -> dict:
     require_superadmin(current_user)
-    query = session.query(Company)
+    query = session.query(Tenant)
     if q:
-        query = query.filter(Company.name.ilike(f"%{q}%"))
+        query = query.filter(Tenant.name.ilike(f"%{q}%"))
     created_from_dt = _parse_iso_datetime(created_from, "created_from")
     created_to_dt = _parse_iso_datetime(created_to, "created_to")
     if created_from_dt:
-        query = query.filter(Company.created_at >= created_from_dt)
+        query = query.filter(Tenant.created_at >= created_from_dt)
     if created_to_dt:
-        query = query.filter(Company.created_at <= created_to_dt)
-    query = query.order_by(Company.created_at.desc())
+        query = query.filter(Tenant.created_at <= created_to_dt)
+    query = query.order_by(Tenant.created_at.desc())
     total = query.count()
     limit_val = _parse_limit(limit)
     offset_val = _parse_offset(offset)
-    companies = query.offset(offset_val).limit(limit_val).all()
-    return {"companies": [c.to_dict() for c in companies], "total": total, "limit": limit_val, "offset": offset_val}
+    tenants = query.offset(offset_val).limit(limit_val).all()
+    return {"tenants": [t.to_dict() for t in tenants], "total": total, "limit": limit_val, "offset": offset_val}
 
 
-@router.post("/companies", status_code=status.HTTP_201_CREATED)
-def create_company(
+@router.post("/tenants", status_code=status.HTTP_201_CREATED)
+def create_tenant(
     payload: dict,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
@@ -299,36 +300,36 @@ def create_company(
     name = (payload.get("name") or "").strip()
     if not name:
         raise ValidationError("name is required")
-    existing = session.query(Company).filter(func.lower(Company.name) == name.lower()).first()
+    existing = session.query(Tenant).filter(func.lower(Tenant.name) == name.lower()).first()
     if existing:
-        raise ConflictError("Company already exists")
+        raise ConflictError("Tenant already exists")
     plan_status = _normalize_plan_status(payload.get("plan_status") or payload.get("planStatus"), default="ACTIVE")
-    company = Company(name=name, plan_status=plan_status)
-    session.add(company)
+    tenant = Tenant(name=name, plan_status=plan_status)
+    session.add(tenant)
     session.flush()
     if plan_status == DEMO_PLAN_STATUS:
-        _ensure_demo_agent_instance(company.id, session)
-    log_audit(session, actor_user_id=current_user.id, action="CREATE", entity_type="COMPANY", entity_id=company.id, payload={"name": name, "plan_status": plan_status})
+        _ensure_demo_agent_instance(tenant.id, session)
+    log_audit(session, actor_user_id=current_user.id, action="CREATE", entity_type="TENANT", entity_id=tenant.id, payload={"name": name, "plan_status": plan_status})
     session.commit()
-    return {"message": "Company created successfully", "company": company.to_dict()}
+    return {"message": "Tenant created successfully", "tenant": tenant.to_dict()}
 
 
-@router.get("/companies/{company_id}")
-def get_company(
-    company_id: int,
+@router.get("/tenants/{tenant_id}")
+def get_tenant(
+    tenant_id: int,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> dict:
     require_superadmin(current_user)
-    company = session.get(Company, company_id)
-    if not company:
-        raise NotFoundError("Company not found")
-    users_count = session.query(func.count(User.id)).filter(User.company_id == company_id).scalar() or 0
-    integrations_count = session.query(func.count(Integration.id)).filter(Integration.company_id == company_id).scalar() or 0
-    tickets_count = session.query(func.count(Ticket.id)).filter(Ticket.company_id == company_id).scalar() or 0
-    agent_sessions_count = session.query(func.count(AgentSession.id)).filter(AgentSession.company_id == company_id).scalar() or 0
-    agent_instances_count = session.query(func.count(AgentInstance.id)).filter(AgentInstance.company_id == company_id).scalar() or 0
-    data = company.to_dict()
+    tenant = session.get(Tenant, tenant_id)
+    if not tenant:
+        raise NotFoundError("Tenant not found")
+    users_count = session.query(func.count(User.id)).filter(User.tenant_id == tenant_id).scalar() or 0
+    integrations_count = session.query(func.count(Integration.id)).filter(Integration.tenant_id == tenant_id).scalar() or 0
+    tickets_count = count_tenant_tickets(tenant_id)
+    agent_sessions_count = session.query(func.count(AgentSession.id)).filter(AgentSession.tenant_id == tenant_id).scalar() or 0
+    agent_instances_count = session.query(func.count(AgentInstance.id)).filter(AgentInstance.tenant_id == tenant_id).scalar() or 0
+    data = tenant.to_dict()
     data["users_count"] = users_count
     data["integrations_count"] = integrations_count
     data["tickets_count"] = tickets_count
@@ -337,50 +338,50 @@ def get_company(
     return data
 
 
-@router.patch("/companies/{company_id}")
-def update_company(
-    company_id: int,
+@router.patch("/tenants/{tenant_id}")
+def update_tenant(
+    tenant_id: int,
     payload: dict,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> dict:
     require_superadmin(current_user)
-    company = session.get(Company, company_id)
-    if not company:
-        raise NotFoundError("Company not found")
+    tenant = session.get(Tenant, tenant_id)
+    if not tenant:
+        raise NotFoundError("Tenant not found")
     if not payload:
         raise ValidationError("Request body is required")
     if "name" in payload:
         name = (payload["name"] or "").strip()
         if not name:
             raise ValidationError("name is required")
-        existing = session.query(Company).filter(func.lower(Company.name) == name.lower(), Company.id != company_id).first()
+        existing = session.query(Tenant).filter(func.lower(Tenant.name) == name.lower(), Tenant.id != tenant_id).first()
         if existing:
-            raise ConflictError("Company already exists")
-        company.name = name
+            raise ConflictError("Tenant already exists")
+        tenant.name = name
     plan_status_value = None
     if "plan_status" in payload or "planStatus" in payload:
         plan_status_value = payload.get("plan_status") or payload.get("planStatus")
         plan_status = _normalize_plan_status(plan_status_value)
-        company.plan_status = plan_status
+        tenant.plan_status = plan_status
         if plan_status == DEMO_PLAN_STATUS:
-            _ensure_demo_agent_instance(company.id, session)
-    log_audit(session, actor_user_id=current_user.id, action="UPDATE", entity_type="COMPANY", entity_id=company.id, payload={"name": company.name, "plan_status": company.plan_status})
+            _ensure_demo_agent_instance(tenant.id, session)
+    log_audit(session, actor_user_id=current_user.id, action="UPDATE", entity_type="TENANT", entity_id=tenant.id, payload={"name": tenant.name, "plan_status": tenant.plan_status})
     session.commit()
-    return {"message": "Company updated successfully", "company": company.to_dict()}
+    return {"message": "Tenant updated successfully", "tenant": tenant.to_dict()}
 
 
-@router.get("/companies/{company_id}/integrations")
-def list_company_integrations(
-    company_id: int,
+@router.get("/tenants/{tenant_id}/integrations")
+def list_tenant_integrations(
+    tenant_id: int,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> dict:
     require_superadmin(current_user)
-    company = session.get(Company, company_id)
-    if not company:
-        raise NotFoundError("Company not found")
-    integrations = session.query(Integration).filter(Integration.company_id == company_id).order_by(Integration.created_at.desc()).all()
+    tenant = session.get(Tenant, tenant_id)
+    if not tenant:
+        raise NotFoundError("Tenant not found")
+    integrations = session.query(Integration).filter(Integration.tenant_id == tenant_id).order_by(Integration.created_at.desc()).all()
     templates = session.query(IntegrationCapabilityTemplate).all()
     assignments = session.query(IntegrationCapabilityTemplateAssignment).all()
     templates_by_provider = {}
@@ -393,53 +394,53 @@ def list_company_integrations(
     return {
         "integrations": [
             _build_integration_capability_payload(
-                integration, templates_by_provider, assignments_by_template, company_id,
+                integration, templates_by_provider, assignments_by_template, tenant_id,
             ) for integration in integrations
         ],
     }
 
 
-@router.get("/companies/{company_id}/capabilities")
-def get_company_capabilities(
-    company_id: int,
+@router.get("/tenants/{tenant_id}/capabilities")
+def get_tenant_capabilities(
+    tenant_id: int,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> dict:
     require_superadmin(current_user)
-    company = session.get(Company, company_id)
-    if not company:
-        raise NotFoundError("Company not found")
-    integrations = session.query(Integration).filter(Integration.company_id == company_id).all()
+    tenant = session.get(Tenant, tenant_id)
+    if not tenant:
+        raise NotFoundError("Tenant not found")
+    integrations = session.query(Integration).filter(Integration.tenant_id == tenant_id).all()
     templates = session.query(IntegrationCapabilityTemplate).filter_by(is_active=True).all()
-    assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(company_id=company_id).all()
+    assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(tenant_id=tenant_id).all()
     assignments_by_template = _build_assignments_map(assignments)
     all_capabilities = set()
     for integration in integrations:
         caps = _flatten_capabilities(integration.capabilities) if integration.capabilities else []
         all_capabilities.update(caps)
         for t in templates:
-            if _template_applies(t, company_id, assignments_by_template) and t.provider == integration.provider:
+            if _template_applies(t, tenant_id, assignments_by_template) and t.provider == integration.provider:
                 all_capabilities.update(_flatten_capabilities(t.capabilities))
     return {"capabilities": sorted(all_capabilities)}
 
 
-@router.get("/companies/{company_id}/capability-templates")
-def list_company_capability_templates(
-    company_id: int,
+@router.get("/tenants/{tenant_id}/capability-templates")
+def list_tenant_capability_templates(
+    tenant_id: int,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> dict:
     require_superadmin(current_user)
-    company = session.get(Company, company_id)
-    if not company:
-        raise NotFoundError("Company not found")
+    tenant = session.get(Tenant, tenant_id)
+    if not tenant:
+        raise NotFoundError("Tenant not found")
     templates = session.query(IntegrationCapabilityTemplate).all()
-    assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(company_id=company_id).all()
+    assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(tenant_id=tenant_id).all()
     assigned_template_ids = {a.template_id for a in assignments}
     result = []
     for t in templates:
         tdata = t.to_dict()
-        tdata["applies_to_company"] = t.id in assigned_template_ids or t.id not in {a.template_id for a in session.query(IntegrationCapabilityTemplateAssignment).all()}
+        tdata["applies_to_tenant"] = t.id in assigned_template_ids or t.id not in {a.template_id for a in session.query(IntegrationCapabilityTemplateAssignment).all()}
         tdata["assigned"] = t.id in assigned_template_ids
         result.append(tdata)
     return {"capability_templates": result}
@@ -454,12 +455,12 @@ def create_user(
     require_superadmin(current_user)
     if not payload:
         raise ValidationError("Request body is required")
-    company_id = payload.get("company_id")
-    if not company_id:
-        raise ValidationError("company_id is required")
-    company = session.get(Company, int(company_id))
-    if not company:
-        raise NotFoundError("Company not found")
+    tenant_id = payload.get("tenant_id")
+    if not tenant_id:
+        raise ValidationError("tenant_id is required")
+    tenant = session.get(Tenant, int(tenant_id))
+    if not tenant:
+        raise NotFoundError("Tenant not found")
     username = (payload.get("username") or "").strip()
     if not username:
         raise ValidationError("username is required")
@@ -478,11 +479,11 @@ def create_user(
     existing_email = session.query(User).filter(User.email == email).first()
     if existing_email:
         raise ConflictError("Email already exists")
-    user = User(company_id=int(company_id), username=username, email=email, role=role)
+    user = User(tenant_id=int(tenant_id), username=username, email=email, role=role)
     user.set_password(password)
     session.add(user)
     session.flush()
-    log_audit(session, actor_user_id=current_user.id, action="CREATE", entity_type="USER", entity_id=user.id, payload={"username": username, "role": role, "company_id": company_id})
+    log_audit(session, actor_user_id=current_user.id, action="CREATE", entity_type="USER", entity_id=user.id, payload={"username": username, "role": role, "tenant_id": tenant_id})
     session.commit()
     return {"message": "User created successfully", "user": _serialize_user(user)}
 
@@ -491,7 +492,7 @@ def create_user(
 def list_users(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
-    company_id: int = None,
+    tenant_id: int = None,
     role: str = None,
     q: str = None,
     limit: int = None,
@@ -499,8 +500,8 @@ def list_users(
 ) -> dict:
     require_superadmin(current_user)
     query = session.query(User)
-    if company_id is not None:
-        query = query.filter(User.company_id == int(company_id))
+    if tenant_id is not None:
+        query = query.filter(User.tenant_id == int(tenant_id))
     if role:
         query = query.filter(User.role == role.strip().upper())
     if q:
@@ -595,7 +596,7 @@ def reset_user_password(
 def list_integrations(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
-    company_id: int = None,
+    tenant_id: int = None,
     provider: str = None,
     type: str = None,
     limit: int = None,
@@ -603,8 +604,8 @@ def list_integrations(
 ) -> dict:
     require_superadmin(current_user)
     query = session.query(Integration)
-    if company_id is not None:
-        query = query.filter(Integration.company_id == int(company_id))
+    if tenant_id is not None:
+        query = query.filter(Integration.tenant_id == int(tenant_id))
     if provider:
         query = query.filter(Integration.provider == provider)
     if type:
@@ -716,7 +717,7 @@ def set_integration_credentials(
 def list_agent_instances(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
-    company_id: int = None,
+    tenant_id: int = None,
     agent_type: str = None,
     status: str = None,
     limit: int = None,
@@ -724,8 +725,8 @@ def list_agent_instances(
 ) -> dict:
     require_superadmin(current_user)
     query = session.query(AgentInstance)
-    if company_id is not None:
-        query = query.filter(AgentInstance.company_id == int(company_id))
+    if tenant_id is not None:
+        query = query.filter(AgentInstance.tenant_id == int(tenant_id))
     if agent_type:
         query = query.filter(AgentInstance.agent_type == agent_type.upper())
     if status:
@@ -872,7 +873,7 @@ def regenerate_agent_key(
 def list_tickets(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
-    company_id: int = None,
+    tenant_id: int = None,
     status: str = None,
     q: str = None,
     created_from: str = None,
@@ -881,74 +882,76 @@ def list_tickets(
     offset: int = None,
 ) -> dict:
     require_superadmin(current_user)
-    query = session.query(Ticket)
-    if company_id is not None:
-        query = query.filter(Ticket.company_id == int(company_id))
-    if status:
-        query = query.filter(Ticket.status == status.upper())
-    if q:
-        query = query.filter(Ticket.subject.ilike(f"%{q}%"))
     created_from_dt = _parse_iso_datetime(created_from, "created_from")
     created_to_dt = _parse_iso_datetime(created_to, "created_to")
-    if created_from_dt:
-        query = query.filter(Ticket.created_at >= created_from_dt)
-    if created_to_dt:
-        query = query.filter(Ticket.created_at <= created_to_dt)
-    query = query.order_by(Ticket.created_at.desc())
-    total = query.count()
     limit_val = _parse_limit(limit)
     offset_val = _parse_offset(offset)
-    tickets = query.offset(offset_val).limit(limit_val).all()
-    return {
-        "tickets": [t.to_dict(include_creator=True, creator=session.get(User, t.created_by_user_id) if t.created_by_user_id else None) for t in tickets],
-        "total": total, "limit": limit_val, "offset": offset_val,
-    }
+    result = list_superadmin_tickets(
+        tenant_id=tenant_id,
+        status=status,
+        q=q,
+        created_from=created_from_dt,
+        created_to=created_to_dt,
+        limit=limit_val,
+        offset=offset_val,
+    )
+    enriched = []
+    for ticket in result["tickets"]:
+        creator = session.get(User, ticket.get("created_by_user_id")) if ticket.get("created_by_user_id") else None
+        ticket_data = dict(ticket)
+        if creator:
+            ticket_data["creator"] = creator.to_dict()
+        enriched.append(ticket_data)
+    return {"tickets": enriched, "total": result["total"], "limit": limit_val, "offset": offset_val}
 
 
 @router.get("/tickets/{ticket_id}")
 def get_ticket(
-    ticket_id: int,
+    ticket_id: str,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> dict:
     require_superadmin(current_user)
-    ticket = session.get(Ticket, ticket_id)
+    ticket = get_ticket_by_id_or_none(ticket_id)
     if not ticket:
         raise NotFoundError("Ticket not found")
-    creator = session.get(User, ticket.created_by_user_id) if ticket.created_by_user_id else None
-    return ticket.to_dict(include_creator=True, creator=creator)
+    ticket_data = serialize_ticket(ticket)
+    creator = session.get(User, ticket_data.get("created_by_user_id")) if ticket_data.get("created_by_user_id") else None
+    if creator:
+        ticket_data["creator"] = creator.to_dict()
+    return ticket_data
 
 
 @router.patch("/tickets/{ticket_id}")
 def update_ticket(
-    ticket_id: int,
+    ticket_id: str,
     payload: dict,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> dict:
     require_superadmin(current_user)
-    ticket = session.get(Ticket, ticket_id)
+    ticket = get_ticket_by_id_or_none(ticket_id)
     if not ticket:
         raise NotFoundError("Ticket not found")
     if not payload:
         raise ValidationError("Request body is required")
     if "status" not in payload:
         raise ValidationError("Only status can be updated via superadmin")
-    new_status = payload["status"].strip().upper()
-    ticket.status = new_status
-    if new_status == "EXECUTED":
-        ticket.executed_at = datetime.utcnow()
-    log_audit(session, actor_user_id=current_user.id, action="UPDATE", entity_type="TICKET", entity_id=ticket.id, payload={"status": ticket.status})
+    updated = update_ticket_fields(int(ticket.get("tenant_id") or 0), ticket_id, {"status": payload["status"]})
+    log_audit(session, actor_user_id=current_user.id, action="UPDATE", entity_type="TICKET", entity_id=ticket_id, payload={"status": updated.get("status")})
     session.commit()
-    creator = session.get(User, ticket.created_by_user_id) if ticket.created_by_user_id else None
-    return {"message": "Ticket updated successfully", "ticket": ticket.to_dict(include_creator=True, creator=creator)}
+    ticket_data = serialize_ticket(updated)
+    creator = session.get(User, ticket_data.get("created_by_user_id")) if ticket_data.get("created_by_user_id") else None
+    if creator:
+        ticket_data["creator"] = creator.to_dict()
+    return {"message": "Ticket updated successfully", "ticket": ticket_data}
 
 
 @router.get("/chat/sessions")
 def list_chat_sessions(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
-    company_id: int = None,
+    tenant_id: int = None,
     user_id: int = None,
     q: str = None,
     order: str = None,
@@ -957,8 +960,8 @@ def list_chat_sessions(
 ) -> dict:
     require_superadmin(current_user)
     query = session.query(AgentSession)
-    if company_id is not None:
-        query = query.filter(AgentSession.company_id == int(company_id))
+    if tenant_id is not None:
+        query = query.filter(AgentSession.tenant_id == int(tenant_id))
     if user_id is not None:
         query = query.filter(AgentSession.user_id == int(user_id))
     if q:
@@ -1009,7 +1012,7 @@ def delete_chat_session(
     remote_error = None
     if chat_session.external_thread_id:
         try:
-            instance = _get_active_agent_instance(chat_session.company_id, session)
+            instance = _get_active_agent_instance(chat_session.tenant_id, session)
             if instance and instance.settings:
                 base_url = instance.settings.get("function_base_url", "")
                 host_key = instance.settings.get("function_host_key", "")
@@ -1041,25 +1044,25 @@ def get_chat_history(
     session: Session = Depends(get_db_session),
     session_id: int = None,
     thread_id: str = None,
-    company_id: int = None,
+    tenant_id: int = None,
     limit: int = None,
     order: str = None,
 ) -> dict:
     require_superadmin(current_user)
-    target_company_id = int(company_id) if company_id else None
-    if not target_company_id and session_id:
+    target_tenant_id = int(tenant_id) if tenant_id else None
+    if not target_tenant_id and session_id:
         chat_session = session.get(AgentSession, session_id)
         if chat_session:
-            target_company_id = chat_session.company_id
-    if not target_company_id and thread_id:
+            target_tenant_id = chat_session.tenant_id
+    if not target_tenant_id and thread_id:
         chat_session = session.query(AgentSession).filter(AgentSession.external_thread_id == thread_id).first()
         if chat_session:
-            target_company_id = chat_session.company_id
-    if not target_company_id:
-        raise ValidationError("Could not determine company_id from parameters")
-    instance = _get_active_agent_instance(target_company_id, session)
+            target_tenant_id = chat_session.tenant_id
+    if not target_tenant_id:
+        raise ValidationError("Could not determine tenant_id from parameters")
+    instance = _get_active_agent_instance(target_tenant_id, session)
     if not instance or not instance.settings:
-        raise ValidationError("No active agent instance configured for this company")
+        raise ValidationError("No active agent instance configured for this tenant")
     base_url = instance.settings.get("function_base_url", "")
     host_key = instance.settings.get("function_host_key", "")
     history_route = instance.settings.get("function_route", "").rstrip("/")
@@ -1089,7 +1092,7 @@ def get_chat_history(
 def list_audit_logs(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
-    company_id: int = None,
+    tenant_id: int = None,
     actor_user_id: int = None,
     action: str = None,
     created_from: str = None,
@@ -1099,10 +1102,10 @@ def list_audit_logs(
 ) -> dict:
     require_superadmin(current_user)
     query = session.query(AuditLog)
-    if company_id is not None or actor_user_id is not None:
+    if tenant_id is not None or actor_user_id is not None:
         query = query.outerjoin(User, AuditLog.actor_user_id == User.id)
-        if company_id is not None:
-            query = query.filter(User.company_id == int(company_id))
+        if tenant_id is not None:
+            query = query.filter(User.tenant_id == int(tenant_id))
         if actor_user_id is not None:
             query = query.filter(AuditLog.actor_user_id == int(actor_user_id))
     if action:
@@ -1144,7 +1147,7 @@ def list_capability_templates(
     session: Session = Depends(get_db_session),
     provider: str = None,
     active: bool = None,
-    include_companies: bool = False,
+    include_tenants: bool = False,
     limit: int = None,
     offset: int = None,
 ) -> dict:
@@ -1165,11 +1168,11 @@ def list_capability_templates(
     for t in templates:
         tdata = t.to_dict()
         tdata["scope"] = _template_scope(t.id, assignments_by_template)
-        tdata["assigned_companies_count"] = len(assignments_by_template.get(t.id, set()))
-        if include_companies:
-            company_ids = list(assignments_by_template.get(t.id, set()))
-            companies = session.query(Company).filter(Company.id.in_(company_ids)).all() if company_ids else []
-            tdata["companies"] = [_serialize_company(c) for c in companies]
+        tdata["assigned_tenants_count"] = len(assignments_by_template.get(t.id, set()))
+        if include_tenants:
+            tenant_ids = list(assignments_by_template.get(t.id, set()))
+            tenants = session.query(Tenant).filter(Tenant.id.in_(tenant_ids)).all() if tenant_ids else []
+            tdata["tenants"] = [_serialize_tenant(tn) for tn in tenants]
         result.append(tdata)
     return {"capability_templates": result, "total": total, "limit": limit_val, "offset": offset_val}
 
@@ -1185,10 +1188,10 @@ def get_capability_template(
     if not template:
         raise NotFoundError("Capability template not found")
     assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(template_id=template_id).all()
-    assignments_by_template = {template_id: {a.company_id for a in assignments}}
+    assignments_by_template = {template_id: {a.tenant_id for a in assignments}}
     tdata = template.to_dict()
     tdata["scope"] = _template_scope(template_id, assignments_by_template)
-    tdata["assigned_companies_count"] = len(assignments)
+    tdata["assigned_tenants_count"] = len(assignments)
     return tdata
 
 
@@ -1226,10 +1229,10 @@ def create_capability_template(
     log_audit(session, actor_user_id=current_user.id, action="CREATE", entity_type="CAPABILITY_TEMPLATE", entity_id=template.id, payload={"provider": provider})
     session.commit()
     assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(template_id=template.id).all()
-    assignments_by_template = {template.id: {a.company_id for a in assignments}}
+    assignments_by_template = {template.id: {a.tenant_id for a in assignments}}
     tdata = template.to_dict()
     tdata["scope"] = _template_scope(template.id, assignments_by_template)
-    tdata["assigned_companies_count"] = len(assignments)
+    tdata["assigned_tenants_count"] = len(assignments)
     return {"message": "Capability template created successfully", "capability_template": tdata}
 
 
@@ -1269,10 +1272,10 @@ def update_capability_template(
     log_audit(session, actor_user_id=current_user.id, action="UPDATE", entity_type="CAPABILITY_TEMPLATE", entity_id=template.id, payload={"provider": template.provider})
     session.commit()
     assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(template_id=template_id).all()
-    assignments_by_template = {template_id: {a.company_id for a in assignments}}
+    assignments_by_template = {template_id: {a.tenant_id for a in assignments}}
     tdata = template.to_dict()
     tdata["scope"] = _template_scope(template_id, assignments_by_template)
-    tdata["assigned_companies_count"] = len(assignments)
+    tdata["assigned_tenants_count"] = len(assignments)
     return {"message": "Capability template updated successfully", "capability_template": tdata}
 
 
@@ -1292,8 +1295,8 @@ def delete_capability_template(
     return {"message": "Capability template deleted successfully"}
 
 
-@router.get("/capability-templates/{template_id}/companies")
-def list_capability_template_companies(
+@router.get("/capability-templates/{template_id}/tenants")
+def list_capability_template_tenants(
     template_id: int,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
@@ -1307,19 +1310,19 @@ def list_capability_template_companies(
         raise NotFoundError("Capability template not found")
     _include_all = _parse_bool(include_all, "include_all") if not isinstance(include_all, bool) else include_all
     if _include_all:
-        query = session.query(Company).order_by(Company.name.asc())
+        query = session.query(Tenant).order_by(Tenant.name.asc())
         total = query.count()
         limit_val = _parse_limit(limit)
         offset_val = _parse_offset(offset)
-        companies = query.offset(offset_val).limit(limit_val).all()
+        tenants = query.offset(offset_val).limit(limit_val).all()
         assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(template_id=template_id).all()
-        assigned_company_ids = {a.company_id for a in assignments}
+        assigned_tenant_ids = {a.tenant_id for a in assignments}
         result = []
-        for c in companies:
-            cdata = _serialize_company(c)
-            cdata["assigned"] = c.id in assigned_company_ids
+        for t in tenants:
+            cdata = _serialize_tenant(t)
+            cdata["assigned"] = t.id in assigned_tenant_ids
             result.append(cdata)
-        return {"companies": result, "total": total, "limit": limit_val, "offset": offset_val}
+        return {"tenants": result, "total": total, "limit": limit_val, "offset": offset_val}
     else:
         assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(template_id=template_id).order_by(
             IntegrationCapabilityTemplateAssignment.created_at.desc()
@@ -1330,17 +1333,17 @@ def list_capability_template_companies(
         paged_assignments = assignments[offset_val:offset_val + limit_val]
         result = []
         for a in paged_assignments:
-            c = session.get(Company, a.company_id)
-            if c:
-                cdata = _serialize_company(c)
+            t = session.get(Tenant, a.tenant_id)
+            if t:
+                cdata = _serialize_tenant(t)
                 cdata["assigned"] = True
                 cdata["assignment_id"] = a.id
                 result.append(cdata)
-        return {"companies": result, "total": total, "limit": limit_val, "offset": offset_val}
+        return {"tenants": result, "total": total, "limit": limit_val, "offset": offset_val}
 
 
-@router.put("/capability-templates/{template_id}/companies")
-def set_capability_template_companies(
+@router.put("/capability-templates/{template_id}/tenants")
+def set_capability_template_tenants(
     template_id: int,
     payload: dict,
     current_user: User = Depends(get_current_user),
@@ -1355,27 +1358,27 @@ def set_capability_template_companies(
     mode = (payload.get("mode") or "replace").strip().lower()
     if mode not in ("replace", "add", "remove"):
         raise ValidationError('mode must be one of: replace, add, remove')
-    company_ids = _parse_company_ids(payload.get("companies", []))
-    for cid in company_ids:
-        company = session.get(Company, cid)
-        if not company:
-            raise ValidationError(f"Company with id {cid} not found")
+    tenant_ids = _parse_tenant_ids(payload.get("tenants", []))
+    for tid in tenant_ids:
+        tenant = session.get(Tenant, tid)
+        if not tenant:
+            raise ValidationError(f"Tenant with id {tid} not found")
     if mode == "replace":
         session.query(IntegrationCapabilityTemplateAssignment).filter_by(template_id=template_id).delete()
-        for cid in company_ids:
-            session.add(IntegrationCapabilityTemplateAssignment(template_id=template_id, company_id=cid))
+        for tid in tenant_ids:
+            session.add(IntegrationCapabilityTemplateAssignment(template_id=template_id, tenant_id=tid))
     elif mode == "add":
-        for cid in company_ids:
+        for tid in tenant_ids:
             existing = session.query(IntegrationCapabilityTemplateAssignment).filter_by(
-                template_id=template_id, company_id=cid
+                template_id=template_id, tenant_id=tid
             ).first()
             if not existing:
-                session.add(IntegrationCapabilityTemplateAssignment(template_id=template_id, company_id=cid))
+                session.add(IntegrationCapabilityTemplateAssignment(template_id=template_id, tenant_id=tid))
     elif mode == "remove":
         session.query(IntegrationCapabilityTemplateAssignment).filter(
             IntegrationCapabilityTemplateAssignment.template_id == template_id,
-            IntegrationCapabilityTemplateAssignment.company_id.in_(company_ids),
+            IntegrationCapabilityTemplateAssignment.tenant_id.in_(tenant_ids),
         ).delete(synchronize_session=False)
-    log_audit(session, actor_user_id=current_user.id, action="UPDATE_COMPANIES", entity_type="CAPABILITY_TEMPLATE", entity_id=template_id, payload={"mode": mode, "company_ids": company_ids})
+    log_audit(session, actor_user_id=current_user.id, action="UPDATE_TENANTS", entity_type="CAPABILITY_TEMPLATE", entity_id=template_id, payload={"mode": mode, "tenant_ids": tenant_ids})
     session.commit()
-    return {"message": "Template companies updated successfully"}
+    return {"message": "Template tenants updated successfully"}

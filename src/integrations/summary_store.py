@@ -8,15 +8,15 @@ from sqlalchemy.orm import Session
 from src.persistence.models import AgentApiKey, Integration, ScanFinding, ScanNocEvent, ScanSummary, ScanSummaryNoc
 
 
-def _pick_integration(session: Session, company_id: int, provider: str) -> Integration | None:
-    return session.scalar(select(Integration).where(Integration.company_id == company_id, Integration.provider == provider))
+def _pick_integration(session: Session, tenant_id: int, provider: str) -> Integration | None:
+    return session.scalar(select(Integration).where(Integration.tenant_id == tenant_id, Integration.provider == provider))
 
 
-def _pick_agent_key(session: Session, company_id: int, integration_type: str) -> AgentApiKey | None:
+def _pick_agent_key(session: Session, tenant_id: int, integration_type: str) -> AgentApiKey | None:
     return session.scalar(
         select(AgentApiKey)
         .where(
-            AgentApiKey.company_id == company_id,
+            AgentApiKey.tenant_id == tenant_id,
             AgentApiKey.integration_type == integration_type,
             AgentApiKey.is_active == True,
         )
@@ -24,38 +24,38 @@ def _pick_agent_key(session: Session, company_id: int, integration_type: str) ->
     )
 
 
-def _latest_soc_scan(session: Session, company_id: int, scanner_type: str) -> ScanSummary | None:
+def _latest_soc_scan(session: Session, tenant_id: int, scanner_type: str) -> ScanSummary | None:
     return session.scalar(
         select(ScanSummary)
-        .where(ScanSummary.company_id == company_id, ScanSummary.scanner_type == scanner_type)
+        .where(ScanSummary.tenant_id == tenant_id, ScanSummary.scanner_type == scanner_type)
         .order_by(ScanSummary.scanned_at.desc())
     )
 
 
-def _latest_noc_scan(session: Session, company_id: int, scanner_type: str) -> ScanSummaryNoc | None:
+def _latest_noc_scan(session: Session, tenant_id: int, scanner_type: str) -> ScanSummaryNoc | None:
     return session.scalar(
         select(ScanSummaryNoc)
-        .where(ScanSummaryNoc.company_id == company_id, ScanSummaryNoc.scanner_type == scanner_type)
+        .where(ScanSummaryNoc.tenant_id == tenant_id, ScanSummaryNoc.scanner_type == scanner_type)
         .order_by(ScanSummaryNoc.scanned_at.desc())
     )
 
 
-def _recent_soc_scans(session: Session, company_id: int, scanner_type: str, limit: int = 10) -> list[ScanSummary]:
+def _recent_soc_scans(session: Session, tenant_id: int, scanner_type: str, limit: int = 10) -> list[ScanSummary]:
     return list(
         session.scalars(
             select(ScanSummary)
-            .where(ScanSummary.company_id == company_id, ScanSummary.scanner_type == scanner_type)
+            .where(ScanSummary.tenant_id == tenant_id, ScanSummary.scanner_type == scanner_type)
             .order_by(ScanSummary.scanned_at.desc())
             .limit(limit)
         )
     )
 
 
-def _recent_noc_scans(session: Session, company_id: int, scanner_type: str, limit: int = 10) -> list[ScanSummaryNoc]:
+def _recent_noc_scans(session: Session, tenant_id: int, scanner_type: str, limit: int = 10) -> list[ScanSummaryNoc]:
     return list(
         session.scalars(
             select(ScanSummaryNoc)
-            .where(ScanSummaryNoc.company_id == company_id, ScanSummaryNoc.scanner_type == scanner_type)
+            .where(ScanSummaryNoc.tenant_id == tenant_id, ScanSummaryNoc.scanner_type == scanner_type)
             .order_by(ScanSummaryNoc.scanned_at.desc())
             .limit(limit)
         )
@@ -94,9 +94,9 @@ def _scan_counts(scan) -> dict:
     }
 
 
-def _base_status(session: Session, company_id: int, provider: str, integration_type: str) -> dict:
-    integration = _pick_integration(session, company_id, provider)
-    agent_key = _pick_agent_key(session, company_id, integration_type)
+def _base_status(session: Session, tenant_id: int, provider: str, integration_type: str) -> dict:
+    integration = _pick_integration(session, tenant_id, provider)
+    agent_key = _pick_agent_key(session, tenant_id, integration_type)
     return {
         "integration": integration,
         "agent_key": agent_key,
@@ -105,9 +105,9 @@ def _base_status(session: Session, company_id: int, provider: str, integration_t
     }
 
 
-def build_wazuh_summary(session: Session, company_id: int) -> dict:
-    status = _base_status(session, company_id, "wazuh", "wazuh")
-    latest_scan = _latest_soc_scan(session, company_id, "wazuh")
+def build_wazuh_summary(session: Session, tenant_id: int) -> dict:
+    status = _base_status(session, tenant_id, "wazuh", "wazuh")
+    latest_scan = _latest_soc_scan(session, tenant_id, "wazuh")
     if not status["configured"]:
         return {"configured": False, "message": "Wazuh integration not configured for this company"}
 
@@ -134,9 +134,9 @@ def build_wazuh_summary(session: Session, company_id: int) -> dict:
     }
 
 
-def build_zabbix_summary(session: Session, company_id: int) -> dict:
-    status = _base_status(session, company_id, "zabbix", "zabbix")
-    latest_scan = _latest_noc_scan(session, company_id, "zabbix")
+def build_zabbix_summary(session: Session, tenant_id: int) -> dict:
+    status = _base_status(session, tenant_id, "zabbix", "zabbix")
+    latest_scan = _latest_noc_scan(session, tenant_id, "zabbix")
     if not status["configured"]:
         return {"configured": False, "message": "Zabbix integration not configured for this company"}
 
@@ -160,9 +160,9 @@ def build_zabbix_summary(session: Session, company_id: int) -> dict:
     }
 
 
-def build_zabbix_detailed_metrics(session: Session, company_id: int) -> dict:
-    status = _base_status(session, company_id, "zabbix", "zabbix")
-    latest_scan = _latest_noc_scan(session, company_id, "zabbix")
+def build_zabbix_detailed_metrics(session: Session, tenant_id: int) -> dict:
+    status = _base_status(session, tenant_id, "zabbix", "zabbix")
+    latest_scan = _latest_noc_scan(session, tenant_id, "zabbix")
     if not status["configured"]:
         return {"configured": False, "message": "Zabbix integration not configured for this company"}
     meta = latest_scan.meta_info if latest_scan and isinstance(latest_scan.meta_info, dict) else {}
@@ -171,10 +171,10 @@ def build_zabbix_detailed_metrics(session: Session, company_id: int) -> dict:
     return {"configured": True, "metrics": {"avg_cpu": float(metrics.get("avg_cpu", meta.get("avg_cpu", 0.0))) if latest_scan else 0.0, "avg_ram": float(metrics.get("avg_ram", meta.get("avg_ram", 0.0))) if latest_scan else 0.0}, "hosts": hosts}
 
 
-def build_vulnerability_summary(session: Session, company_id: int, provider: str, scanner_type: str | None = None) -> dict:
+def build_vulnerability_summary(session: Session, tenant_id: int, provider: str, scanner_type: str | None = None) -> dict:
     scanner = scanner_type or provider
-    status = _base_status(session, company_id, provider, scanner)
-    recent_scans = _recent_soc_scans(session, company_id, scanner, limit=30)
+    status = _base_status(session, tenant_id, provider, scanner)
+    recent_scans = _recent_soc_scans(session, tenant_id, scanner, limit=30)
     latest_scan = recent_scans[0] if recent_scans else None
     if not status["configured"]:
         return {"configured": False, "message": f"{provider.title()} integration not configured for this company"}
@@ -216,9 +216,9 @@ def build_vulnerability_summary(session: Session, company_id: int, provider: str
     }
 
 
-def build_uptime_kuma_summary(session: Session, company_id: int) -> dict:
-    status = _base_status(session, company_id, "uptime_kuma", "uptime_kuma")
-    latest_scan = _latest_noc_scan(session, company_id, "uptime_kuma")
+def build_uptime_kuma_summary(session: Session, tenant_id: int) -> dict:
+    status = _base_status(session, tenant_id, "uptime_kuma", "uptime_kuma")
+    latest_scan = _latest_noc_scan(session, tenant_id, "uptime_kuma")
     if not status["configured"]:
         return {"configured": False, "message": "Uptime Kuma integration not configured for this company"}
 
@@ -242,13 +242,13 @@ def build_uptime_kuma_summary(session: Session, company_id: int) -> dict:
     }
 
 
-def build_dashboard_summary(session: Session, company_id: int) -> dict:
-    zabbix = build_zabbix_summary(session, company_id)
-    wazuh = build_wazuh_summary(session, company_id)
-    nessus = build_vulnerability_summary(session, company_id, "nessus")
-    openvas = build_vulnerability_summary(session, company_id, "openvas")
-    insightvm = build_vulnerability_summary(session, company_id, "insightvm")
-    uptime_kuma = build_uptime_kuma_summary(session, company_id)
+def build_dashboard_summary(session: Session, tenant_id: int) -> dict:
+    zabbix = build_zabbix_summary(session, tenant_id)
+    wazuh = build_wazuh_summary(session, tenant_id)
+    nessus = build_vulnerability_summary(session, tenant_id, "nessus")
+    openvas = build_vulnerability_summary(session, tenant_id, "openvas")
+    insightvm = build_vulnerability_summary(session, tenant_id, "insightvm")
+    uptime_kuma = build_uptime_kuma_summary(session, tenant_id)
 
     configured_count = sum(
         1

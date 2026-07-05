@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
-from src.persistence.models import AgentSession, Company, CompanyRuntimeSettings
+from src.persistence.models import AgentSession, Tenant, TenantRuntimeSettings
 from src.shared.auth import create_access_token
 from src.shared.capabilities import collect_automation_capabilities
 from src.shared.config import get_settings
@@ -20,7 +20,7 @@ from src.shared.errors import AppError, UnauthorizedError, ValidationError
 
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/chat", tags=["chat"])
+router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 _AFFINITY_COOKIE_KEYS = ("ARRAffinity", "ARRAffinitySameSite")
@@ -32,11 +32,11 @@ _RUN_ID_PATTERN = re.compile(r"(run_[A-Za-z0-9]+)")
 _RUNTIME_SETTINGS_MISSING_MESSAGE = "Runtime settings not configured for this company"
 
 
-def _get_runtime_settings(session: Session, company_id: int) -> CompanyRuntimeSettings:
+def _get_runtime_settings(session: Session, tenant_id: int) -> TenantRuntimeSettings:
     settings = session.scalar(
-        select(CompanyRuntimeSettings).where(
-            CompanyRuntimeSettings.company_id == company_id,
-            CompanyRuntimeSettings.is_active == True,
+        select(TenantRuntimeSettings).where(
+            TenantRuntimeSettings.tenant_id == tenant_id,
+            TenantRuntimeSettings.is_active == True,
         )
     )
     if not settings:
@@ -44,7 +44,7 @@ def _get_runtime_settings(session: Session, company_id: int) -> CompanyRuntimeSe
     return settings
 
 
-def _resolve_agent_routes(session: Session, company_id: int) -> dict[str, str]:
+def _resolve_agent_routes(session: Session, tenant_id: int) -> dict[str, str]:
     settings = get_settings()
     global_base_url = (settings.agents_function_base_url or "").strip()
     global_sophia = (settings.agents_function_route_sophia or "/api/agents/SophiaDurableAgent/run").strip()
@@ -61,7 +61,7 @@ def _resolve_agent_routes(session: Session, company_id: int) -> dict[str, str]:
             "function_route_victor": global_victor,
         }
 
-    runtime_settings = _get_runtime_settings(session, company_id)
+    runtime_settings = _get_runtime_settings(session, tenant_id)
     return {
         "function_base_url": runtime_settings.function_base_url,
         "function_route_sophia": runtime_settings.function_route_sophia or "/api/agents/SophiaDurableAgent/run",
@@ -71,22 +71,22 @@ def _resolve_agent_routes(session: Session, company_id: int) -> dict[str, str]:
     }
 
 
-def _is_demo_company(current_user, db_session: Session) -> bool:
-    user_company = getattr(current_user, "company", None)
-    if not user_company:
-        user_company = db_session.get(Company, current_user.company_id)
-    plan_status = (user_company.plan_status or "").strip().upper() if user_company else ""
+def _is_demo_tenant(current_user, db_session: Session) -> bool:
+    user_tenant = getattr(current_user, "tenant", None)
+    if not user_tenant:
+        user_tenant = db_session.get(Tenant, current_user.tenant_id)
+    plan_status = (user_tenant.plan_status or "").strip().upper() if user_tenant else ""
     return plan_status == "DEMO"
 
 
-def _build_agent_invoke_token(company_id: int, agent_type: str) -> str:
+def _build_agent_invoke_token(tenant_id: int, agent_type: str) -> str:
     claims = {
         "scopes": ["agent:invoke"],
-        "company_id": company_id,
+        "tenant_id": tenant_id,
         "agent_type": agent_type,
     }
     return create_access_token(
-        identity=f"agent-runtime-{company_id}-{agent_type}",
+        identity=f"agent-runtime-{tenant_id}-{agent_type}",
         additional_claims=claims,
         expires_delta=timedelta(minutes=15),
     )
@@ -187,7 +187,7 @@ def list_chat_sessions(current_user=Depends(get_current_user), db_session: Sessi
 
     sessions = db_session.execute(
         select(AgentSession).where(
-            AgentSession.company_id == current_user.company_id,
+            AgentSession.tenant_id == current_user.tenant_id,
             AgentSession.user_id == current_user.id,
             AgentSession.purpose == "sophia_chat",
         ).order_by(AgentSession.last_activity_at.desc()).limit(limit)
@@ -208,10 +208,10 @@ def chat_history(
     limit: int = None,
     order: str = None,
 ) -> dict:
-    if _is_demo_company(current_user, db_session):
+    if _is_demo_tenant(current_user, db_session):
         raise ValidationError("Chat history is disabled in demo mode")
 
-    company_id = companyId or current_user.company_id
+    tenant_id = companyId or current_user.tenant_id
     resolved_session_id = session_id or sessionId
     resolved_thread_id = thread_id or threadId
 
@@ -227,7 +227,7 @@ def chat_history(
         chat_session = db_session.execute(
             select(AgentSession).where(
                 AgentSession.id == session_key,
-                AgentSession.company_id == company_id,
+                AgentSession.tenant_id == tenant_id,
                 AgentSession.user_id == current_user.id,
             )
         ).scalar_one_or_none()
@@ -239,7 +239,7 @@ def chat_history(
     if not resolved_thread_id:
         raise ValidationError("thread_id or session_id is required")
 
-    runtime_settings = _resolve_agent_routes(db_session, int(company_id))
+    runtime_settings = _resolve_agent_routes(db_session, int(tenant_id))
     function_base_url = runtime_settings["function_base_url"]
     history_route = runtime_settings["function_route_sophia_history"]
 
@@ -248,7 +248,7 @@ def chat_history(
 
     params = {"thread_id": resolved_thread_id, "limit": str(limit), "order": order}
     full_url = f"{function_base_url.rstrip('/')}{history_route}"
-    service_token = _build_agent_invoke_token(int(company_id), "SOPHIA")
+    service_token = _build_agent_invoke_token(int(tenant_id), "SOPHIA")
 
     try:
         response = requests.get(
@@ -283,21 +283,21 @@ def delete_chat_session(
     chat_session = db_session.execute(
         select(AgentSession).where(
             AgentSession.id == session_id,
-            AgentSession.company_id == current_user.company_id,
+            AgentSession.tenant_id == current_user.tenant_id,
             AgentSession.user_id == current_user.id,
         )
     ).scalar_one_or_none()
     if not chat_session:
         raise ValidationError("Agent session not found")
 
-    runtime_settings = _resolve_agent_routes(db_session, current_user.company_id)
+    runtime_settings = _resolve_agent_routes(db_session, current_user.tenant_id)
     function_base_url = runtime_settings["function_base_url"]
     delete_route = runtime_settings["function_route_sophia_delete"]
 
     if not function_base_url:
         raise ValidationError("SVAFUNC function_base_url is not configured for this company")
 
-    service_token = _build_agent_invoke_token(current_user.company_id, "SOPHIA")
+    service_token = _build_agent_invoke_token(current_user.tenant_id, "SOPHIA")
 
     remote_deleted = False
     remote_error = None
@@ -341,10 +341,10 @@ def proxy_chat(
     if not message:
         raise ValidationError("Missing required field: message")
 
-    company_id = payload.get("companyId") or current_user.company_id
-    demo_mode = _is_demo_company(current_user, db_session)
+    tenant_id = payload.get("companyId") or current_user.tenant_id
+    demo_mode = _is_demo_tenant(current_user, db_session)
 
-    runtime_settings = _resolve_agent_routes(db_session, int(company_id))
+    runtime_settings = _resolve_agent_routes(db_session, int(tenant_id))
 
     chat_session = None
     session_id = payload.get("sessionId") or payload.get("session_id")
@@ -355,7 +355,7 @@ def proxy_chat(
         force_new_session = False
         chat_session = db_session.execute(
             select(AgentSession).where(
-                AgentSession.company_id == company_id,
+                AgentSession.tenant_id == tenant_id,
                 AgentSession.user_id == current_user.id,
                 AgentSession.purpose == "sophia_demo",
             ).order_by(AgentSession.last_activity_at.desc())
@@ -366,7 +366,7 @@ def proxy_chat(
         chat_session = db_session.execute(
             select(AgentSession).where(
                 AgentSession.id == session_key,
-                AgentSession.company_id == company_id,
+                AgentSession.tenant_id == tenant_id,
                 AgentSession.user_id == current_user.id,
             )
         ).scalar_one_or_none()
@@ -375,7 +375,7 @@ def proxy_chat(
     else:
         chat_session = db_session.execute(
             select(AgentSession).where(
-                AgentSession.company_id == company_id,
+                AgentSession.tenant_id == tenant_id,
                 AgentSession.user_id == current_user.id,
                 AgentSession.purpose == "sophia_chat",
             ).order_by(AgentSession.last_activity_at.desc())
@@ -387,7 +387,7 @@ def proxy_chat(
     if not function_base_url:
         raise ValidationError("SVAFUNC function_base_url is not configured for this company")
 
-    service_token = _build_agent_invoke_token(int(company_id), "SOPHIA")
+    service_token = _build_agent_invoke_token(int(tenant_id), "SOPHIA")
 
     params = {}
     thread_id = None
@@ -407,7 +407,7 @@ def proxy_chat(
     if demo_mode:
         sophia_payload["chat_mode"] = "consulta"
     else:
-        automation_capabilities = collect_automation_capabilities(db_session, company_id)
+        automation_capabilities = collect_automation_capabilities(db_session, tenant_id)
         if automation_capabilities:
             sophia_payload["automation_capabilities"] = automation_capabilities
     if thread_id:
@@ -457,7 +457,7 @@ def proxy_chat(
             if response_thread_id:
                 if chat_session is None:
                     chat_session = AgentSession(
-                        company_id=company_id,
+                        tenant_id=tenant_id,
                         user_id=current_user.id,
                         external_thread_id=response_thread_id,
                         title=_build_session_title(message),

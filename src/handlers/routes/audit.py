@@ -7,7 +7,7 @@ from src.shared.dependencies import get_current_user_optional
 from src.shared.errors import ValidationError
 
 
-router = APIRouter(prefix="/api", tags=["audit"])
+router = APIRouter(prefix="", tags=["audit"])
 
 
 @router.post("/audit", status_code=status.HTTP_201_CREATED)

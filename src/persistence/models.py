@@ -13,8 +13,8 @@ class Base(DeclarativeBase):
     pass
 
 
-class Company(Base):
-    __tablename__ = "companies"
+class Tenant(Base):
+    __tablename__ = "tenants"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
@@ -34,7 +34,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     username: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -47,17 +47,17 @@ class User(Base):
     def check_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
 
-    def to_dict(self, include_company: bool = False, company: Company | None = None) -> dict:
+    def to_dict(self, include_tenant: bool = False, tenant: Tenant | None = None) -> dict:
         data = {
             "id": self.id,
-            "company_id": self.company_id,
+            "tenant_id": self.tenant_id,
             "username": self.username,
             "email": self.email,
             "role": self.role,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
-        if include_company and company is not None:
-            data["company"] = company.to_dict()
+        if include_tenant and tenant is not None:
+            data["tenant"] = tenant.to_dict()
         return data
 
 
@@ -84,11 +84,11 @@ class AuditLog(Base):
         }
 
 
-class CompanyRuntimeSettings(Base):
-    __tablename__ = "company_runtime_settings"
+class TenantRuntimeSettings(Base):
+    __tablename__ = "tenant_runtime_settings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, unique=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, unique=True)
     function_base_url: Mapped[str] = mapped_column(String(500), nullable=False)
     function_route_sophia: Mapped[str] = mapped_column(String(255), nullable=False)
     function_route_sophia_history: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -105,7 +105,7 @@ class Integration(Base):
     __tablename__ = "integrations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     provider: Mapped[str] = mapped_column(String(100), nullable=False)
     type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     capabilities: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
@@ -118,7 +118,7 @@ class Integration(Base):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "company_id": self.company_id,
+            "tenant_id": self.tenant_id,
             "provider": self.provider,
             "type": self.type,
             "capabilities": self.capabilities,
@@ -133,7 +133,7 @@ class Ticket(Base):
     __tablename__ = "tickets"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     subject: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -158,7 +158,7 @@ class Ticket(Base):
     def to_dict(self, include_creator: bool = False, creator: User | None = None) -> dict:
         data = {
             "id": self.id,
-            "company_id": self.company_id,
+            "tenant_id": self.tenant_id,
             "created_by_user_id": self.created_by_user_id,
             "subject": self.subject,
             "description": self.description,
@@ -189,7 +189,7 @@ class System(Base):
     __tablename__ = "systems"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     integration_id: Mapped[int] = mapped_column(ForeignKey("integrations.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     type: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -203,7 +203,7 @@ class System(Base):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "company_id": self.company_id,
+            "tenant_id": self.tenant_id,
             "integration_id": self.integration_id,
             "name": self.name,
             "type": self.type,
@@ -219,7 +219,7 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     integration_id: Mapped[int | None] = mapped_column(ForeignKey("integrations.id", ondelete="CASCADE"), nullable=True)
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -235,7 +235,7 @@ class Alert(Base):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "company_id": self.company_id,
+            "tenant_id": self.tenant_id,
             "integration_id": self.integration_id,
             "external_id": self.external_id,
             "title": self.title,
@@ -254,7 +254,7 @@ class Vulnerability(Base):
     __tablename__ = "vulnerabilities"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     integration_id: Mapped[int | None] = mapped_column(ForeignKey("integrations.id", ondelete="CASCADE"), nullable=True)
     cve_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -271,7 +271,7 @@ class Vulnerability(Base):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "company_id": self.company_id,
+            "tenant_id": self.tenant_id,
             "integration_id": self.integration_id,
             "cve_id": self.cve_id,
             "title": self.title,
@@ -291,7 +291,7 @@ class AgentApiKey(Base):
     __tablename__ = "agent_api_keys"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     integration_type: Mapped[str] = mapped_column(String(50), nullable=False)
     api_key_hash: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -303,7 +303,7 @@ class AgentApiKey(Base):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "company_id": self.company_id,
+            "tenant_id": self.tenant_id,
             "name": self.name,
             "integration_type": self.integration_type,
             "is_active": self.is_active,
@@ -316,7 +316,7 @@ class ScanSummary(Base):
     __tablename__ = "scan_summaries_soc"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     agent_api_key_id: Mapped[int | None] = mapped_column(ForeignKey("agent_api_keys.id", ondelete="SET NULL"), nullable=True)
     scan_id: Mapped[str] = mapped_column(String(255), nullable=False)
     scanner_type: Mapped[str] = mapped_column(String(50), nullable=False, default="openvas")
@@ -339,7 +339,7 @@ class ScanSummary(Base):
     def to_dict(self) -> dict:
         data = {
             "id": self.id,
-            "company_id": self.company_id,
+            "tenant_id": self.tenant_id,
             "agent_api_key_id": self.agent_api_key_id,
             "scan_id": self.scan_id,
             "scanner_type": self.scanner_type,
@@ -367,7 +367,7 @@ class ScanSummaryNoc(Base):
     __tablename__ = "scan_summaries_noc"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     agent_api_key_id: Mapped[int | None] = mapped_column(ForeignKey("agent_api_keys.id", ondelete="SET NULL"), nullable=True)
     scan_id: Mapped[str] = mapped_column(String(255), nullable=False)
     scanner_type: Mapped[str] = mapped_column(String(50), nullable=False, default="zabbix")
@@ -390,7 +390,7 @@ class ScanSummaryNoc(Base):
     def to_dict(self) -> dict:
         data = {
             "id": self.id,
-            "company_id": self.company_id,
+            "tenant_id": self.tenant_id,
             "agent_api_key_id": self.agent_api_key_id,
             "scan_id": self.scan_id,
             "scanner_type": self.scanner_type,
@@ -418,7 +418,7 @@ class SnapshotArtifact(Base):
     __tablename__ = "snapshot_artifacts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     integration_id: Mapped[int | None] = mapped_column(ForeignKey("integrations.id", ondelete="SET NULL"), nullable=True)
     provider: Mapped[str] = mapped_column(String(100), nullable=False)
     snapshot_type: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -442,7 +442,7 @@ class SnapshotArtifact(Base):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "company_id": self.company_id,
+            "tenant_id": self.tenant_id,
             "integration_id": self.integration_id,
             "provider": self.provider,
             "snapshot_type": self.snapshot_type,
@@ -469,7 +469,7 @@ class IngestIdempotencyRecord(Base):
     __tablename__ = "ingest_idempotency_records"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(71), nullable=False)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     domain: Mapped[str] = mapped_column(String(10), nullable=False, default="soc")
@@ -482,7 +482,7 @@ class IngestIdempotencyRecord(Base):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "company_id": self.company_id,
+            "tenant_id": self.tenant_id,
             "idempotency_key": self.idempotency_key,
             "request_hash": self.request_hash,
             "domain": self.domain,
@@ -537,7 +537,7 @@ class AgentInstance(Base):
     __tablename__ = "agent_instances"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     agent_type: Mapped[str] = mapped_column(String(50), nullable=False, default="SOPHIA")
     client_access_key_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     client_access_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -550,7 +550,7 @@ class AgentInstance(Base):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "company_id": self.company_id,
+            "tenant_id": self.tenant_id,
             "agent_type": self.agent_type,
             "status": self.status,
             "settings": self.settings,
@@ -563,7 +563,7 @@ class AgentSession(Base):
     __tablename__ = "agent_sessions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     external_thread_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
     title: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -576,7 +576,7 @@ class AgentSession(Base):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "company_id": self.company_id,
+            "tenant_id": self.tenant_id,
             "user_id": self.user_id,
             "external_thread_id": self.external_thread_id,
             "title": self.title,
@@ -614,19 +614,19 @@ class IntegrationCapabilityTemplateAssignment(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     template_id: Mapped[int] = mapped_column(ForeignKey("integration_capability_templates.id", ondelete="CASCADE"), nullable=False)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
     __table_args__ = (
-        UniqueConstraint("template_id", "company_id", name="uq_template_company"),
+        UniqueConstraint("template_id", "tenant_id", name="uq_template_tenant"),
     )
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
             "template_id": self.template_id,
-            "company_id": self.company_id,
+            "tenant_id": self.tenant_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -647,7 +647,7 @@ class ActivationKey(Base):
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     used_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    used_company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
+    used_tenant_id: Mapped[int | None] = mapped_column(ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True)
 
     def to_dict(self) -> dict:
         return {
@@ -661,7 +661,7 @@ class ActivationKey(Base):
             "created_by_user_id": self.created_by_user_id,
             "used_at": self.used_at.isoformat() if self.used_at else None,
             "used_by_user_id": self.used_by_user_id,
-            "used_company_id": self.used_company_id,
+            "used_tenant_id": self.used_tenant_id,
         }
 
 

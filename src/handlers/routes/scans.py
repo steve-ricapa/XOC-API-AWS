@@ -22,7 +22,7 @@ from src.shared.security_keys import verify_access_key
 from src.shared.snapshots import SnapshotArtifactInput, fetch_snapshot_payload, store_snapshot_artifact
 
 
-router = APIRouter(prefix="/api/scans", tags=["scans"])
+router = APIRouter(prefix="/scans", tags=["scans"])
 
 ALLOWED_SCANNER_TYPES = OFFICIAL_INTEGRATION_TYPES
 ALLOWED_SUMMARY_TYPES = ["vulnerability", "security_events", "noc_health", "availability", "network_discovery", "other"]

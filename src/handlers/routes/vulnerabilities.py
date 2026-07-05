@@ -9,7 +9,7 @@ from src.shared.dependencies import get_current_user
 from src.shared.errors import NotFoundError, ValidationError
 
 
-router = APIRouter(prefix="/api/vulnerabilities", tags=["vulnerabilities"])
+router = APIRouter(prefix="/vulnerabilities", tags=["vulnerabilities"])
 
 
 @router.get("")
@@ -19,7 +19,7 @@ def get_vulnerabilities(
     status: str | None = None,
     severity: str | None = None,
 ) -> dict:
-    query = select(Vulnerability).where(Vulnerability.company_id == current_user.company_id)
+    query = select(Vulnerability).where(Vulnerability.tenant_id == current_user.tenant_id)
     if status:
         query = query.where(Vulnerability.status == status)
     if severity:
@@ -34,7 +34,7 @@ def get_vulnerabilities(
 @router.get("/{vuln_id}")
 def get_vulnerability(vuln_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
     vulnerability = session.get(Vulnerability, vuln_id)
-    if not vulnerability or vulnerability.company_id != current_user.company_id:
+    if not vulnerability or vulnerability.tenant_id != current_user.tenant_id:
         raise NotFoundError("Vulnerability not found")
     return vulnerability.to_dict()
 
@@ -42,7 +42,7 @@ def get_vulnerability(vuln_id: int, current_user: User = Depends(get_current_use
 @router.post("/{vuln_id}/patch")
 def patch_vulnerability(vuln_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
     vulnerability = session.get(Vulnerability, vuln_id)
-    if not vulnerability or vulnerability.company_id != current_user.company_id:
+    if not vulnerability or vulnerability.tenant_id != current_user.tenant_id:
         raise NotFoundError("Vulnerability not found")
     if vulnerability.status == "resolved":
         raise ValidationError("Vulnerability is already resolved")

@@ -22,11 +22,11 @@ def _extract_capabilities(value):
     return []
 
 
-def collect_automation_capabilities(session: Session, company_id: int) -> list[str]:
+def collect_automation_capabilities(session: Session, tenant_id: int) -> list[str]:
     capabilities: list[str] = []
 
-    integrations = session.execute(select(Integration).where(Integration.company_id == company_id)).scalars().all()
-    agent_keys = session.execute(select(AgentApiKey).where(AgentApiKey.company_id == company_id, AgentApiKey.is_active == True)).scalars().all()
+    integrations = session.execute(select(Integration).where(Integration.tenant_id == tenant_id)).scalars().all()
+    agent_keys = session.execute(select(AgentApiKey).where(AgentApiKey.tenant_id == tenant_id, AgentApiKey.is_active == True)).scalars().all()
 
     if not integrations and not agent_keys:
         return []
@@ -61,14 +61,14 @@ def collect_automation_capabilities(session: Session, company_id: int) -> list[s
 
     assignments_by_template: dict[int, set[int]] = {}
     for assignment in assignments:
-        assignments_by_template.setdefault(assignment.template_id, set()).add(assignment.company_id)
+        assignments_by_template.setdefault(assignment.template_id, set()).add(assignment.tenant_id)
 
     def apply_template(provider: str):
         template = templates_by_provider.get(provider)
         if not template or template.capabilities is None:
             return
-        assigned_companies = assignments_by_template.get(template.id)
-        if assigned_companies and company_id not in assigned_companies:
+        assigned_tenants = assignments_by_template.get(template.id)
+        if assigned_tenants and tenant_id not in assigned_tenants:
             return
         capabilities.extend(_extract_capabilities(template.capabilities))
 

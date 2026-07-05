@@ -41,7 +41,7 @@ def handler(event: dict, context: LambdaContext) -> dict:
 
     context_payload = {
         "userId": str(payload.get("sub") or payload.get("identity") or ""),
-        "companyId": str(payload.get("company_id") or ""),
+        "tenantId": str(payload.get("tenant_id") or ""),
         "role": str(payload.get("role") or ""),
         "tokenType": str(payload.get("type") or ""),
         "scopes": payload.get("scopes") or [],

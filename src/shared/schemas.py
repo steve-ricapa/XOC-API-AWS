@@ -19,7 +19,7 @@ class HealthResponse(BaseModel):
     database: str
 
 
-class CompanyResponse(BaseModel):
+class TenantResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -32,12 +32,12 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    company_id: int
+    tenant_id: int
     username: str
     email: str
     role: str
     created_at: str | None = None
-    company: CompanyResponse | None = None
+    tenant: TenantResponse | None = None
 
 
 class LoginRequest(BaseModel):
@@ -58,7 +58,7 @@ class RefreshResponse(BaseModel):
 
 
 class OnboardingTenantRequest(BaseModel):
-    company_name: str
+    name: str
     admin_email: str
     admin_password: str
     admin_username: str | None = None
@@ -67,28 +67,28 @@ class OnboardingTenantRequest(BaseModel):
 class OnboardingTenantResponse(BaseModel):
     success: bool
     message: str
-    company: CompanyResponse
+    tenant: TenantResponse
     owner_user: UserResponse
     access_token: str
     refresh_token: str
 
 
-class CompaniesListResponse(BaseModel):
-    companies: list[CompanyResponse]
+class TenantsListResponse(BaseModel):
+    tenants: list[TenantResponse]
 
 
-class UpdateCompanyRequest(BaseModel):
+class UpdateTenantRequest(BaseModel):
     name: str | None = None
 
 
-class UpdateCompanyResponse(BaseModel):
+class UpdateTenantResponse(BaseModel):
     message: str
-    company: CompanyResponse
+    tenant: TenantResponse
 
 
 class RuntimeSettingsResponse(BaseModel):
     id: int
-    company_id: int
+    tenant_id: int
     function_base_url: str
     function_route_sophia: str
     function_route_sophia_history: str
@@ -151,8 +151,8 @@ class UpdateUserResponse(BaseModel):
 
 
 class TicketResponse(BaseModel):
-    id: int
-    company_id: int
+    ticket_id: str
+    tenant_id: int
     created_by_user_id: int | None = None
     subject: str
     description: str | None = None
@@ -233,5 +233,5 @@ class AgentCreateTicketRequest(BaseModel):
 
 class AgentCreateTicketResponse(BaseModel):
     success: bool
-    ticket_id: int
+    ticket_id: str
     ticket: TicketResponse

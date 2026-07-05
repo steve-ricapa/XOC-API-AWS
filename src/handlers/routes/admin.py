@@ -10,12 +10,12 @@ from src.shared.errors import NotFoundError, ValidationError, AppError
 from src.shared.security_keys import generate_access_key, hash_access_key
 
 
-router = APIRouter(prefix="/api/admin", tags=["admin"])
+router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 def _get_instance_or_404(session: Session, user: User, instance_id: str) -> AgentInstance:
     instance = session.get(AgentInstance, instance_id)
-    if not instance or instance.company_id != user.company_id:
+    if not instance or instance.tenant_id != user.tenant_id:
         raise NotFoundError("Agent instance not found")
     return instance
 
@@ -47,7 +47,7 @@ def create_agent_instance(payload: dict, current_user: User = Depends(get_curren
     }
 
     instance = AgentInstance(
-        company_id=current_user.company_id,
+        tenant_id=current_user.tenant_id,
         agent_type=agent_type,
         client_access_key_hash=access_key_hash,
         client_access_key_encrypted=access_key_encrypted,
@@ -63,7 +63,7 @@ def create_agent_instance(payload: dict, current_user: User = Depends(get_curren
 @router.get("/agent-instances")
 def list_agent_instances(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
     require_admin(current_user)
-    instances = session.query(AgentInstance).filter_by(company_id=current_user.company_id).all()
+    instances = session.query(AgentInstance).filter_by(tenant_id=current_user.tenant_id).all()
     log_audit(session, actor_user_id=current_user.id, action="LIST", entity_type="AGENT_INSTANCE", entity_id=None, payload={"count": len(instances)})
     return {"agent_instances": [instance.to_dict() for instance in instances]}
 

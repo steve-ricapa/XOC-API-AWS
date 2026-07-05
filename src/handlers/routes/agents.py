@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
-from src.persistence.models import CompanyRuntimeSettings, User
+from src.persistence.models import TenantRuntimeSettings, User
 from src.shared.auth import create_access_token
 from src.shared.capabilities import collect_automation_capabilities
 from src.shared.context import log_audit
@@ -13,17 +13,17 @@ from src.shared.dependencies import get_current_user
 from src.shared.errors import AppError, UnauthorizedError, ValidationError
 
 
-router = APIRouter(prefix="/api/agents", tags=["agents"])
+router = APIRouter(prefix="/agents", tags=["agents"])
 
 
-RUNTIME_SETTINGS_MISSING_MESSAGE = "Runtime settings not configured for this company"
+RUNTIME_SETTINGS_MISSING_MESSAGE = "Runtime settings not configured for this tenant"
 
 
-def get_company_runtime_settings(session: Session, company_id: int) -> CompanyRuntimeSettings | None:
+def get_company_runtime_settings(session: Session, tenant_id: int) -> TenantRuntimeSettings | None:
     return session.scalar(
-        select(CompanyRuntimeSettings).where(
-            CompanyRuntimeSettings.company_id == company_id,
-            CompanyRuntimeSettings.is_active == True,
+        select(TenantRuntimeSettings).where(
+            TenantRuntimeSettings.tenant_id == tenant_id,
+            TenantRuntimeSettings.is_active == True,
         )
     )
 
@@ -45,38 +45,38 @@ def authenticate_agent_from_user(
 ) -> dict:
     agent_type = (payload or {}).get("agentType", "SOPHIA")
 
-    runtime_settings = get_company_runtime_settings(session, current_user.company_id)
+    runtime_settings = get_company_runtime_settings(session, current_user.tenant_id)
     if not runtime_settings:
         raise UnauthorizedError(RUNTIME_SETTINGS_MISSING_MESSAGE)
 
     additional_claims = {
         "scopes": ["agent:invoke"],
-        "company_id": current_user.company_id,
+        "tenant_id": current_user.tenant_id,
         "agent_type": agent_type,
     }
 
     service_token = create_access_token(
-        identity=f"agent-runtime-{current_user.company_id}-{str(agent_type).upper()}",
+        identity=f"agent-runtime-{current_user.tenant_id}-{str(agent_type).upper()}",
         additional_claims=additional_claims,
         expires_delta=timedelta(hours=1),
     )
 
-    capabilities = collect_automation_capabilities(session, current_user.company_id)
+    capabilities = collect_automation_capabilities(session, current_user.tenant_id)
     user_name = current_user.username or current_user.email
-    user_company = getattr(current_user, "company", None)
-    if not user_company:
-        from src.persistence.models import Company as CompanyModel
-        user_company = session.get(CompanyModel, current_user.company_id)
-    plan_status = (user_company.plan_status or "").strip().upper() if user_company else ""
+    user_tenant = getattr(current_user, "tenant", None)
+    if not user_tenant:
+        from src.persistence.models import Tenant as TenantModel
+        user_tenant = session.get(TenantModel, current_user.tenant_id)
+    plan_status = (user_tenant.plan_status or "").strip().upper() if user_tenant else ""
 
-    log_audit(session, actor_user_id=current_user.id, action="AUTH", entity_type="AGENT_TOKEN", entity_id=None, payload={"company_id": current_user.company_id, "agent_type": agent_type, "source": "user_exchange"})
+    log_audit(session, actor_user_id=current_user.id, action="AUTH", entity_type="AGENT_TOKEN", entity_id=None, payload={"tenant_id": current_user.tenant_id, "agent_type": agent_type, "source": "user_exchange"})
     session.commit()
 
     return {
         "access_token": service_token,
         "token_type": "Bearer",
         "expires_in": 3600,
-        "company_id": current_user.company_id,
+        "tenant_id": current_user.tenant_id,
         "user_name": user_name,
         "role": current_user.role,
         "plan_status": plan_status,

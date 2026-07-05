@@ -10,19 +10,19 @@ from src.shared.errors import ConflictError, ForbiddenError, NotFoundError, Vali
 from src.shared.schemas import CreateUserRequest, CreateUserResponse, UpdateUserRequest, UpdateUserResponse, UserResponse, UsersListResponse
 
 
-router = APIRouter(prefix="/api/users", tags=["users"])
+router = APIRouter(prefix="/users", tags=["users"])
 
 
 def _get_tenant_user_or_404(session: Session, current_user: User, user_id: int) -> User:
     user = session.get(User, user_id)
-    if not user or user.company_id != current_user.company_id:
+    if not user or user.tenant_id != current_user.tenant_id:
         raise NotFoundError("User not found")
     return user
 
 
 @router.get("", response_model=UsersListResponse)
 def get_users(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> UsersListResponse:
-    users = session.scalars(select(User).where(User.company_id == current_user.company_id)).all()
+    users = session.scalars(select(User).where(User.tenant_id == current_user.tenant_id)).all()
     return UsersListResponse(users=[UserResponse(**user.to_dict()) for user in users])
 
 
@@ -46,7 +46,7 @@ def create_user(payload: CreateUserRequest, current_user: User = Depends(get_cur
     if existing_email:
         raise ConflictError("Email already exists")
 
-    user = User(company_id=current_user.company_id, username=payload.username, email=payload.email, role=payload.role)
+    user = User(tenant_id=current_user.tenant_id, username=payload.username, email=payload.email, role=payload.role)
     user.set_password(payload.password)
     session.add(user)
     session.flush()
