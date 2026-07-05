@@ -63,10 +63,6 @@ chatAgentsApi:
         authorizer: jwtRequestAuthorizer
     - httpApi:
         method: POST
-        path: /chat/
-        authorizer: jwtRequestAuthorizer
-    - httpApi:
-        method: POST
         path: /agents/auth/token
         authorizer: jwtRequestAuthorizer
     - httpApi:
