@@ -43,7 +43,7 @@ chatAgentsApi:
   description: Chat & Agents domain API
   memorySize: 512
   timeout: 20
-  vpc: ${self:custom.stageConfig.apiVpc}
+  vpc: ${self:custom.stageConfig.apiVpc, ''}
   events:
     - httpApi:
         method: GET
@@ -88,7 +88,7 @@ scansApi:
   description: Scans domain API
   memorySize: 512
   timeout: 20
-  vpc: ${self:custom.stageConfig.apiVpc}
+  vpc: ${self:custom.stageConfig.apiVpc, ''}
   events:
     - httpApi:
         method: POST
@@ -168,7 +168,7 @@ integrationsApi:
   description: Integrations domain API
   memorySize: 512
   timeout: 20
-  vpc: ${self:custom.stageConfig.apiVpc}
+  vpc: ${self:custom.stageConfig.apiVpc, ''}
   events:
     - httpApi:
         method: GET
@@ -229,7 +229,7 @@ adminApi:
   description: Admin & Superadmin domain API
   memorySize: 512
   timeout: 20
-  vpc: ${self:custom.stageConfig.apiVpc}
+  vpc: ${self:custom.stageConfig.apiVpc, ''}
   events:
     - httpApi:
         method: POST
@@ -458,7 +458,7 @@ tenantApi:
   description: Tenant domain API (tenant, users, audit)
   memorySize: 512
   timeout: 20
-  vpc: ${self:custom.stageConfig.apiVpc}
+  vpc: ${self:custom.stageConfig.apiVpc, ''}
   events:
     - httpApi:
         method: GET
@@ -535,7 +535,7 @@ securityOpsApi:
   description: Security operations domain API (alerts, analytics, systems, vulnerabilities)
   memorySize: 512
   timeout: 20
-  vpc: ${self:custom.stageConfig.apiVpc}
+  vpc: ${self:custom.stageConfig.apiVpc, ''}
   events:
     - httpApi:
         method: GET
