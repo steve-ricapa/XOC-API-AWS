@@ -20,7 +20,7 @@ This repo now includes 7 independent Serverless templates at the repo root:
 2. `xoc-api-tickets`
 - tickets DynamoDB
 - EventBridge bus/rule
-- Step Functions workflow
+- Step Functions workflow (placeholder V1)
 - `/tickets/**`
 
 3. `xoc-api-auth`
@@ -75,12 +75,21 @@ NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverl
 NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverless.ops.js
 ```
 
-## Important Migration Note
+## Production Notes
 
-These stacks create and attach to a new shared HTTP API managed by `xoc-api-shared`.
-They do not mutate the old `xoc-api-core` stack.
+- `xoc-api-tickets` enables DynamoDB PITR only in `prod`.
+- The ticket Step Functions state machine is intentionally a placeholder in V1. It acknowledges ticket events but does not yet implement full orchestration, retries, or timeout handling.
+- The production VPC currently uses a single NAT Gateway for cost control. That is acceptable for now, but it is not full multi-AZ egress HA.
 
-That avoids route ownership conflicts while you migrate.
+## Network Expectations By Stage
+
+- `dev`, `staging`, and `prod` are expected to keep the same private-network topology.
+- `xoc-api-auth`, `xoc-api-chat`, `xoc-api-ops`, `xoc-api-tenant`, and `xoc-api-admin` attach to VPC in every stage.
+- `xoc-api-shared` and `xoc-api-tickets` stay outside VPC in every stage.
+- Stage network stacks expected by the current stage files:
+  - `xoc-infra-network-dev`
+  - `xoc-infra-network-staging`
+  - `xoc-infra-network-prod`
 
 ## Fast Iteration
 
@@ -91,3 +100,16 @@ sls deploy function -f authApi --stage dev --config serverless.auth.js
 ```
 
 Use full `deploy` whenever you change routes, permissions, resources, environment, or integrations.
+
+## IAM Posture By Stage
+
+- `dev`: intentionally relaxed IAM to reduce deployment and runtime friction while redesigning the platform.
+- `staging`: follows the stricter resource-scoped shape unless explicitly loosened later.
+- `prod`: resource-scoped IAM by domain.
+
+Examples:
+
+- `xoc-api-auth`, `xoc-api-chat`, `xoc-api-tenant`, `xoc-api-admin`, `xoc-api-ops` keep database-related access.
+- `xoc-api-ops` keeps S3 snapshots access.
+- `xoc-api-tickets` keeps DynamoDB + EventBridge access.
+- VPC attachment remains `prod`-only for the services that need private RDS access.

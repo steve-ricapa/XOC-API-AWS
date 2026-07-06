@@ -13,7 +13,7 @@ def get_health() -> HealthResponse:
     settings = get_settings()
     return HealthResponse(
         status="healthy",
-        service="xoc-api-core",
+        service="xoc-api",
         stage=settings.app_stage,
         database="available" if is_database_available() else "unavailable",
     )

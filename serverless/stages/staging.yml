@@ -5,6 +5,7 @@ corsAllowedOrigins:
   - https://staging.example.com
 corsAllowedOriginsCsv: https://staging.example.com
 jwtSecretKey: xoc-demo-staging-jwt-secret-change-me
+jwtSecretKeySsmPath: ""
 agentsFunctionBaseUrl: ""
 agentsFunctionRouteSophia: /api/agents/SophiaDurableAgent/run
 agentsFunctionRouteSophiaHistory: /api/agents/SophiaDurableAgent/history
@@ -13,4 +14,10 @@ agentsFunctionRouteVictor: /api/agents/VictorDurableAgent/run
 databaseSecretArn: arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:xoc/api/staging/database
 snapshotsBucketName: xoc-staging-snapshots-placeholder
 snapshotsBucketArn: arn:aws:s3:::xoc-staging-snapshots-placeholder
-apiVpc: ~
+ticketsPointInTimeRecoveryEnabled: false
+apiVpc:
+  securityGroupIds:
+    - ${cf:xoc-infra-network-staging.LambdaSecurityGroupId}
+  subnetIds:
+    - ${cf:xoc-infra-network-staging.LambdaPrivateSubnetAId}
+    - ${cf:xoc-infra-network-staging.LambdaPrivateSubnetBId}

@@ -28,6 +28,28 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+          - Id: TransitionCurrentSnapshotsToIntelligentTiering
+            Status: Enabled
+            Filter:
+              Prefix: ''
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: INTELLIGENT_TIERING
+          - Id: ExpireNoncurrentSnapshotVersions
+            Status: Enabled
+            Filter:
+              Prefix: ''
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 90
+            NoncurrentVersionTransitions:
+              - NoncurrentDays: 30
+                StorageClass: STANDARD_IA
 
 Outputs:
   SnapshotsBucketName:

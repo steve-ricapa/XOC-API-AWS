@@ -22,6 +22,7 @@ function commonEnvironment(stage) {
     POWERTOOLS_LOG_LEVEL: stageRef(stage, 'logLevel'),
     POWERTOOLS_METRICS_NAMESPACE: 'XOC/API',
     JWT_SECRET_KEY: stageRef(stage, 'jwtSecretKey'),
+    JWT_SECRET_KEY_SSM_PATH: stageRef(stage, 'jwtSecretKeySsmPath'),
     DATABASE_SECRET_ARN: stageRef(stage, 'databaseSecretArn'),
     SNAPSHOTS_BUCKET_NAME: stageRef(stage, 'snapshotsBucketName'),
     CORS_ALLOWED_ORIGINS: stageRef(stage, 'corsAllowedOriginsCsv'),
@@ -55,42 +56,63 @@ function commonPackage() {
   };
 }
 
+function isRelaxedStage(stage) {
+  return stage === 'dev';
+}
+
 function iamStatements(stage, capabilities = {}) {
   const statements = [];
+  const relaxed = isRelaxedStage(stage);
+
+  statements.push({
+    Effect: 'Allow',
+    Action: ['ssm:GetParameter'],
+    Resource: '*',
+  });
+
   if (capabilities.database) {
     statements.push({
       Effect: 'Allow',
       Action: ['secretsmanager:GetSecretValue'],
-      Resource: [stageRef(stage, 'databaseSecretArn')],
+      Resource: relaxed ? '*' : [stageRef(stage, 'databaseSecretArn')],
     });
   }
   if (capabilities.snapshots) {
     statements.push({
       Effect: 'Allow',
       Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
-      Resource: [`${stageRef(stage, 'snapshotsBucketArn')}/*`],
+      Resource: relaxed ? '*' : [`${stageRef(stage, 'snapshotsBucketArn')}/*`],
     });
     statements.push({
       Effect: 'Allow',
       Action: ['s3:ListBucket'],
-      Resource: [stageRef(stage, 'snapshotsBucketArn')],
+      Resource: relaxed ? '*' : [stageRef(stage, 'snapshotsBucketArn')],
     });
   }
   if (capabilities.events) {
     statements.push({
       Effect: 'Allow',
       Action: ['events:PutEvents'],
-      Resource: [`arn:aws:events:${'${aws:region}'}:${'${aws:accountId}'}:event-bus/xoc-api-tickets-${stage}-bus`],
+      Resource: relaxed ? '*' : [`arn:aws:events:${'${aws:region}'}:${'${aws:accountId}'}:event-bus/xoc-api-tickets-${stage}-bus`],
     });
   }
   if (capabilities.dynamo) {
     statements.push({
       Effect: 'Allow',
       Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:Query', 'dynamodb:Scan'],
-      Resource: [
-        `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-tickets-${stage}-tickets`,
-        `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-tickets-${stage}-tickets/index/*`,
-      ],
+      Resource: relaxed
+        ? '*'
+        : [
+            `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-tickets-${stage}-tickets`,
+            `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-tickets-${stage}-tickets/index/*`,
+          ],
+    });
+  }
+  if (capabilities.stepFunctions) {
+    statements.push({
+      Effect: 'Allow',
+      Action: ['states:StartExecution', 'states:DescribeExecution'],
+      Resource: relaxed ? '*' : [`arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:stateMachine:xoc-api-tickets-${stage}-ticket-workflow`],
     });
   }
   if (capabilities.vpc) {
@@ -143,7 +165,7 @@ function lambdaConfig(stage, config) {
   if (config.events) {
     lambda.events = config.events;
   }
-  if (config.needsVpc && stage === 'prod') {
+  if (config.needsVpc) {
     lambda.vpc = stageRef(stage, 'apiVpc');
   }
   return lambda;

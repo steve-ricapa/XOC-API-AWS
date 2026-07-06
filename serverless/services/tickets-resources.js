@@ -1,4 +1,6 @@
 module.exports = function ticketsResources(stage) {
+  const pitrEnabled = stage === 'prod';
+
   return {
     Resources: {
       ApplicationEventBus: {
@@ -52,7 +54,7 @@ module.exports = function ticketsResources(stage) {
               Projection: { ProjectionType: 'ALL' },
             },
           ],
-          PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: false },
+          PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: pitrEnabled },
           SSESpecification: { SSEEnabled: true },
         },
       },
@@ -61,7 +63,7 @@ module.exports = function ticketsResources(stage) {
         Properties: {
           StateMachineName: `xoc-api-tickets-${stage}-ticket-workflow`,
           StateMachineType: 'EXPRESS',
-          DefinitionString: '{"Comment":"Ticket workflow - status transitions and decision timeouts","StartAt":"HandleEvent","States":{"HandleEvent":{"Type":"Pass","End":true}}}',
+          DefinitionString: '{"Comment":"Placeholder workflow for ticket events. V1 only acknowledges ticket.created, ticket.updated, and ticket.status_changed until real orchestration is implemented.","StartAt":"HandleEvent","States":{"HandleEvent":{"Type":"Pass","End":true}}}',
           RoleArn: { 'Fn::GetAtt': ['TicketWorkflowRole', 'Arn'] },
         },
       },

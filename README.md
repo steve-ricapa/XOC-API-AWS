@@ -1,476 +1,330 @@
 # XOC-API-AWS
 
-Backend core de XOC migrado a AWS con Serverless Framework, FastAPI y Mangum.
+Backend de XOC sobre AWS Lambda + API Gateway HTTP API + FastAPI.
 
-## Estado actual
+## Estado oficial
 
-Migrado y compilando:
+La arquitectura objetivo y oficial es **multi-stack**, con rutas HTTP limpias **sin prefijo `/api`**.
 
-- auth
-- onboarding tenant
-- companies
-- users
-- tickets
-- integrations
-- systems
-- alerts
-- vulnerabilities
-- analytics
-- scans
-- admin
-- superadmin
-- agents
-- audit
-- chat
+Contrato oficial:
 
-Infra prod preparada:
+- `/health`
+- `/auth/*`
+- `/onboarding/tenant`
+- `/tenant/*`
+- `/users/*`
+- `/tickets/*`
+- `/chat/*`
+- `/agents/*`
+- `/integrations/*`
+- `/scans/*`
+- `/alerts/*`
+- `/analytics/*`
+- `/systems/*`
+- `/vulnerabilities/*`
+- `/admin/*`
+- `/superadmin/*`
 
-- `infra/network-prod.yml`
-- `infra/data-prod.yml`
-- `infra/storage-prod.yml`
+No se mantiene compatibilidad con:
 
-## Arquitectura objetivo prod
+- `/api/*`
+- `company` / `company_id`
+- `apiHttp`
+- tickets SQL legacy
 
-- API Gateway HTTP API
-- Lambda `apiHttp` con FastAPI + Mangum
-- Lambda `jwtAuthorizer` separada
+## Arquitectura actual
+
+Stacks oficiales:
+
+1. `xoc-api-shared`
+2. `xoc-api-tickets`
+3. `xoc-api-auth`
+4. `xoc-api-chat`
+5. `xoc-api-ops`
+6. `xoc-api-tenant`
+7. `xoc-api-admin`
+
+Ownership:
+
+- `xoc-api-shared`: HTTP API + authorizer
+- `xoc-api-tickets`: DynamoDB tickets + EventBridge + Step Functions + `/tickets/*`
+- `xoc-api-auth`: `/health`, `/auth/*`, `/onboarding/tenant`
+- `xoc-api-chat`: `/chat/*`, `/agents/*`
+- `xoc-api-ops`: scans, integrations, alerts, analytics, systems, vulnerabilities
+- `xoc-api-tenant`: `/tenant/*`, `/users/*`, `/audit`
+- `xoc-api-admin`: `/admin/*`, `/superadmin/*`
+
+## Infraestructura prod
+
 - RDS PostgreSQL privada
-- S3 para snapshots pesados
-- VPC privada para `apiHttp`
-- NAT Gateway para salida HTTP hacia Azure/SOPHIA
-- EventBridge bus base preparado, pero no usado todavía para estos módulos
+- S3 para snapshots
+- VPC privada para Lambdas que usan DB/S3 privado
+- DynamoDB para tickets
+- EventBridge + Step Functions para workflow de tickets
+- `jwtAuthorizer` fuera de VPC
 
-## Decisiones importantes
+Notas operativas de prod:
 
-- `jwtAuthorizer` queda fuera de VPC
-- `apiHttp` entra a VPC solo en `prod`
-- RDS no es pública
-- snapshots pesados no van al core relacional; van a S3
-- chat sigue siendo HTTP normal hacia Azure Function de SOPHIA
-- no tocar Voice, Speech, Live Voice, WebSocket, Foundry realtime, MAD ni ETL
+- La tabla de tickets activa PITR solo en `prod` para recuperación point-in-time.
+- El workflow de Step Functions de tickets sigue siendo un placeholder V1: recibe eventos y no ejecuta todavía orquestación real.
+- La red prod usa un solo NAT Gateway para dos AZ. Reduce costo, pero introduce dependencia de una sola AZ para salida a internet desde subnets privadas.
+- El bucket de snapshots aplica lifecycle para controlar costos de objetos pesados y versiones antiguas.
 
-## Estructura
+## Topologia de stages
 
-```text
-infra/
-  network-prod.yml
-  data-prod.yml
-  storage-prod.yml
-serverless/
-  functions.yml
-  resources.yml
-  stages/
-src/
-  handlers/
-    api.py
-    routes/
-    authorizers/
-  persistence/
-  shared/
-serverless.yml
-requirements.txt
-package.json
-```
+`dev`, `staging` y `prod` deben mantener la misma topologia base:
 
-## Endpoints migrados
+- VPC privada para servicios que usan RDS privado
+- NAT para salida a internet desde subnets privadas
+- subnets privadas Lambda en 2 AZ
+- `jwtAuthorizer` fuera de VPC
+- `tickets` fuera de VPC
+
+Stacks de red esperados:
+
+- `xoc-infra-network-dev`
+- `xoc-infra-network-staging`
+- `xoc-infra-network-prod`
+
+## Endpoints oficiales
 
 ### Base
 
 - `GET /health`
 
-### Auth y onboarding
+### Auth
 
-- `POST /api/auth/register` (410 legacy disabled)
-- `POST /api/auth/login`
-- `POST /api/auth/refresh`
-- `POST /api/onboarding/tenant`
+- `POST /auth/register` (410)
+- `POST /auth/login`
+- `POST /auth/refresh`
+- `POST /onboarding/tenant`
 
-### Companies
+### Tenant
 
-- `GET /api/companies`
-- `GET /api/companies/{company_id}`
-- `PUT /api/companies/{company_id}`
-- `GET /api/companies/{company_id}/runtime-settings`
-- `PUT /api/companies/{company_id}/runtime-settings`
+- `GET /tenant`
+- `PUT /tenant`
+- `GET /tenant/runtime-settings`
+- `PUT /tenant/runtime-settings`
+- `GET /tenant/agent-keys`
+- `POST /tenant/agent-keys`
+- `GET /tenant/agent-keys/{key_id}`
+- `DELETE /tenant/agent-keys/{key_id}`
+- `POST /tenant/agent-keys/{key_id}/regenerate`
+- `POST /tenant/agent-keys/{key_id}/toggle`
 
 ### Users
 
-- `GET /api/users`
-- `GET /api/users/{user_id}`
-- `POST /api/users`
-- `PUT /api/users/{user_id}`
-- `DELETE /api/users/{user_id}`
+- `GET /users`
+- `GET /users/{user_id}`
+- `POST /users`
+- `PUT /users/{user_id}`
+- `DELETE /users/{user_id}`
 
 ### Tickets
 
-- `GET /api/tickets`
-- `POST /api/tickets`
-- `GET /api/tickets/{ticket_id}`
-- `PUT /api/tickets/{ticket_id}`
-- `DELETE /api/tickets/{ticket_id}`
-- `PATCH /api/tickets/{ticket_id}/approve`
-- `PATCH /api/tickets/{ticket_id}/reject`
-- `PATCH /api/tickets/{ticket_id}/decision/select`
-- `POST /api/tickets/agent-create`
+- `GET /tickets`
+- `POST /tickets`
+- `GET /tickets/{ticket_id}`
+- `PUT /tickets/{ticket_id}`
+- `DELETE /tickets/{ticket_id}`
+- `PATCH /tickets/{ticket_id}/approve`
+- `PATCH /tickets/{ticket_id}/reject`
+- `PATCH /tickets/{ticket_id}/decision/select`
 
 ### Integrations
 
-- `GET /api/integrations`
-- `GET /api/integrations/{integration_id}`
-- `POST /api/integrations`
-- `PUT /api/integrations/{integration_id}`
-- `DELETE /api/integrations/{integration_id}`
-- `GET /api/integrations/{integration_id}/credentials`
-- `GET /api/integrations/zabbix/summary`
-- `GET /api/integrations/zabbix/detailed`
-- `GET /api/integrations/wazuh/summary`
-- `GET /api/integrations/nessus/summary`
-- `GET /api/integrations/uptime_kuma/summary`
-- `GET /api/integrations/dashboard/summary`
+- `GET /integrations`
+- `POST /integrations`
+- `GET /integrations/dashboard/summary`
+- `GET /integrations/zabbix/summary`
+- `GET /integrations/zabbix/detailed`
+- `GET /integrations/wazuh/summary`
+- `GET /integrations/nessus/summary`
+- `GET /integrations/uptime_kuma/summary`
+- `GET /integrations/{integration_id}`
+- `PUT /integrations/{integration_id}`
+- `DELETE /integrations/{integration_id}`
+- `GET /integrations/{integration_id}/credentials`
 
 ### Scans
 
-- `POST /api/scans/ingest`
-- `GET /api/scans/snapshots`
-- `GET /api/scans/snapshots/{artifact_id}`
-- `GET /api/scans/snapshots/{artifact_id}/payload`
-- `GET /api/scans`
-- `GET /api/scans/latest`
-- `GET /api/scans/summary`
-- `GET /api/scans/{scan_summary_id}`
-- `GET /api/scans/{scan_summary_id}/findings`
-- `GET /api/scans/{scanner_type}/analytics`
-- `GET /api/scans/agent/summaries`
-- `GET /api/scans/agent/summaries/{scan_summary_id}`
-- `GET /api/scans/agent/summaries/{scan_summary_id}/findings`
-- `GET /api/scans/agent/findings`
-- `GET /api/scans/agent/snapshots`
-- `GET /api/scans/agent/snapshots/{artifact_id}`
-- `GET /api/scans/agent/snapshots/{artifact_id}/payload`
+- `POST /scans/ingest`
+- `GET /scans`
+- `GET /scans/latest`
+- `GET /scans/summary`
+- `GET /scans/{scan_summary_id}`
+- `GET /scans/{scan_summary_id}/findings`
+- `GET /scans/{scanner_type}/analytics`
+- `GET /scans/snapshots`
+- `GET /scans/snapshots/{artifact_id}`
+- `GET /scans/snapshots/{artifact_id}/payload`
+- `GET /scans/agent/snapshots`
+- `GET /scans/agent/snapshots/{artifact_id}`
+- `GET /scans/agent/snapshots/{artifact_id}/payload`
+- `GET /scans/agent/summaries`
+- `GET /scans/agent/summaries/{scan_summary_id}`
+- `GET /scans/agent/summaries/{scan_summary_id}/findings`
+- `GET /scans/agent/findings`
 
-### Systems, alerts, vulnerabilities, analytics
+### Security Ops
 
-- `GET /api/systems/status`
-- `GET /api/systems`
-- `GET /api/systems/{system_id}`
-- `GET /api/alerts/active`
-- `POST /api/alerts/{alert_id}/resolve`
-- `GET /api/vulnerabilities`
-- `GET /api/vulnerabilities/{vuln_id}`
-- `POST /api/vulnerabilities/{vuln_id}/patch`
-- `GET /api/analytics/incidents`
-- `GET /api/analytics/response-time`
-- `GET /api/analytics/vulnerability-distribution`
-- `GET /api/analytics/summary`
+- `GET /systems/status`
+- `GET /systems`
+- `GET /systems/{system_id}`
+- `GET /alerts/active`
+- `POST /alerts/{alert_id}/resolve`
+- `GET /vulnerabilities`
+- `GET /vulnerabilities/{vuln_id}`
+- `POST /vulnerabilities/{vuln_id}/patch`
+- `GET /analytics/incidents`
+- `GET /analytics/response-time`
+- `GET /analytics/vulnerability-distribution`
+- `GET /analytics/summary`
 
 ### Admin
 
-- `POST /api/admin/agent-instances`
-- `GET /api/admin/agent-instances`
-- `GET /api/admin/agent-instances/{instance_id}`
-- `PATCH /api/admin/agent-instances/{instance_id}`
-- `PATCH /api/admin/agent-instances/{instance_id}/status`
-- `DELETE /api/admin/agent-instances/{instance_id}`
-- endpoints legacy de keys/activation en 410
+- `POST /admin/agent-instances`
+- `GET /admin/agent-instances`
+- `GET /admin/agent-instances/{instance_id}`
+- `PATCH /admin/agent-instances/{instance_id}`
+- `PATCH /admin/agent-instances/{instance_id}/status`
+- `DELETE /admin/agent-instances/{instance_id}`
 
 ### Superadmin
 
-- companies
-- users
-- integrations
-- agent-instances
-- tickets
-- chat administración
-- audit-logs
-- capability-templates
-- endpoints legacy de keys/activation en 410
+- `GET /superadmin/tenants`
+- `POST /superadmin/tenants`
+- `GET /superadmin/tenants/{tenant_id}`
+- `PATCH /superadmin/tenants/{tenant_id}`
+- `GET /superadmin/users`
+- `POST /superadmin/users`
+- `GET /superadmin/integrations`
+- `GET /superadmin/tickets`
+- `GET /superadmin/chat/sessions`
+- `GET /superadmin/audit-logs`
+- `GET /superadmin/capability-templates`
 
 ### Agents
 
-- `POST /api/agents/auth/token` (410 legacy disabled)
-- `POST /api/agents/auth/token-from-user`
-- `GET /api/agents/instance/{instance_id}` (410 deprecated)
+- `POST /agents/auth/token` (410)
+- `POST /agents/auth/token-from-user`
+- `GET /agents/instance/{instance_id}` (410)
 
 ### Audit
 
-- `POST /api/audit`
+- `POST /audit`
 
 ### Chat
 
-- `GET /api/chat/sessions`
-- `GET /api/chat/history`
-- `DELETE /api/chat/sessions/{session_id}`
-- `POST /api/chat`
+- `GET /chat/sessions`
+- `GET /chat/history`
+- `DELETE /chat/sessions/{session_id}`
+- `POST /chat`
 
-## Requisitos para la MV de despliegue
+## Secrets y configuración
 
-- AWS CLI configurado con credenciales válidas
-- Node.js y npm
-- Python 3.12
-- `serverless` disponible
-- acceso a la cuenta AWS destino
+`prod` no debe llevar secretos en el repo.
 
-## Dependencias locales
+Variables de stage:
 
-```bash
-npm install
-pip install -r requirements.txt
-```
+- `jwtSecretKey`: usar solo en `dev`/`staging` demo
+- `jwtSecretKeySsmPath`: usar en `prod`
 
-## Variables y secretos esperados
+Variables de entorno relevantes:
 
-### SSM
-
-- no requerido para el JWT en el flujo demo/AWS Academy
-
-### Secrets Manager
-
-- secret de base de datos prod (lo crea `infra/data-prod.yml`) — contiene `database_url` que el código lee automáticamente
-
-### Env inyectadas por `serverless.yml`
-
-- `APP_STAGE`
-- `APP_REGION`
 - `JWT_SECRET_KEY`
+- `JWT_SECRET_KEY_SSM_PATH`
 - `DATABASE_SECRET_ARN`
 - `SNAPSHOTS_BUCKET_NAME`
-- `CORS_ALLOWED_ORIGINS`
-- `AGENTS_FUNCTION_BASE_URL`
-- `AGENTS_FUNCTION_ROUTE_SOPHIA`
-- `AGENTS_FUNCTION_ROUTE_SOPHIA_HISTORY`
-- `AGENTS_FUNCTION_ROUTE_SOPHIA_DELETE`
-- `AGENTS_FUNCTION_ROUTE_VICTOR`
 - `EVENT_BUS_NAME`
+- `TICKETS_TABLE_NAME`
 
-## Orden de despliegue prod
+## Deploy multi-stack
 
-No desplegar backend antes de tener los tres stacks de infra.
+Secuencia completa por stage:
 
-### 1. Confirmar JWT secret demo
+1. red
+2. data
+3. storage
+4. `xoc-api-shared`
+5. `xoc-api-tickets`
+6. `xoc-api-auth`
+7. `xoc-api-chat`
+8. `xoc-api-tenant`
+9. `xoc-api-admin`
+10. `xoc-api-ops`
 
-En AWS Academy el usuario suele tener `ssm:PutParameter` bloqueado. Para esta demo el JWT secret viaja directo en `serverless/stages/prod.yml` como `jwtSecretKey`.
+### Deploy `dev`
 
-### 2. Desplegar red
-
-```bash
-aws cloudformation deploy \
-  --stack-name xoc-infra-network-prod \
-  --template-file infra/network-prod.yml
-```
-
-### 3. Obtener outputs de red
-
-```bash
-aws cloudformation describe-stacks \
-  --stack-name xoc-infra-network-prod \
-  --query "Stacks[0].Outputs[*].[OutputKey,OutputValue]" \
-  --output table
-```
-
-Necesitarás estos outputs para el stack de data:
-
-- `DbPrivateSubnetAId`
-- `DbPrivateSubnetBId`
-- `RdsSecurityGroupId`
-
-### 4. Desplegar data
+Infra base:
 
 ```bash
-aws cloudformation deploy \
-  --stack-name xoc-infra-data-prod \
-  --template-file infra/data-prod.yml \
-  --parameter-overrides \
-    DbSubnetAId=REEMPLAZAR \
-    DbSubnetBId=REEMPLAZAR \
-    RdsSecurityGroupId=REEMPLAZAR \
-    DatabasePassword=REEMPLAZAR_CON_PASSWORD_SEGURA
+aws cloudformation deploy --stack-name xoc-infra-network-dev --template-file infra/network-dev.yml
+aws cloudformation deploy --stack-name xoc-infra-data-dev --template-file infra/data-prod.yml
+aws cloudformation deploy --stack-name xoc-infra-storage-dev --template-file infra/storage-prod.yml
 ```
 
-### 5. Desplegar storage
+Servicios:
 
 ```bash
-aws cloudformation deploy \
-  --stack-name xoc-infra-storage-prod \
-  --template-file infra/storage-prod.yml
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverless.shared.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverless.tickets.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverless.auth.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverless.chat.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverless.tenant.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverless.admin.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverless.ops.js
 ```
 
-### 6. Validar outputs de data y storage
+### Deploy `staging`
+
+Infra base:
 
 ```bash
-aws cloudformation describe-stacks \
-  --stack-name xoc-infra-data-prod \
-  --query "Stacks[0].Outputs[*].[OutputKey,OutputValue]" \
-  --output table
-
-aws cloudformation describe-stacks \
-  --stack-name xoc-infra-storage-prod \
-  --query "Stacks[0].Outputs[*].[OutputKey,OutputValue]" \
-  --output table
+aws cloudformation deploy --stack-name xoc-infra-network-staging --template-file infra/network-staging.yml
+aws cloudformation deploy --stack-name xoc-infra-data-staging --template-file infra/data-prod.yml
+aws cloudformation deploy --stack-name xoc-infra-storage-staging --template-file infra/storage-prod.yml
 ```
 
-### 7. Desplegar backend
+Servicios:
 
 ```bash
-serverless deploy --stage prod
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage staging --config serverless.shared.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage staging --config serverless.tickets.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage staging --config serverless.auth.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage staging --config serverless.chat.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage staging --config serverless.tenant.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage staging --config serverless.admin.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage staging --config serverless.ops.js
 ```
 
-### 8. Bootstrap inicial del esquema
+### Deploy `prod`
 
-Si la RDS está vacía, crear tablas desde la MV:
+Infra base:
 
 ```bash
-python scripts/bootstrap_schema.py
+aws cloudformation deploy --stack-name xoc-infra-network-prod --template-file infra/network-prod.yml
+aws cloudformation deploy --stack-name xoc-infra-data-prod --template-file infra/data-prod.yml
+aws cloudformation deploy --stack-name xoc-infra-storage-prod --template-file infra/storage-prod.yml
 ```
 
-## Notas sobre Serverless Framework v4
-
-`serverless` v4 puede pedir login o licencia antes de `print`, `package` o `deploy`.
-
-Si ves ese error en la MV, resuélvelo antes de continuar:
-
-- `serverless login`
-- o configurar la licencia/flujo que use tu equipo
-
-## Validaciones después del deploy
-
-### Infra
-
-1. La RDS no debe quedar pública
-2. `apiHttp` debe usar subnets privadas Lambda
-3. `jwtAuthorizer` debe seguir fuera de VPC
-4. NAT debe permitir salida HTTP hacia Azure/SOPHIA
-5. bucket S3 de snapshots debe quedar privado
-
-### Smoke tests backend
-
-1. `GET /health`
-2. login
-3. refresh token
-4. `POST /api/agents/auth/token-from-user`
-5. `POST /api/audit`
-6. `POST /api/chat`
-7. lectura/escritura real en DB
-8. llamada HTTP real a Azure/SOPHIA desde chat
-
-## Desarrollo local
+Servicios:
 
 ```bash
-uvicorn src.handlers.api:app --reload --host 0.0.0.0 --port 8000
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage prod --config serverless.shared.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage prod --config serverless.tickets.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage prod --config serverless.auth.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage prod --config serverless.chat.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage prod --config serverless.tenant.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage prod --config serverless.admin.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage prod --config serverless.ops.js
 ```
 
-Health local:
+### Notas de despliegue
 
-```bash
-GET http://localhost:8000/health
-```
+- `shared` va primero porque crea el HTTP API y el authorizer compartido.
+- `tickets` va segundo porque crea DynamoDB, EventBridge y Step Functions.
+- `auth`, `chat`, `tenant`, `admin` y `ops` asumen VPC en todos los stages.
+- Si `prod` usa JWT por SSM, el parámetro definido en `jwtSecretKeySsmPath` debe existir antes del deploy.
 
-## Qué falta implementar todavía
-
-Esto todavía no está cerrado de punta a punta:
-
-### 1. Snapshots pesados en S3
-
-Ya quedó implementada la persistencia base para `POST /api/scans/ingest`:
-
-- sube el payload crudo a S3
-- genera keys ordenadas por stage/company/provider/type/fecha
-- registra metadata en Postgres
-
-Todavía falta, si se necesita después:
-
-- exponer lectura/descarga explícita del snapshot
-- decidir qué pantallas o endpoints consumen ese raw JSON
-
-### 2. Metadata de snapshots en Postgres
-
-Ya quedó agregado el modelo `SnapshotArtifact` con campos como:
-
-- `company_id`
-- `integration_id`
-- `provider`
-- `snapshot_type`
-- `domain`
-- `source`
-- `status`
-- `scan_id`
-- `external_id`
-- `s3_bucket`
-- `s3_key`
-- `content_type`
-- `size_bytes`
-- `checksum`
-- `captured_at`
-- `received_at`
-- `summary_json`
-- `created_at`
-
-Ya hay endpoints para consultar metadata y descargar payload crudo.
-
-### 3. Estrategia de migraciones DB
-
-Ya existe un bootstrap inicial:
-
-- `python scripts/bootstrap_schema.py`
-
-Pero todavía falta decidir una estrategia formal de evolución de esquema a futuro:
-
-- Alembic
-- SQL versionado
-- otro flujo controlado de migraciones
-
-### 4. CORS y dominios reales
-
-`serverless/stages/prod.yml` todavía tiene placeholder:
-
-- `https://api.example.com`
-
-Reemplazar por el origen real del frontend antes del deploy final.
-
-## Contrato actual de snapshots
-
-Persistencia base cerrada:
-
-- raw JSON completo en S3
-- metadata operativa en `snapshot_artifacts`
-- escritura automática desde `POST /api/scans/ingest`
-- lectura por usuario o por token `agent:invoke`
-
-Contrato actual del artifact:
-
-- `provider`: origen lógico del snapshot, por ejemplo `nessus`, `zabbix`, `wazuh`
-- `snapshot_type`: tipo funcional del payload, por ejemplo `vulnerability`, `security_events`, `noc_health`
-- `domain`: `soc` o `noc`
-- `source`: origen interno del guardado, hoy `scan_ingest`
-- `status`: estado del artifact, hoy `stored`
-- `summary_json`: resumen ligero para listar sin descargar el raw completo
-
-El helper reusable para futuros payloads pesados quedó en:
-
-- `src/shared/snapshots.py`
-
-## Qué no tocar
-
-No migrar ni mezclar en esta fase:
-
-- Voice
-- Speech
-- Live Voice
-- WebSocket
-- Foundry realtime
-- MAD
-- ETL
-
-## Resumen operativo
-
-Si lo vas a desplegar desde una MV, el flujo correcto es:
-
-1. clonar repo
-2. instalar dependencias
-3. configurar AWS CLI
-4. confirmar `jwtSecretKey` en `serverless/stages/prod.yml`
-5. desplegar `network`
-6. desplegar `data`
-7. desplegar `storage`
-8. desplegar backend `serverless`
-9. correr smoke tests
-10. recién después avanzar con snapshots S3 + metadata DB
+La guía detallada y notas operativas están en `MULTI_SERVICE_DEPLOY.md`.

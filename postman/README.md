@@ -1,27 +1,31 @@
 # Postman
 
-Import `postman/XOC-API-AWS.postman_collection.json` into Postman.
+Import `postman/XOC-API-AWS.postman_collection.json`.
 
-Set at least these collection variables before running requests:
+Variables mínimas:
 
-- `baseUrl`: API Gateway base URL, for example `https://2t7p2tu80l.execute-api.us-east-1.amazonaws.com`
+- `baseUrl`: base URL del HTTP API, por ejemplo `https://xxxx.execute-api.us-east-1.amazonaws.com`
 - `adminEmail`
 - `adminPassword`
-- `companyName`
-- `runtimeBaseUrl`: Azure Function base URL used by chat/SOPHIA
+- `tenantName`
+- `runtimeBaseUrl`
 
-Recommended order:
+Contrato oficial: rutas limpias sin `/api`.
+
+Orden recomendado:
 
 1. `GET /health`
-2. `POST /api/onboarding/tenant` or `POST /api/auth/login`
-3. `PUT /api/companies/{companyId}/runtime-settings`
-4. `POST /api/chat`
+2. `POST /onboarding/tenant` o `POST /auth/login`
+3. `PUT /tenant/runtime-settings`
+4. `POST /chat`
 
-The collection auto-saves these variables when available:
+Variables que la colección auto-actualiza:
 
 - `accessToken`
 - `refreshToken`
-- `companyId`
+- `tenantId`
 - `userId`
 - `sessionId`
 - `chatThreadId`
+- `agentKeyId`
+- `ticketId`

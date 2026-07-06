@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "XOC API AWS",
-    "description": "Postman collection for the FastAPI + API Gateway deployment. Set `baseUrl` to your API Gateway URL, then run onboarding/login to populate tokens automatically.",
+    "description": "Postman collection for the multi-stack XOC AWS API. Uses clean routes without /api.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_postman_id": "4f6e8b75-d8bf-4a10-9547-4c8d5cfdbf34"
   },
@@ -9,16 +9,16 @@
     { "key": "baseUrl", "value": "https://replace-me.execute-api.us-east-1.amazonaws.com" },
     { "key": "accessToken", "value": "" },
     { "key": "refreshToken", "value": "" },
-    { "key": "companyId", "value": "1" },
+    { "key": "tenantId", "value": "1" },
     { "key": "userId", "value": "1" },
     { "key": "sessionId", "value": "" },
     { "key": "chatThreadId", "value": "" },
     { "key": "adminEmail", "value": "admin@example.com" },
     { "key": "adminPassword", "value": "ChangeMe123!" },
-    { "key": "companyName", "value": "XOC Demo Tenant" },
+    { "key": "tenantName", "value": "XOC Demo Tenant" },
     { "key": "runtimeBaseUrl", "value": "https://replace-me-azure-function.azurewebsites.net" },
     { "key": "agentKeyId", "value": "1" },
-    { "key": "ticketId", "value": "1" }
+    { "key": "ticketId", "value": "" }
   ],
   "item": [
     {
@@ -34,18 +34,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["health"]
             }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('health 200', function () { pm.response.to.have.status(200); });"
-                ]
-              }
-            }
-          ]
+          }
         }
       ]
     },
@@ -53,7 +42,7 @@
       "name": "Auth",
       "item": [
         {
-          "name": "POST /api/onboarding/tenant",
+          "name": "POST /onboarding/tenant",
           "request": {
             "method": "POST",
             "header": [
@@ -61,12 +50,12 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"company_name\": \"{{companyName}}\",\n  \"admin_email\": \"{{adminEmail}}\",\n  \"admin_password\": \"{{adminPassword}}\",\n  \"admin_username\": \"admin\"\n}"
+              "raw": "{\n  \"name\": \"{{tenantName}}\",\n  \"admin_email\": \"{{adminEmail}}\",\n  \"admin_password\": \"{{adminPassword}}\",\n  \"admin_username\": \"admin\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/onboarding/tenant",
+              "raw": "{{baseUrl}}/onboarding/tenant",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "onboarding", "tenant"]
+              "path": ["onboarding", "tenant"]
             }
           },
           "event": [
@@ -80,7 +69,7 @@
                   "  const json = pm.response.json();",
                   "  if (json.access_token) pm.collectionVariables.set('accessToken', json.access_token);",
                   "  if (json.refresh_token) pm.collectionVariables.set('refreshToken', json.refresh_token);",
-                  "  if (json.company && json.company.id) pm.collectionVariables.set('companyId', String(json.company.id));",
+                  "  if (json.tenant && json.tenant.id) pm.collectionVariables.set('tenantId', String(json.tenant.id));",
                   "  if (json.owner_user && json.owner_user.id) pm.collectionVariables.set('userId', String(json.owner_user.id));",
                   "}"
                 ]
@@ -89,7 +78,7 @@
           ]
         },
         {
-          "name": "POST /api/auth/login",
+          "name": "POST /auth/login",
           "request": {
             "method": "POST",
             "header": [
@@ -100,9 +89,9 @@
               "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/auth/login",
+              "raw": "{{baseUrl}}/auth/login",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "auth", "login"]
+              "path": ["auth", "login"]
             }
           },
           "event": [
@@ -115,7 +104,7 @@
                   "const json = pm.response.json();",
                   "if (json.access_token) pm.collectionVariables.set('accessToken', json.access_token);",
                   "if (json.refresh_token) pm.collectionVariables.set('refreshToken', json.refresh_token);",
-                  "if (json.user && json.user.company_id) pm.collectionVariables.set('companyId', String(json.user.company_id));",
+                  "if (json.user && json.user.tenant_id) pm.collectionVariables.set('tenantId', String(json.user.tenant_id));",
                   "if (json.user && json.user.id) pm.collectionVariables.set('userId', String(json.user.id));"
                 ]
               }
@@ -123,68 +112,40 @@
           ]
         },
         {
-          "name": "POST /api/auth/refresh",
+          "name": "POST /auth/refresh",
           "request": {
             "method": "POST",
             "header": [
               { "key": "Authorization", "value": "Bearer {{refreshToken}}" }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/auth/refresh",
+              "raw": "{{baseUrl}}/auth/refresh",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "auth", "refresh"]
+              "path": ["auth", "refresh"]
             }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('refresh 200', function () { pm.response.to.have.status(200); });",
-                  "const json = pm.response.json();",
-                  "if (json.access_token) pm.collectionVariables.set('accessToken', json.access_token);",
-                  "if (json.refresh_token) pm.collectionVariables.set('refreshToken', json.refresh_token);"
-                ]
-              }
-            }
-          ]
+          }
         }
       ]
     },
     {
-      "name": "Companies",
+      "name": "Tenant",
       "item": [
         {
-          "name": "GET /api/companies",
+          "name": "GET /tenant",
           "request": {
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{accessToken}}" }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/companies",
+              "raw": "{{baseUrl}}/tenant",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "companies"]
+              "path": ["tenant"]
             }
           }
         },
         {
-          "name": "GET /api/companies/{companyId}",
-          "request": {
-            "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/companies/{{companyId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "companies", "{{companyId}}"]
-            }
-          }
-        },
-        {
-          "name": "PUT /api/companies/{companyId}/runtime-settings",
+          "name": "PUT /tenant/runtime-settings",
           "request": {
             "method": "PUT",
             "header": [
@@ -193,28 +154,58 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"functionBaseUrl\": \"{{runtimeBaseUrl}}\",\n  \"functionRouteSophia\": \"/api/agents/SophiaDurableAgent/run\",\n  \"functionRouteSophiaHistory\": \"/api/agents/SophiaDurableAgent/history\",\n  \"functionRouteSophiaDelete\": \"/api/agents/SophiaDurableAgent/threads\",\n  \"functionRouteVictor\": \"/api/agents/VictorDurableAgent/run\",\n  \"isActive\": true\n}"
+              "raw": "{\n  \"function_base_url\": \"{{runtimeBaseUrl}}\",\n  \"function_route_sophia\": \"/api/agents/SophiaDurableAgent/run\",\n  \"function_route_sophia_history\": \"/api/agents/SophiaDurableAgent/history\",\n  \"function_route_sophia_delete\": \"/api/agents/SophiaDurableAgent/threads\",\n  \"function_route_victor\": \"/api/agents/VictorDurableAgent/run\",\n  \"is_active\": true\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/companies/{{companyId}}/runtime-settings",
+              "raw": "{{baseUrl}}/tenant/runtime-settings",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "companies", "{{companyId}}", "runtime-settings"]
+              "path": ["tenant", "runtime-settings"]
             }
           }
         },
         {
-          "name": "GET /api/companies/{companyId}/runtime-settings",
+          "name": "GET /tenant/agent-keys",
           "request": {
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{accessToken}}" }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/companies/{{companyId}}/runtime-settings",
+              "raw": "{{baseUrl}}/tenant/agent-keys",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "companies", "{{companyId}}", "runtime-settings"]
+              "path": ["tenant", "agent-keys"]
             }
           }
+        },
+        {
+          "name": "POST /tenant/agent-keys",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo Wazuh Key\",\n  \"integration_type\": \"wazuh\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tenant/agent-keys",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenant", "agent-keys"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try { const json = pm.response.json(); if (json.agent_key && json.agent_key.id) pm.collectionVariables.set('agentKeyId', String(json.agent_key.id)); } catch (e) {}"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -222,21 +213,21 @@
       "name": "Users",
       "item": [
         {
-          "name": "GET /api/users",
+          "name": "GET /users",
           "request": {
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{accessToken}}" }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/users",
+              "raw": "{{baseUrl}}/users",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "users"]
+              "path": ["users"]
             }
           }
         },
         {
-          "name": "POST /api/users",
+          "name": "POST /users",
           "request": {
             "method": "POST",
             "header": [
@@ -248,9 +239,9 @@
               "raw": "{\n  \"username\": \"operator1\",\n  \"email\": \"operator1@example.com\",\n  \"password\": \"ChangeMe123!\",\n  \"role\": \"USER\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/users",
+              "raw": "{{baseUrl}}/users",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "users"]
+              "path": ["users"]
             }
           }
         }
@@ -260,21 +251,21 @@
       "name": "Tickets",
       "item": [
         {
-          "name": "GET /api/tickets",
+          "name": "GET /tickets",
           "request": {
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{accessToken}}" }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/tickets",
+              "raw": "{{baseUrl}}/tickets",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "tickets"]
+              "path": ["tickets"]
             }
           }
         },
         {
-          "name": "POST /api/tickets",
+          "name": "POST /tickets",
           "request": {
             "method": "POST",
             "header": [
@@ -286,11 +277,22 @@
               "raw": "{\n  \"subject\": \"Demo ticket\",\n  \"description\": \"Created from Postman\",\n  \"status\": \"PENDING\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/tickets",
+              "raw": "{{baseUrl}}/tickets",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "tickets"]
+              "path": ["tickets"]
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try { const json = pm.response.json(); if (json.ticket && json.ticket.ticket_id) pm.collectionVariables.set('ticketId', String(json.ticket.ticket_id)); } catch (e) {}"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -298,21 +300,21 @@
       "name": "Chat",
       "item": [
         {
-          "name": "GET /api/chat/sessions",
+          "name": "GET /chat/sessions",
           "request": {
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{accessToken}}" }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/chat/sessions",
+              "raw": "{{baseUrl}}/chat/sessions",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "chat", "sessions"]
+              "path": ["chat", "sessions"]
             }
           }
         },
         {
-          "name": "POST /api/chat",
+          "name": "POST /chat",
           "request": {
             "method": "POST",
             "header": [
@@ -321,12 +323,12 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"message\": \"Hola SOPHIA, dame un resumen del estado actual\",\n  \"companyId\": {{companyId}},\n  \"newSession\": true\n}"
+              "raw": "{\n  \"message\": \"Hola SOPHIA, dame un resumen del estado actual\",\n  \"newSession\": true\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/chat",
+              "raw": "{{baseUrl}}/chat",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "chat"]
+              "path": ["chat"]
             }
           },
           "event": [
@@ -347,16 +349,16 @@
           ]
         },
         {
-          "name": "GET /api/chat/history?session_id=",
+          "name": "GET /chat/history?session_id=",
           "request": {
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{accessToken}}" }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/chat/history?session_id={{sessionId}}",
+              "raw": "{{baseUrl}}/chat/history?session_id={{sessionId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "chat", "history"],
+              "path": ["chat", "history"],
               "query": [
                 { "key": "session_id", "value": "{{sessionId}}" }
               ]
@@ -364,16 +366,16 @@
           }
         },
         {
-          "name": "DELETE /api/chat/sessions/{sessionId}",
+          "name": "DELETE /chat/sessions/{sessionId}",
           "request": {
             "method": "DELETE",
             "header": [
               { "key": "Authorization", "value": "Bearer {{accessToken}}" }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/chat/sessions/{{sessionId}}",
+              "raw": "{{baseUrl}}/chat/sessions/{{sessionId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "chat", "sessions", "{{sessionId}}"]
+              "path": ["chat", "sessions", "{{sessionId}}"]
             }
           }
         }
@@ -383,95 +385,46 @@
       "name": "Scans",
       "item": [
         {
-          "name": "GET /api/scans",
+          "name": "GET /scans",
           "request": {
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{accessToken}}" }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/scans",
+              "raw": "{{baseUrl}}/scans",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "scans"]
+              "path": ["scans"]
             }
           }
         },
         {
-          "name": "GET /api/scans/summary",
+          "name": "GET /scans/summary",
           "request": {
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{accessToken}}" }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/scans/summary",
+              "raw": "{{baseUrl}}/scans/summary",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "scans", "summary"]
+              "path": ["scans", "summary"]
             }
           }
         },
         {
-          "name": "GET /api/scans/snapshots",
+          "name": "GET /scans/snapshots",
           "request": {
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{accessToken}}" }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/scans/snapshots",
+              "raw": "{{baseUrl}}/scans/snapshots",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "scans", "snapshots"]
+              "path": ["scans", "snapshots"]
             }
           }
-        }
-      ]
-    },
-    {
-      "name": "Company Agent Keys",
-      "item": [
-        {
-          "name": "GET /api/companies/{companyId}/agent-keys",
-          "request": {
-            "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/companies/{{companyId}}/agent-keys",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "companies", "{{companyId}}", "agent-keys"]
-            }
-          }
-        },
-        {
-          "name": "POST /api/companies/{companyId}/agent-keys",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Demo Wazuh Key\",\n  \"integration_type\": \"wazuh\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/companies/{{companyId}}/agent-keys",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "companies", "{{companyId}}", "agent-keys"]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "try { const json = pm.response.json(); if (json.agent_key && json.agent_key.id) pm.collectionVariables.set('agentKeyId', String(json.agent_key.id)); } catch (e) {}"
-                ]
-              }
-            }
-          ]
         }
       ]
     }

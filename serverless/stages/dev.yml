@@ -7,6 +7,7 @@ corsAllowedOrigins:
   - http://localhost:5000
 corsAllowedOriginsCsv: http://localhost:3000,http://localhost:5173,http://localhost:5000
 jwtSecretKey: xoc-demo-dev-jwt-secret-change-me
+jwtSecretKeySsmPath: ""
 agentsFunctionBaseUrl: ""
 agentsFunctionRouteSophia: /api/agents/SophiaDurableAgent/run
 agentsFunctionRouteSophiaHistory: /api/agents/SophiaDurableAgent/history
@@ -15,4 +16,10 @@ agentsFunctionRouteVictor: /api/agents/VictorDurableAgent/run
 databaseSecretArn: arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:xoc/api/dev/database
 snapshotsBucketName: xoc-dev-snapshots-placeholder
 snapshotsBucketArn: arn:aws:s3:::xoc-dev-snapshots-placeholder
-apiVpc: ~
+ticketsPointInTimeRecoveryEnabled: false
+apiVpc:
+  securityGroupIds:
+    - ${cf:xoc-infra-network-dev.LambdaSecurityGroupId}
+  subnetIds:
+    - ${cf:xoc-infra-network-dev.LambdaPrivateSubnetAId}
+    - ${cf:xoc-infra-network-dev.LambdaPrivateSubnetBId}
