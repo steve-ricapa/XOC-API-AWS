@@ -8,9 +8,9 @@ module.exports = buildService({
   environment: (stage) => ({
     ...commonEnvironment(stage),
     REPORTS_TABLE_NAME: `xoc-api-reports-${stage}-reports`,
-    REPORT_REQUESTS_QUEUE_URL: { Ref: 'ReportRequestsQueue' },
-    REPORT_WORKFLOW_STATE_MACHINE_ARN: { Ref: 'ReportWorkflowStateMachine' },
-    REPORT_EVENT_BUS_NAME: { Ref: 'ReportsEventBus' },
+    REPORT_REQUESTS_QUEUE_URL: `https://sqs.${'${aws:region}'}.amazonaws.com/${'${aws:accountId}'}/xoc-api-reports-${stage}-report-requests`,
+    REPORT_WORKFLOW_STATE_MACHINE_ARN: `arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:stateMachine:xoc-api-reports-${stage}-report-workflow`,
+    REPORT_EVENT_BUS_NAME: `xoc-api-reports-${stage}-bus`,
   }),
   functions: (stage) => ({
     reportsApi: lambdaConfig(stage, {
