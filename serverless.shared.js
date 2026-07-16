@@ -3,7 +3,7 @@ const sharedResources = require('./serverless/services/shared-resources');
 
 module.exports = buildService({
   service: 'xoc-api-shared',
-  iam: { jwt: true, agentEncryption: true },
+  iam: { jwt: [{ 'Fn::GetAtt': ['JwtSecret', 'Arn'] }], agentEncryption: [{ 'Fn::GetAtt': ['AgentKeyEncryptionKeySecret', 'Arn'] }] },
   attachToSharedHttpApi: false,
   environment: (stage) => ({
     ...commonEnvironment(stage),

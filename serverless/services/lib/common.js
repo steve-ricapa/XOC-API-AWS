@@ -121,17 +121,19 @@ function iamStatements(stage, capabilities = {}) {
     });
   }
   if (capabilities.jwt) {
+    const resource = capabilities.jwt === true ? [stageRef(stage, 'jwtSecretArn')] : capabilities.jwt;
     statements.push({
       Effect: 'Allow',
       Action: ['secretsmanager:GetSecretValue'],
-      Resource: relaxed ? '*' : [stageRef(stage, 'jwtSecretArn')],
+      Resource: relaxed ? '*' : resource,
     });
   }
   if (capabilities.agentEncryption) {
+    const resource = capabilities.agentEncryption === true ? [stageRef(stage, 'agentKeyEncryptionKeyArn')] : capabilities.agentEncryption;
     statements.push({
       Effect: 'Allow',
       Action: ['secretsmanager:GetSecretValue'],
-      Resource: relaxed ? '*' : [stageRef(stage, 'agentKeyEncryptionKeyArn')],
+      Resource: relaxed ? '*' : resource,
     });
   }
   if (capabilities.vpc) {
