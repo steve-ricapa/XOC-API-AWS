@@ -159,6 +159,7 @@ function protectedRoute(stage, method, path) {
       path,
       authorizer: {
         id: sharedOutput(stage, 'HttpApiAuthorizerId'),
+        type: 'request',
       },
     },
   };
@@ -202,7 +203,7 @@ function buildService(options) {
   const stage = detectStage();
   const provider = {
     name: 'aws',
-    runtime: 'python3.12',
+      runtime: 'python3.11',
     architecture: 'x86_64',
     stage,
     region: stageRef(stage, 'region'),
