@@ -5,18 +5,12 @@ import shutil
 import tempfile
 import zipfile
 from copy import deepcopy
-from pathlib import Path
 
-import matplotlib
-import pandas as pd
 from docx import Document
 from docx.shared import Inches, Mm, Pt
-from docxtpl import DocxTemplate, InlineImage
+from docxtpl import DocxTemplate
 from jinja2 import Environment, StrictUndefined
 from lxml import etree
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 
 DOMAIN_TABLE_ORDER = [
@@ -90,43 +84,13 @@ def _group_findings_by_domain(data: dict) -> dict[str, list[dict]]:
     return grouped
 
 
-def build_severity_dataframe(severity_summary: dict) -> pd.DataFrame:
-    ordered_rows = [
-        ("Crítico", severity_summary.get("critical", 0), "#b91c1c"),
-        ("Alto", severity_summary.get("high", 0), "#ea580c"),
-        ("Medio", severity_summary.get("medium", 0), "#d97706"),
-        ("Bajo", severity_summary.get("low", 0), "#2563eb"),
-        ("Informativo", severity_summary.get("informational", 0), "#64748b"),
-    ]
-    return pd.DataFrame(ordered_rows, columns=["severity", "count", "color"])
-
-
-def create_severity_chart(severity_summary: dict, output_path: str) -> str:
-    df = build_severity_dataframe(severity_summary)
-    figure, axis = plt.subplots(figsize=(8, 4.5))
-    axis.bar(df["severity"], df["count"], color=df["color"])
-    axis.set_title("Comparativo de vulnerabilidades por severidad")
-    axis.set_ylabel("Cantidad")
-    axis.set_xlabel("Severidad")
-    axis.grid(axis="y", linestyle="--", alpha=0.35)
-
-    for idx, value in enumerate(df["count"]):
-        axis.text(idx, value + max(1, value * 0.02), str(value), ha="center", va="bottom", fontsize=9)
-
-    figure.tight_layout()
-    figure.savefig(output_path, dpi=200)
-    plt.close(figure)
-    return output_path
-
-
-def render_from_template(template_path: str, data: dict, output_path: str, chart_path: str | None = None) -> str:
+def render_from_template(template_path: str, data: dict, output_path: str) -> str:
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     template = DocxTemplate(template_path)
     env = Environment(undefined=StrictUndefined, autoescape=False)
 
     context = deepcopy(data)
-    if chart_path and os.path.exists(chart_path):
-        context["severity_chart"] = InlineImage(template, chart_path, width=Mm(140))
+    context.setdefault("severity_chart", "")
 
     template.render(context, jinja_env=env)
     template.save(output_path)
@@ -358,12 +322,17 @@ def _insert_table_after(paragraph, rows: int, cols: int):
 
 def insert_findings_table(rendered_path: str, data: dict, output_path: str) -> None:
     doc = Document(rendered_path)
-    findings_df = pd.DataFrame(data.get("findings", []))
-    if findings_df.empty:
+    findings = data.get("findings", [])
+    if not findings:
         doc.save(output_path)
         return
-    findings_df = findings_df[["id", "domain", "title", "affected_hosts", "severity"]]
-    findings_df.columns = ["ID", "Dominio", "Vulnerabilidad", "Hosts", "Severidad"]
+    columns = [
+        ("ID", "id"),
+        ("Dominio", "domain"),
+        ("Vulnerabilidad", "title"),
+        ("Hosts", "affected_hosts"),
+        ("Severidad", "severity"),
+    ]
 
     target_paragraph = None
     for paragraph in doc.paragraphs:
@@ -375,16 +344,16 @@ def insert_findings_table(rendered_path: str, data: dict, output_path: str) -> N
         doc.save(output_path)
         return
 
-    table = _insert_table_after(target_paragraph, rows=1, cols=len(findings_df.columns))
+    table = _insert_table_after(target_paragraph, rows=1, cols=len(columns))
     table.style = "Table Grid"
 
-    for col_idx, column_name in enumerate(findings_df.columns):
+    for col_idx, (column_name, _) in enumerate(columns):
         _set_cell_text(table.rows[0].cells[col_idx], column_name, bold=True)
 
-    for record in findings_df.to_dict(orient="records"):
+    for record in findings:
         row_cells = table.add_row().cells
-        for col_idx, column_name in enumerate(findings_df.columns):
-            _set_cell_text(row_cells[col_idx], str(record[column_name]))
+        for col_idx, (_, field_name) in enumerate(columns):
+            _set_cell_text(row_cells[col_idx], str(record.get(field_name, "")))
 
     target_paragraph.text = ""
     doc.save(output_path)
@@ -457,9 +426,5 @@ def generate_report_docx(
     if has_real_template:
         return generate_from_real_template(template_path, data, output_path)
 
-    chart_path = output_path.replace(".docx", "_chart.png")
-    create_severity_chart(data.get("severity_summary", {}), chart_path)
-    render_from_template(template_path, data, output_path, chart_path)
-    if os.path.exists(chart_path):
-        os.remove(chart_path)
+    render_from_template(template_path, data, output_path)
     return output_path
