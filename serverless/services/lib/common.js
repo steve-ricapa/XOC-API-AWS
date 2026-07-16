@@ -190,39 +190,43 @@ function lambdaConfig(stage, config) {
   return lambda;
 }
 
+function detectStage() {
+  const idx = process.argv.indexOf('--stage');
+  if (idx !== -1 && idx + 1 < process.argv.length) return process.argv[idx + 1];
+  return process.env.STAGE || 'dev';
+}
+
 function buildService(options) {
-  return ({ options: cliOptions }) => {
-    const stage = (cliOptions && cliOptions.stage) || 'dev';
-    const provider = {
-      name: 'aws',
-      runtime: 'python3.12',
-      architecture: 'x86_64',
-      stage,
-      region: stageRef(stage, 'region'),
-      logRetentionInDays: stageRef(stage, 'logRetentionInDays'),
-      tracing: { lambda: true },
-      environment: options.environment ? options.environment(stage) : commonEnvironment(stage),
-      iam: {
-        role: {
-          statements: iamStatements(stage, options.iam || {}),
-        },
+  const stage = detectStage();
+  const provider = {
+    name: 'aws',
+    runtime: 'python3.12',
+    architecture: 'x86_64',
+    stage,
+    region: stageRef(stage, 'region'),
+    logRetentionInDays: stageRef(stage, 'logRetentionInDays'),
+    tracing: { lambda: true },
+    environment: options.environment ? options.environment(stage) : commonEnvironment(stage),
+    iam: {
+      role: {
+        statements: iamStatements(stage, options.iam || {}),
       },
-    };
+    },
+  };
 
-    if (options.attachToSharedHttpApi) {
-      provider.httpApi = {
-        id: sharedOutput(stage, 'HttpApiId'),
-      };
-    }
-
-    return {
-      service: options.service,
-      frameworkVersion: '3',
-      provider,
-      package: commonPackage(),
-      functions: options.functions(stage),
-      resources: options.resources ? options.resources(stage) : undefined,
+  if (options.attachToSharedHttpApi) {
+    provider.httpApi = {
+      id: sharedOutput(stage, 'HttpApiId'),
     };
+  }
+
+  return {
+    service: options.service,
+    frameworkVersion: '3',
+    provider,
+    package: commonPackage(),
+    functions: options.functions(stage),
+    resources: options.resources ? options.resources(stage) : undefined,
   };
 }
 
