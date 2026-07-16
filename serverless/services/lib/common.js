@@ -180,9 +180,6 @@ function lambdaConfig(stage, config) {
     description: config.description,
     memorySize: config.memorySize || 512,
     timeout: config.timeout || 20,
-    package: {
-      patterns: config.include || ['src/**', 'requirements.txt'],
-    },
   };
   if (config.events) {
     lambda.events = config.events;
@@ -233,8 +230,9 @@ function buildService(options) {
     plugins: ['serverless-python-requirements'],
     custom: {
       pythonRequirements: {
-        zip: true,
-        slim: true,
+        dockerizePip: true,
+        useDownloadCache: true,
+        useStaticCache: false,
       },
     },
   };
