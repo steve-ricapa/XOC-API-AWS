@@ -187,6 +187,9 @@ function lambdaConfig(stage, config) {
   if (config.needsVpc) {
     lambda.vpc = stageRef(stage, 'apiVpc');
   }
+  if (config.include) {
+    lambda.package = { include: config.include };
+  }
   return lambda;
 }
 

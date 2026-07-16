@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import uuid as _uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
@@ -11,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
-from src.persistence.models import AgentApiKey, IngestIdempotencyRecord, Integration, ScanFinding, ScanNocEvent, ScanSummary, ScanSummaryNoc, SnapshotArtifact, Tenant, User
+from src.persistence.models import AgentApiKey, IngestIdempotencyRecord, Integration, PendingIngestion, ScanFinding, ScanNocEvent, ScanSummary, ScanSummaryNoc, SnapshotArtifact, Tenant, User
 from src.shared.config import get_settings
 from src.shared.context import log_audit
 from src.shared.dependencies import get_current_user, get_request_claims, get_request_tenant_context
@@ -19,7 +20,7 @@ from src.shared.errors import ForbiddenError, NotFoundError, ValidationError
 from src.shared.integration_types import OFFICIAL_INTEGRATION_TYPES, normalize_integration_type
 from src.shared.scans_demo_data import demo_latest_scans, demo_scan, demo_scan_findings, demo_scanner_analytics, demo_scans, demo_scans_summary
 from src.shared.security_keys import verify_access_key
-from src.shared.snapshots import SnapshotArtifactInput, fetch_snapshot_payload, store_snapshot_artifact
+from src.shared.snapshots import SnapshotArtifactInput, fetch_snapshot_payload, generate_download_url, generate_upload_url, store_snapshot_artifact
 
 
 router = APIRouter(prefix="/scans", tags=["scans"])
@@ -327,6 +328,67 @@ def _persist_snapshot_artifact(
     )
 
 
+@router.post("/upload-url")
+def request_upload_url(payload: dict, session: Session = Depends(get_db_session)) -> dict:
+    if not payload or not isinstance(payload, dict):
+        raise ValidationError("Request body must be a valid JSON object")
+
+    tenant_id, err = validate_integer(payload.get("tenant_id") or payload.get("tenantId"), "tenant_id", min_val=1)
+    if err:
+        raise ValidationError(err)
+    api_key, err = validate_string(payload.get("api_key") or payload.get("apiKey"), "api_key", required=True)
+    if err:
+        raise ValidationError(err)
+    scanner_type_raw = payload.get("scanner_type") or payload.get("scannerType")
+    if not scanner_type_raw:
+        raise ValidationError("scanner_type is required")
+    scanner_type = normalize_integration_type(scanner_type_raw)
+    if not scanner_type:
+        raise ValidationError(f"Invalid scanner_type. Allowed: {', '.join(ALLOWED_SCANNER_TYPES)}")
+    idempotency_key = (payload.get("idempotency_key") or payload.get("idempotencyKey")) or None
+
+    agent_api_keys = session.scalars(select(AgentApiKey).where(AgentApiKey.tenant_id == tenant_id, AgentApiKey.is_active.is_(True))).all()
+    matched_key = None
+    for candidate in agent_api_keys:
+        if verify_access_key(api_key, candidate.api_key_hash):
+            matched_key = candidate
+            break
+    if not matched_key:
+        raise ForbiddenError("Invalid agent credentials")
+
+    agent_integration_type = normalize_integration_type(matched_key.integration_type)
+    if agent_integration_type != scanner_type:
+        raise ForbiddenError(f"API key is for {matched_key.integration_type}, but scanner_type is {scanner_type}")
+
+    upload_id = str(_uuid.uuid4())
+    expires_at = datetime.utcnow() + timedelta(minutes=30)
+    s3_key = f"pending/{tenant_id}/{upload_id}.json"
+
+    pending = PendingIngestion(
+        tenant_id=tenant_id,
+        upload_id=upload_id,
+        api_key_id=matched_key.id,
+        provider=scanner_type,
+        scanner_type=scanner_type,
+        idempotency_key=idempotency_key,
+        s3_key=s3_key,
+        status="pending",
+        expires_at=expires_at,
+    )
+    session.add(pending)
+    session.commit()
+
+    presigned_url = generate_upload_url(tenant_id=tenant_id, upload_id=upload_id, expires_in=1800)
+
+    return {
+        "upload_id": upload_id,
+        "upload_url": presigned_url,
+        "s3_key": s3_key,
+        "expires_at": expires_at.isoformat(),
+        "expires_in_seconds": 1800,
+    }
+
+
 @router.post("/ingest")
 def ingest_scan(payload: dict, session: Session = Depends(get_db_session)) -> dict:
     if not payload or not isinstance(payload, dict):
@@ -584,7 +646,18 @@ def get_snapshot_payload(artifact_id: int, current_user: User = Depends(get_curr
     artifact = _get_snapshot_artifact_or_404(session, current_user.tenant_id, artifact_id)
     return {
         "snapshot": artifact.to_dict(),
-        "payload": fetch_snapshot_payload(key=artifact.s3_key),
+        "download_url": generate_download_url(s3_key=artifact.s3_key),
+    }
+
+
+@router.get("/snapshots/{artifact_id}/download-url")
+def get_snapshot_download_url(artifact_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session), expires: int = 3600) -> dict:
+    artifact = _get_snapshot_artifact_or_404(session, current_user.tenant_id, artifact_id)
+    return {
+        "snapshot_id": artifact.id,
+        "s3_key": artifact.s3_key,
+        "download_url": generate_download_url(s3_key=artifact.s3_key, expires_in=expires),
+        "expires_in_seconds": expires,
     }
 
 
@@ -634,7 +707,21 @@ def agent_get_snapshot_payload(artifact_id: int, tenant_context: tuple[int, str]
     artifact = _get_snapshot_artifact_or_404(session, tenant_id, artifact_id)
     return {
         "snapshot": artifact.to_dict(),
-        "payload": fetch_snapshot_payload(key=artifact.s3_key),
+        "download_url": generate_download_url(s3_key=artifact.s3_key),
+    }
+
+
+@router.get("/agent/snapshots/{artifact_id}/download-url")
+def agent_get_snapshot_download_url(artifact_id: int, tenant_context: tuple[int, str] = Depends(get_request_tenant_context), session: Session = Depends(get_db_session), expires: int = 3600) -> dict:
+    tenant_id, actor = tenant_context
+    if actor != "agent":
+        raise ForbiddenError("Agent scope required")
+    artifact = _get_snapshot_artifact_or_404(session, tenant_id, artifact_id)
+    return {
+        "snapshot_id": artifact.id,
+        "s3_key": artifact.s3_key,
+        "download_url": generate_download_url(s3_key=artifact.s3_key, expires_in=expires),
+        "expires_in_seconds": expires,
     }
 
 

@@ -632,6 +632,38 @@ class IntegrationCapabilityTemplateAssignment(Base):
         }
 
 
+class PendingIngestion(Base):
+    __tablename__ = "pending_ingestions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    upload_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True)
+    api_key_id: Mapped[int] = mapped_column(ForeignKey("agent_api_keys.id", ondelete="SET NULL"), nullable=True)
+    provider: Mapped[str] = mapped_column(String(100), nullable=False)
+    scanner_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(71), nullable=True)
+    s3_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "tenant_id": self.tenant_id,
+            "upload_id": self.upload_id,
+            "provider": self.provider,
+            "scanner_type": self.scanner_type,
+            "status": self.status,
+            "s3_key": self.s3_key,
+            "error_message": self.error_message,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class ActivationKey(Base):
     __tablename__ = "activation_keys"
 

@@ -1,4 +1,4 @@
-const { buildService, lambdaConfig, protectedRoute, publicRoute } = require('./serverless/services/lib/common');
+const { buildService, lambdaConfig, protectedRoute, publicRoute, stageRef } = require('./serverless/services/lib/common');
 
 module.exports = buildService({
   service: 'xoc-api-ops',
@@ -18,6 +18,7 @@ module.exports = buildService({
       ],
       events: [
         publicRoute('POST', '/scans/ingest'),
+        publicRoute('POST', '/scans/upload-url'),
         protectedRoute(stage, 'GET', '/scans'),
         protectedRoute(stage, 'GET', '/scans/latest'),
         protectedRoute(stage, 'GET', '/scans/summary'),
@@ -27,13 +28,38 @@ module.exports = buildService({
         protectedRoute(stage, 'GET', '/scans/snapshots'),
         protectedRoute(stage, 'GET', '/scans/snapshots/{artifactId}'),
         protectedRoute(stage, 'GET', '/scans/snapshots/{artifactId}/payload'),
+        protectedRoute(stage, 'GET', '/scans/snapshots/{artifactId}/download-url'),
         protectedRoute(stage, 'GET', '/scans/agent/snapshots'),
         protectedRoute(stage, 'GET', '/scans/agent/snapshots/{artifactId}'),
         protectedRoute(stage, 'GET', '/scans/agent/snapshots/{artifactId}/payload'),
+        protectedRoute(stage, 'GET', '/scans/agent/snapshots/{artifactId}/download-url'),
         protectedRoute(stage, 'GET', '/scans/agent/summaries'),
         protectedRoute(stage, 'GET', '/scans/agent/summaries/{scanSummaryId}'),
         protectedRoute(stage, 'GET', '/scans/agent/summaries/{scanSummaryId}/findings'),
         protectedRoute(stage, 'GET', '/scans/agent/findings'),
+      ],
+    }),
+    snapshotProcessor: lambdaConfig(stage, {
+      handler: 'src/handlers/processors/snapshot_processor.handler',
+      description: 'Processes large snapshot uploads from S3',
+      needsVpc: true,
+      timeout: 120,
+      memorySize: 1024,
+      include: [
+        'src/handlers/processors/snapshot_processor.py',
+        'src/shared/**',
+        'src/persistence/**',
+        'requirements.txt',
+      ],
+      events: [
+        {
+          s3: {
+            bucket: stageRef(stage, 'snapshotsBucketName'),
+            event: 's3:ObjectCreated:*',
+            rules: [{ prefix: 'pending/' }],
+            existing: true,
+          },
+        },
       ],
     }),
     integrationsApi: lambdaConfig(stage, {

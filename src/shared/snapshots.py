@@ -4,7 +4,7 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import boto3
@@ -121,3 +121,22 @@ def store_snapshot_artifact(*, session: Session, payload: dict[str, Any], artifa
     if existing_artifact is None:
         session.add(artifact)
     return artifact
+
+
+def generate_upload_url(*, tenant_id: int, upload_id: str, content_type: str = "application/json", expires_in: int = 1800) -> str:
+    key = f"pending/{tenant_id}/{upload_id}.json"
+    url = _snapshot_client().generate_presigned_url(
+        ClientMethod="put_object",
+        Params={"Bucket": get_snapshots_bucket_name(), "Key": key, "ContentType": content_type},
+        ExpiresIn=expires_in,
+    )
+    return url
+
+
+def generate_download_url(*, s3_key: str, expires_in: int = 3600) -> str:
+    url = _snapshot_client().generate_presigned_url(
+        ClientMethod="get_object",
+        Params={"Bucket": get_snapshots_bucket_name(), "Key": s3_key},
+        ExpiresIn=expires_in,
+    )
+    return url
