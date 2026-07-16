@@ -246,4 +246,6 @@ module.exports = {
   publicRoute,
   sharedOutput,
   stageRef,
+  detectStage,
+  iamStatements,
 };
