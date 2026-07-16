@@ -272,6 +272,7 @@ function buildService(options) {
         dockerizePip: true,
         useDownloadCache: true,
         useStaticCache: false,
+        pipCmdExtraArgs: ['--only-binary', ':all:'],
       },
     },
   };
