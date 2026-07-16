@@ -220,14 +220,9 @@ echo ""
 read -rp "  Elige [1/2] (default 2): " bootstrap_choice
 
 case "${bootstrap_choice:-2}" in
-  1)
-    info "Invocando apiHttp en modo bootstrap..."
-    aws lambda invoke \
-      --function-name "xoc-api-core-prod-api" \
-      --invocation-type RequestResponse \
-      --payload '{"path":"/health","httpMethod":"GET","headers":{"x-bootstrap":"true"}}' \
-      /tmp/bootstrap-response.json 2>&1 || warn "No se pudo invocar. Bootstrap manual necesario."
-    ok "Respuesta: $(cat /tmp/bootstrap-response.json)"
+     1)
+    warn "Bootstrap automatico eliminado: el stack xoc-api-core-prod ya no existe."
+    warn "Usa el metodo manual (opcion 2) para bootstrap."
     ;;
   *)
     ok "Bootstrap omitido. Para hacerlo manual:"
