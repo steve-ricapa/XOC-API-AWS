@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.persistence.models import AgentApiKey, Integration, ScanFinding, ScanNocEvent, ScanSummary, ScanSummaryNoc
+from src.persistence.models import AgentApiKey, FindingIndex, Integration, ScanSummary, ScanSummaryNoc
 
 
 def _pick_integration(session: Session, tenant_id: int, provider: str) -> Integration | None:
@@ -62,23 +62,23 @@ def _recent_noc_scans(session: Session, tenant_id: int, scanner_type: str, limit
     )
 
 
-def _recent_findings(session: Session, scan_summary_id: int, limit: int = 5) -> list[ScanFinding]:
+def _recent_findings(session: Session, scan_summary_id: int, limit: int = 5) -> list[FindingIndex]:
     return list(
         session.scalars(
-            select(ScanFinding)
-            .where(ScanFinding.scan_summary_id == scan_summary_id)
-            .order_by(ScanFinding.created_at.desc())
+            select(FindingIndex)
+            .where(FindingIndex.scan_summary_soc_id == scan_summary_id)
+            .order_by(FindingIndex.created_at.desc())
             .limit(limit)
         )
     )
 
 
-def _recent_noc_events(session: Session, scan_summary_noc_id: int, limit: int = 5) -> list[ScanNocEvent]:
+def _recent_noc_events(session: Session, scan_summary_noc_id: int, limit: int = 5) -> list[FindingIndex]:
     return list(
         session.scalars(
-            select(ScanNocEvent)
-            .where(ScanNocEvent.scan_summary_noc_id == scan_summary_noc_id)
-            .order_by(ScanNocEvent.created_at.desc())
+            select(FindingIndex)
+            .where(FindingIndex.scan_summary_noc_id == scan_summary_noc_id)
+            .order_by(FindingIndex.created_at.desc())
             .limit(limit)
         )
     )

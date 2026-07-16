@@ -736,3 +736,63 @@ class ScanNocEvent(Base):
             "meta_info": self.meta_info,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class FindingIndex(Base):
+    __tablename__ = "finding_index"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    snapshot_artifact_id: Mapped[int | None] = mapped_column(ForeignKey("snapshot_artifacts.id", ondelete="SET NULL"), nullable=True, index=True)
+    scan_summary_soc_id: Mapped[int | None] = mapped_column(ForeignKey("scan_summaries_soc.id", ondelete="SET NULL"), nullable=True)
+    scan_summary_noc_id: Mapped[int | None] = mapped_column(ForeignKey("scan_summaries_noc.id", ondelete="SET NULL"), nullable=True)
+    scan_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    scanner_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    domain: Mapped[str] = mapped_column(String(10), nullable=False, default="soc")
+    finding_idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    severity: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cve: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    host: Mapped[str | None] = mapped_column(Text, nullable=True)
+    port: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    protocol: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    event_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    service: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    cvss: Mapped[float | None] = mapped_column(nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    solution: Mapped[str | None] = mapped_column(Text, nullable=True)
+    impact: Mapped[str | None] = mapped_column(Text, nullable=True)
+    s3_bucket: Mapped[str] = mapped_column(String(255), nullable=False)
+    s3_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    detected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "snapshot_artifact_id": self.snapshot_artifact_id,
+            "scan_summary_soc_id": self.scan_summary_soc_id,
+            "scan_summary_noc_id": self.scan_summary_noc_id,
+            "scan_id": self.scan_id,
+            "scanner_type": self.scanner_type,
+            "domain": self.domain,
+            "finding_idx": self.finding_idx,
+            "severity": self.severity,
+            "name": self.name,
+            "cve": self.cve,
+            "host": self.host,
+            "port": self.port,
+            "protocol": self.protocol,
+            "status": self.status,
+            "event_type": self.event_type,
+            "service": self.service,
+            "cvss": self.cvss,
+            "description": self.description,
+            "solution": self.solution,
+            "impact": self.impact,
+            "s3_bucket": self.s3_bucket,
+            "s3_key": self.s3_key,
+            "detected_at": self.detected_at.isoformat() if self.detected_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }

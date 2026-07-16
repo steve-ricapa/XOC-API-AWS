@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 import uuid as _uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import case, func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
-from src.persistence.models import AgentApiKey, IngestIdempotencyRecord, Integration, PendingIngestion, ScanFinding, ScanNocEvent, ScanSummary, ScanSummaryNoc, SnapshotArtifact, Tenant, User
+from src.persistence.models import AgentApiKey, FindingIndex, PendingIngestion, ScanSummary, ScanSummaryNoc, SnapshotArtifact, Tenant, User
 from src.shared.config import get_settings
 from src.shared.context import log_audit
 from src.shared.dependencies import get_current_user, get_request_claims, get_request_tenant_context
@@ -20,7 +17,7 @@ from src.shared.errors import ForbiddenError, NotFoundError, ValidationError
 from src.shared.integration_types import OFFICIAL_INTEGRATION_TYPES, normalize_integration_type
 from src.shared.scans_demo_data import demo_latest_scans, demo_scan, demo_scan_findings, demo_scanner_analytics, demo_scans, demo_scans_summary
 from src.shared.security_keys import verify_access_key
-from src.shared.snapshots import SnapshotArtifactInput, fetch_snapshot_payload, generate_download_url, generate_upload_url, store_snapshot_artifact
+from src.shared.snapshots import fetch_snapshot_payload, generate_download_url, generate_upload_url
 
 
 router = APIRouter(prefix="/scans", tags=["scans"])
@@ -202,10 +199,6 @@ def _summary_model_for_domain(domain: str):
     return ScanSummaryNoc if domain == "noc" else ScanSummary
 
 
-def _findings_model_for_domain(domain: str):
-    return ScanNocEvent if domain == "noc" else ScanFinding
-
-
 def _resolve_requested_domain(scanner_type: str | None = None, domain_raw: str | None = None, default: str = "soc"):
     domain = normalize_domain(domain_raw, default=default)
     if domain_raw and not domain:
@@ -214,47 +207,11 @@ def _resolve_requested_domain(scanner_type: str | None = None, domain_raw: str |
     return inferred or domain
 
 
-def build_request_hash(tenant_id, scan_id, scanner_type, summary_type, domain, scanned_at_str, findings_data, summary_data):
-    payload = {
-        "tenant_id": tenant_id,
-        "scan_id": scan_id,
-        "scanner_type": scanner_type,
-        "summary_type": summary_type,
-        "domain": domain,
-        "scanned_at": scanned_at_str,
-        "status": summary_data.get("status"),
-        "results": summary_data.get("results"),
-        "cvss_max": summary_data.get("cvss_max"),
-        "total_hosts": summary_data.get("total_hosts"),
-        "scan_name": summary_data.get("scan_name") or summary_data.get("target"),
-        "meta": summary_data.get("meta"),
-        "findings": findings_data,
-    }
-    raw = json.dumps(payload, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
-def _parse_optional_iso8601(value, field_name: str):
-    if value is None or value == "":
-        return None, None
-    return validate_iso8601(value, field_name)
-
-
 def _get_snapshot_artifact_or_404(session: Session, tenant_id: int, artifact_id: int) -> SnapshotArtifact:
     artifact = session.scalar(select(SnapshotArtifact).where(SnapshotArtifact.id == artifact_id, SnapshotArtifact.tenant_id == tenant_id))
     if not artifact:
         raise NotFoundError("Snapshot artifact not found")
     return artifact
-
-
-def _resolve_snapshot_integration_id(session: Session, tenant_id: int, provider: str) -> int | None:
-    integration = session.scalar(
-        select(Integration).where(
-            Integration.tenant_id == tenant_id,
-            (Integration.type == provider) | (Integration.provider == provider),
-        )
-    )
-    return integration.id if integration else None
 
 
 def _build_agent_info(session: Session, summary_model, tenant_id: int, scanner_type: str) -> dict | None:
@@ -273,59 +230,6 @@ def _build_agent_info(session: Session, summary_model, tenant_id: int, scanner_t
         "name": agent.name,
         "lastUsed": agent.last_used_at.isoformat() if agent.last_used_at else None,
     }
-
-
-def _persist_snapshot_artifact(
-    *,
-    session: Session,
-    payload: dict,
-    tenant_id: int,
-    scanner_type: str,
-    summary_type: str,
-    domain: str,
-    scan_id: str,
-    scan_summary,
-):
-    bucket_name = get_settings().snapshots_bucket_name
-    if not bucket_name:
-        return None
-
-    existing_artifact = session.scalar(
-        select(SnapshotArtifact).where(
-            SnapshotArtifact.tenant_id == tenant_id,
-            SnapshotArtifact.scan_id == scan_id,
-            SnapshotArtifact.provider == scanner_type,
-            SnapshotArtifact.snapshot_type == summary_type,
-            SnapshotArtifact.domain == domain,
-        )
-    )
-
-    return store_snapshot_artifact(
-        session=session,
-        payload=payload,
-        existing_artifact=existing_artifact,
-        artifact_input=SnapshotArtifactInput(
-            tenant_id=tenant_id,
-            integration_id=_resolve_snapshot_integration_id(session, tenant_id, scanner_type),
-            provider=scanner_type,
-            snapshot_type=summary_type,
-            domain=domain,
-            source="scan_ingest",
-            status="stored",
-            scan_id=scan_id,
-            scan_summary_soc_id=scan_summary.id if domain != "noc" else None,
-            scan_summary_noc_id=scan_summary.id if domain == "noc" else None,
-            captured_at=scan_summary.scanned_at,
-            received_at=datetime.utcnow(),
-            summary_json={
-                "scanner_type": scanner_type,
-                "summary_type": summary_type,
-                "domain": domain,
-                "findings_count": len(payload.get("findings") or []),
-                "scan_summary": payload.get("scan_summary"),
-            },
-        ),
-    )
 
 
 @router.post("/upload-url")
@@ -400,213 +304,54 @@ def ingest_scan(payload: dict, session: Session = Depends(get_db_session)) -> di
     api_key, err = validate_string(payload.get("api_key") or payload.get("apiKey"), "api_key", required=True)
     if err:
         raise ValidationError(err)
-    idempotency_key, err = validate_idempotency_key(payload.get("idempotency_key") or payload.get("idempotencyKey"))
-    if err:
-        raise ValidationError(err)
-    scan_id, err = validate_string(payload.get("scan_id") or payload.get("scanId"), "scan_id", required=True, max_length=MAX_SCAN_ID_LENGTH)
-    if err:
-        raise ValidationError(err)
-
-    scan_summary_data = payload.get("scan_summary")
-    if not isinstance(scan_summary_data, dict):
-        raise ValidationError("Field 'scan_summary' must be an object")
-
-    scanner_type_raw = scan_summary_data.get("scanner_type") or payload.get("scannerType") or payload.get("scanner_type")
+    scanner_type_raw = payload.get("scanner_type") or payload.get("scannerType")
     if not scanner_type_raw:
         raise ValidationError("scanner_type is required")
     scanner_type = normalize_integration_type(scanner_type_raw)
     if not scanner_type:
         raise ValidationError(f"Invalid scanner_type. Allowed: {', '.join(ALLOWED_SCANNER_TYPES)}")
-
-    findings_data = payload.get("findings", []) or []
-    if not isinstance(findings_data, list):
-        raise ValidationError("Field 'findings' must be an array")
-
-    validated_findings = []
-    for index, finding_raw in enumerate(findings_data):
-        if not isinstance(finding_raw, dict):
-            raise ValidationError(f"findings[{index}] must be an object")
-        name, err = validate_string(finding_raw.get("name"), f"findings[{index}].name", required=True, max_length=500)
-        if err:
-            raise ValidationError(err)
-        severity_value, err = validate_string(finding_raw.get("severity") or finding_raw.get("severity_level"), f"findings[{index}].severity", required=True, max_length=50)
-        if err:
-            raise ValidationError(err)
-        normalized_severity = normalize_severity(severity_value)
-        if not normalized_severity:
-            raise ValidationError(f"findings[{index}].severity is invalid")
-        normalized_finding = dict(finding_raw)
-        normalized_finding["name"] = name
-        normalized_finding["severity"] = normalized_severity
-        validated_findings.append(normalized_finding)
-
-    scanned_at_str = scan_summary_data.get("scanned_at") or payload.get("scannedAt")
-    scanned_at, err = validate_iso8601(scanned_at_str, "scanned_at")
-    if err:
-        raise ValidationError(err)
+    idempotency_key = (payload.get("idempotency_key") or payload.get("idempotencyKey")) or None
 
     agent_api_keys = session.scalars(select(AgentApiKey).where(AgentApiKey.tenant_id == tenant_id, AgentApiKey.is_active.is_(True))).all()
-    agent_api_key = None
+    matched_key = None
     for candidate in agent_api_keys:
         if verify_access_key(api_key, candidate.api_key_hash):
-            agent_api_key = candidate
+            matched_key = candidate
             break
-    if not agent_api_key:
+    if not matched_key:
         raise ForbiddenError("Invalid agent credentials")
 
-    agent_integration_type = normalize_integration_type(agent_api_key.integration_type)
+    agent_integration_type = normalize_integration_type(matched_key.integration_type)
     if agent_integration_type != scanner_type:
-        raise ForbiddenError(f"API key is for {agent_api_key.integration_type}, but payload scanner_type is {scanner_type}")
+        raise ForbiddenError(f"API key is for {matched_key.integration_type}, but scanner_type is {scanner_type}")
 
-    summary_type, domain, err = resolve_summary_type_and_domain(
-        scanner_type=scanner_type,
-        summary_type_raw=scan_summary_data.get("summary_type") or scan_summary_data.get("summaryType") or payload.get("summary_type") or payload.get("summaryType"),
-        api_key_integration_type=agent_integration_type,
-    )
-    if err:
-        raise ValidationError(err)
+    upload_id = str(_uuid.uuid4())
+    expires_at = datetime.utcnow() + timedelta(minutes=30)
+    s3_key = f"pending/{tenant_id}/{upload_id}.json"
 
-    request_hash = build_request_hash(tenant_id, scan_id, scanner_type, summary_type, domain, scanned_at_str, validated_findings, scan_summary_data)
-
-    idempotency_record = None
-    insert_attempts = 0
-    while idempotency_record is None:
-        insert_attempts += 1
-        try:
-            idempotency_record = IngestIdempotencyRecord(tenant_id=tenant_id, idempotency_key=idempotency_key, request_hash=request_hash, domain=domain)
-            session.add(idempotency_record)
-            session.flush()
-        except IntegrityError:
-            session.rollback()
-            existing_record = session.scalar(select(IngestIdempotencyRecord).where(IngestIdempotencyRecord.tenant_id == tenant_id, IngestIdempotencyRecord.idempotency_key == idempotency_key))
-            if existing_record is None:
-                if insert_attempts < 3:
-                    continue
-                raise ValidationError("Unable to resolve idempotency state")
-            if existing_record.request_hash != request_hash:
-                return {"success": False, "error": "IDEMPOTENCY_CONFLICT", "message": "idempotency_key already used with different payload"}
-            replay_summary = None
-            replay_domain = (existing_record.domain or "soc").strip().lower()
-            if replay_domain == "noc" and existing_record.scan_summary_noc_id:
-                replay_summary = session.scalar(select(ScanSummaryNoc).where(ScanSummaryNoc.id == existing_record.scan_summary_noc_id, ScanSummaryNoc.tenant_id == tenant_id))
-            elif existing_record.scan_summary_soc_id:
-                replay_summary = session.scalar(select(ScanSummary).where(ScanSummary.id == existing_record.scan_summary_soc_id, ScanSummary.tenant_id == tenant_id))
-            return {
-                "success": True,
-                "message": "Idempotent replay: request already processed",
-                "ingest_status": "idempotent_replay",
-                "domain": replay_domain,
-                "data": replay_summary.to_dict() if replay_summary else None,
-            }
-
-    agent_api_key.last_used_at = datetime.utcnow()
-    summary_model = _summary_model_for_domain(domain)
-    existing_summary = session.scalar(select(summary_model).where(summary_model.tenant_id == tenant_id, summary_model.scan_id == scan_id))
-    if existing_summary:
-        scan_summary = existing_summary
-    else:
-        scan_summary = summary_model(tenant_id=tenant_id, scan_id=scan_id, scanned_at=scanned_at)
-        session.add(scan_summary)
-
-    scan_summary.scanner_type = scanner_type
-    scan_summary.summary_type = summary_type
-    scan_summary.status = scan_summary_data.get("status", payload.get("status", "completed"))
-    scan_summary.scanned_at = scanned_at
-    scan_summary.agent_api_key_id = agent_api_key.id
-
-    results_raw = scan_summary_data.get("results") or payload.get("results", {})
-    critical = int(results_raw.get("critical", 0))
-    high = int(results_raw.get("high", 0))
-    medium = int(results_raw.get("medium", 0))
-    low = int(results_raw.get("low", 0))
-    info = int(results_raw.get("info", 0))
-
-    recalculated = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
-    for finding in validated_findings:
-        sev = finding.get("severity")
-        if sev in recalculated:
-            recalculated[sev] += 1
-    critical = critical or recalculated["critical"]
-    high = high or recalculated["high"]
-    medium = medium or recalculated["medium"]
-    low = low or recalculated["low"]
-    info = info or recalculated["info"]
-
-    scan_summary.critical_count = critical
-    scan_summary.high_count = high
-    scan_summary.medium_count = medium
-    scan_summary.low_count = low
-    scan_summary.info_count = info
-    scan_summary.cvss_max = float(scan_summary_data.get("cvss_max") or payload.get("cvssMax", 0.0))
-    scan_summary.total_hosts = scan_summary_data.get("total_hosts") or payload.get("totalHosts")
-    scan_summary.scan_name = scan_summary_data.get("scan_name") or scan_summary_data.get("target") or payload.get("scanName")
-    scan_summary.meta_info = scan_summary_data.get("meta") or payload.get("meta")
-    scan_summary.received_at = datetime.utcnow()
-    session.flush()
-
-    if domain == "noc":
-        session.query(ScanNocEvent).filter_by(scan_summary_noc_id=scan_summary.id).delete()
-        for finding_data in validated_findings:
-            started_at, start_err = _parse_optional_iso8601(finding_data.get("started_at") or finding_data.get("start_time"), "findings[].started_at")
-            if start_err:
-                raise ValidationError(start_err)
-            ended_at, end_err = _parse_optional_iso8601(finding_data.get("ended_at") or finding_data.get("end_time"), "findings[].ended_at")
-            if end_err:
-                raise ValidationError(end_err)
-            session.add(
-                ScanNocEvent(
-                    scan_summary_noc_id=scan_summary.id,
-                    scan_id=scan_id,
-                    name=finding_data.get("name"),
-                    severity=finding_data.get("severity"),
-                    event_type=finding_data.get("event_type") or finding_data.get("type") or finding_data.get("category"),
-                    status=finding_data.get("status"),
-                    source=finding_data.get("source"),
-                    host=finding_data.get("host"),
-                    service=finding_data.get("service"),
-                    description=finding_data.get("description"),
-                    impact=finding_data.get("impact"),
-                    started_at=started_at,
-                    ended_at=ended_at,
-                    meta_info=finding_data.get("meta") if isinstance(finding_data.get("meta"), dict) else None,
-                )
-            )
-        idempotency_record.scan_summary_noc_id = scan_summary.id
-    else:
-        session.query(ScanFinding).filter_by(scan_summary_id=scan_summary.id).delete()
-        for finding_data in validated_findings:
-            session.add(
-                ScanFinding(
-                    scan_summary_id=scan_summary.id,
-                    scan_id=scan_id,
-                    name=finding_data.get("name"),
-                    severity=finding_data.get("severity"),
-                    cvss=finding_data.get("cvss"),
-                    cve=finding_data.get("cve"),
-                    oid=finding_data.get("oid"),
-                    host=finding_data.get("host"),
-                    port=finding_data.get("port"),
-                    protocol=finding_data.get("protocol"),
-                    description=finding_data.get("description"),
-                    solution=finding_data.get("solution"),
-                    impact=finding_data.get("impact"),
-                )
-            )
-        idempotency_record.scan_summary_soc_id = scan_summary.id
-
-    _persist_snapshot_artifact(
-        session=session,
-        payload=payload,
+    pending = PendingIngestion(
         tenant_id=tenant_id,
+        upload_id=upload_id,
+        api_key_id=matched_key.id,
+        provider=scanner_type,
         scanner_type=scanner_type,
-        summary_type=summary_type,
-        domain=domain,
-        scan_id=scan_id,
-        scan_summary=scan_summary,
+        idempotency_key=idempotency_key,
+        s3_key=s3_key,
+        status="pending",
+        expires_at=expires_at,
     )
-
+    session.add(pending)
     session.commit()
-    return {"success": True, "message": "Scan report processed successfully", "ingest_status": "created", "domain": domain, "data": scan_summary.to_dict()}
+
+    presigned_url = generate_upload_url(tenant_id=tenant_id, upload_id=upload_id, expires_in=1800)
+
+    return {
+        "upload_id": upload_id,
+        "upload_url": presigned_url,
+        "s3_key": s3_key,
+        "expires_at": expires_at.isoformat(),
+        "expires_in_seconds": 1800,
+    }
 
 
 @router.get("/snapshots")
@@ -947,26 +692,18 @@ def agent_get_scan_summary_findings(
     scan = session.scalar(select(summary_model).where(summary_model.id == scan_summary_id, summary_model.tenant_id == tenant_id))
     if not scan:
         raise NotFoundError("Scan summary not found")
-    if resolved_domain == "noc":
-        query = select(ScanNocEvent).where(ScanNocEvent.scan_summary_noc_id == scan_summary_id)
-        if severity:
-            query = query.where(ScanNocEvent.severity.ilike(f"%{severity}%"))
-        if cve:
-            query = query.where(ScanNocEvent.event_type.ilike(f"%{cve}%"))
-        if host:
-            query = query.where(ScanNocEvent.host.ilike(f"%{host}%"))
-        findings = session.scalars(query.limit(min(max(limit, 1), 1000))).all()
-        payload = [finding.to_dict() for finding in findings]
-        return {"events": payload, "findings": payload, "count": len(payload), "scan_summary_id": scan_summary_id, "domain": resolved_domain}
-    query = select(ScanFinding).where(ScanFinding.scan_summary_id == scan_summary_id)
+    filter_col = FindingIndex.scan_summary_noc_id if resolved_domain == "noc" else FindingIndex.scan_summary_soc_id
+    query = select(FindingIndex).where(filter_col == scan_summary_id)
     if severity:
-        query = query.where(ScanFinding.severity.ilike(f"%{severity}%"))
+        query = query.where(FindingIndex.severity.ilike(f"%{severity}%"))
     if cve:
-        query = query.where(ScanFinding.cve.ilike(f"%{cve}%"))
+        col = FindingIndex.event_type if resolved_domain == "noc" else FindingIndex.cve
+        query = query.where(col.ilike(f"%{cve}%"))
     if host:
-        query = query.where(ScanFinding.host.ilike(f"%{host}%"))
+        query = query.where(FindingIndex.host.ilike(f"%{host}%"))
     findings = session.scalars(query.limit(min(max(limit, 1), 1000))).all()
-    return {"findings": [finding.to_dict() for finding in findings], "count": len(findings), "scan_summary_id": scan_summary_id, "domain": resolved_domain}
+    payload = [finding.to_dict() for finding in findings]
+    return {"findings": payload, "count": len(payload), "scan_summary_id": scan_summary_id, "domain": resolved_domain}
 
 
 @router.get("/agent/findings")
@@ -993,33 +730,19 @@ def agent_get_findings(
     if scanner_type and not scanner_type_normalized:
         raise ValidationError(f"Invalid scanner_type. Allowed: {', '.join(ALLOWED_SCANNER_TYPES)}")
     range_start, range_end = parse_analytics_range_args(start_date, end_date, days, default_days=days or 30, max_days=90)
-    if resolved_domain == "noc":
-        query = session.query(ScanNocEvent, ScanSummaryNoc).join(ScanSummaryNoc, ScanNocEvent.scan_summary_noc_id == ScanSummaryNoc.id).filter(ScanSummaryNoc.tenant_id == tenant_id, ScanSummaryNoc.scanned_at >= range_start, ScanSummaryNoc.scanned_at <= range_end)
-        if scanner_type_normalized:
-            query = query.filter(ScanSummaryNoc.scanner_type == scanner_type_normalized)
-        if severity:
-            query = query.filter(ScanNocEvent.severity.ilike(f"%{severity}%"))
-        if cve:
-            query = query.filter(ScanNocEvent.event_type.ilike(f"%{cve}%"))
-        if host:
-            query = query.filter(ScanNocEvent.host.ilike(f"%{host}%"))
-        rows = query.order_by(ScanSummaryNoc.scanned_at.desc()).limit(min(max(limit, 1), 1000)).all()
-        result = []
-        for event, summary in rows:
-            payload = event.to_dict()
-            payload["scan_summary"] = {"id": summary.id, "scanner_type": summary.scanner_type, "scan_id": summary.scan_id, "scan_name": summary.scan_name, "scanned_at": summary.scanned_at.isoformat() if summary.scanned_at else None}
-            result.append(payload)
-        return {"events": result, "findings": result, "count": len(result), "domain": resolved_domain, "period_days": days, "period": {"start_date": range_start.isoformat(), "end_date": range_end.isoformat()}}
-    query = session.query(ScanFinding, ScanSummary).join(ScanSummary, ScanFinding.scan_summary_id == ScanSummary.id).filter(ScanSummary.tenant_id == tenant_id, ScanSummary.scanned_at >= range_start, ScanSummary.scanned_at <= range_end)
+    join_col = FindingIndex.scan_summary_noc_id if resolved_domain == "noc" else FindingIndex.scan_summary_soc_id
+    summary_model = ScanSummaryNoc if resolved_domain == "noc" else ScanSummary
+    query = session.query(FindingIndex, summary_model).join(summary_model, join_col == summary_model.id).filter(summary_model.tenant_id == tenant_id, summary_model.scanned_at >= range_start, summary_model.scanned_at <= range_end)
     if scanner_type_normalized:
-        query = query.filter(ScanSummary.scanner_type == scanner_type_normalized)
+        query = query.filter(summary_model.scanner_type == scanner_type_normalized)
     if severity:
-        query = query.filter(ScanFinding.severity.ilike(f"%{severity}%"))
+        query = query.filter(FindingIndex.severity.ilike(f"%{severity}%"))
+    cve_col = FindingIndex.event_type if resolved_domain == "noc" else FindingIndex.cve
     if cve:
-        query = query.filter(ScanFinding.cve.ilike(f"%{cve}%"))
+        query = query.filter(cve_col.ilike(f"%{cve}%"))
     if host:
-        query = query.filter(ScanFinding.host.ilike(f"%{host}%"))
-    rows = query.order_by(ScanSummary.scanned_at.desc()).limit(min(max(limit, 1), 1000)).all()
+        query = query.filter(FindingIndex.host.ilike(f"%{host}%"))
+    rows = query.order_by(summary_model.scanned_at.desc()).limit(min(max(limit, 1), 1000)).all()
     result = []
     for finding, summary in rows:
         payload = finding.to_dict()
@@ -1047,25 +770,15 @@ def get_scanner_analytics(
         return payload
     range_start, range_end = parse_analytics_range_args(start_date, end_date, days, default_days=30, max_days=90)
     domain = _infer_domain_from_integration(scanner_type_normalized) or "soc"
-    if domain == "noc":
-        summary_model = ScanSummaryNoc
-        findings_model = ScanNocEvent
-        join_condition = ScanNocEvent.scan_summary_noc_id == ScanSummaryNoc.id
-    else:
-        summary_model = ScanSummary
-        findings_model = ScanFinding
-        join_condition = ScanFinding.scan_summary_id == ScanSummary.id
+    summary_model = ScanSummaryNoc if domain == "noc" else ScanSummary
+    join_col = FindingIndex.scan_summary_noc_id if domain == "noc" else FindingIndex.scan_summary_soc_id
     summaries = session.scalars(select(summary_model).where(summary_model.tenant_id == current_user.tenant_id, summary_model.scanner_type == scanner_type_normalized, summary_model.scanned_at >= range_start, summary_model.scanned_at <= range_end)).all()
     top_items = []
-    if domain == "noc":
-        rows = session.query(ScanNocEvent.event_type, ScanNocEvent.severity, func.count(func.distinct(ScanNocEvent.host)).label("host_count")).join(ScanSummaryNoc, join_condition).filter(ScanSummaryNoc.tenant_id == current_user.tenant_id, ScanSummaryNoc.scanner_type == scanner_type_normalized, ScanSummaryNoc.scanned_at >= range_start, ScanSummaryNoc.scanned_at <= range_end, ScanNocEvent.event_type.is_not(None), ScanNocEvent.event_type != "").group_by(ScanNocEvent.event_type, ScanNocEvent.severity).all()
-        for row in rows:
-            top_items.append({"cve_id": row.event_type, "severity": row.severity, "hosts_affected": row.host_count, "cvss_score": None, "impact_score": row.host_count or 0})
-    else:
-        rows = session.query(ScanFinding.cve, ScanFinding.severity, func.count(func.distinct(ScanFinding.host)).label("host_count"), func.max(ScanFinding.cvss).label("cvss_score")).join(ScanSummary, join_condition).filter(ScanSummary.tenant_id == current_user.tenant_id, ScanSummary.scanner_type == scanner_type_normalized, ScanSummary.scanned_at >= range_start, ScanSummary.scanned_at <= range_end, ScanFinding.cve.is_not(None), ScanFinding.cve != "").group_by(ScanFinding.cve, ScanFinding.severity).all()
-        for row in rows:
-            impact = (row.host_count or 0) * (row.cvss_score or 0)
-            top_items.append({"cve_id": row.cve, "severity": row.severity, "hosts_affected": row.host_count, "cvss_score": row.cvss_score, "impact_score": impact})
+    cve_col = FindingIndex.event_type if domain == "noc" else FindingIndex.cve
+    rows = session.query(cve_col, FindingIndex.severity, func.count(func.distinct(FindingIndex.host)).label("host_count"), func.max(FindingIndex.cvss).label("cvss_score")).join(summary_model, join_col == summary_model.id).filter(summary_model.tenant_id == current_user.tenant_id, summary_model.scanner_type == scanner_type_normalized, summary_model.scanned_at >= range_start, summary_model.scanned_at <= range_end, cve_col.is_not(None), cve_col != "").group_by(cve_col, FindingIndex.severity).all()
+    for row in rows:
+        impact = (row.host_count or 0) * (row.cvss_score or 0)
+        top_items.append({"cve_id": getattr(row, cve_col.key), "severity": row.severity, "hosts_affected": row.host_count, "cvss_score": row.cvss_score, "impact_score": impact})
     top_items.sort(key=lambda item: item["impact_score"], reverse=True)
     trend = []
     range_start_day = range_start.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -1077,37 +790,20 @@ def get_scanner_analytics(
         counts = session.query(func.sum(summary_model.critical_count).label("critical"), func.sum(summary_model.high_count).label("high"), func.sum(summary_model.medium_count).label("medium"), func.sum(summary_model.low_count).label("low"), func.sum(summary_model.info_count).label("info")).filter(summary_model.tenant_id == current_user.tenant_id, summary_model.scanner_type == scanner_type_normalized, summary_model.scanned_at >= day_start, summary_model.scanned_at < day_end, summary_model.status == "completed").first()
         trend.append({"date": day_start.strftime("%Y-%m-%d"), "critical": int(counts.critical or 0), "high": int(counts.high or 0), "medium": int(counts.medium or 0), "low": int(counts.low or 0), "info": int(counts.info or 0)})
     total_hosts = sum(summary.total_hosts or 0 for summary in summaries)
-    if domain == "noc":
-        most_critical_host_row = session.query(
-            ScanNocEvent.host,
-            func.count(ScanNocEvent.id).label("critical_count"),
-        ).join(ScanSummaryNoc, join_condition).filter(
-            ScanSummaryNoc.tenant_id == current_user.tenant_id,
-            ScanSummaryNoc.scanner_type == scanner_type_normalized,
-            ScanSummaryNoc.scanned_at >= range_start,
-            ScanSummaryNoc.scanned_at <= range_end,
-            ScanNocEvent.severity.ilike("%critical%"),
-        ).group_by(ScanNocEvent.host).order_by(func.count(ScanNocEvent.id).desc()).first()
-    else:
-        most_critical_host_row = session.query(
-            ScanFinding.host,
-            func.count(ScanFinding.id).label("critical_count"),
-        ).join(ScanSummary, join_condition).filter(
-            ScanSummary.tenant_id == current_user.tenant_id,
-            ScanSummary.scanner_type == scanner_type_normalized,
-            ScanSummary.scanned_at >= range_start,
-            ScanSummary.scanned_at <= range_end,
-            ScanFinding.severity.ilike("%critical%"),
-        ).group_by(ScanFinding.host).order_by(func.count(ScanFinding.id).desc()).first()
+    most_critical_host_row = session.query(
+        FindingIndex.host,
+        func.count(FindingIndex.id).label("critical_count"),
+    ).join(summary_model, join_col == summary_model.id).filter(
+        summary_model.tenant_id == current_user.tenant_id,
+        summary_model.scanner_type == scanner_type_normalized,
+        summary_model.scanned_at >= range_start,
+        summary_model.scanned_at <= range_end,
+        FindingIndex.severity.ilike("%critical%"),
+    ).group_by(FindingIndex.host).order_by(func.count(FindingIndex.id).desc()).first()
     recent_findings = []
-    if domain == "noc":
-        rows = session.query(ScanNocEvent, ScanSummaryNoc).join(ScanSummaryNoc, join_condition).filter(ScanSummaryNoc.tenant_id == current_user.tenant_id, ScanSummaryNoc.scanner_type == scanner_type_normalized, ScanSummaryNoc.scanned_at >= range_start, ScanSummaryNoc.scanned_at <= range_end).order_by(case((ScanNocEvent.severity.ilike("%critical%"), 1), (ScanNocEvent.severity.ilike("%high%"), 2), (ScanNocEvent.severity.ilike("%medium%"), 3), (ScanNocEvent.severity.ilike("%low%"), 4), else_=5), ScanSummaryNoc.scanned_at.desc()).limit(20).all()
-        for event, summary in rows:
-            recent_findings.append({"cve": event.event_type, "name": event.name, "host": event.host, "severity": event.severity, "cvss": None, "detectedAt": summary.scanned_at.isoformat() if summary.scanned_at else None})
-    else:
-        rows = session.query(ScanFinding, ScanSummary).join(ScanSummary, join_condition).filter(ScanSummary.tenant_id == current_user.tenant_id, ScanSummary.scanner_type == scanner_type_normalized, ScanSummary.scanned_at >= range_start, ScanSummary.scanned_at <= range_end).order_by(case((ScanFinding.severity.ilike("%critical%"), 1), (ScanFinding.severity.ilike("%high%"), 2), (ScanFinding.severity.ilike("%medium%"), 3), (ScanFinding.severity.ilike("%low%"), 4), else_=5), ScanSummary.scanned_at.desc()).limit(20).all()
-        for finding, summary in rows:
-            recent_findings.append({"cve": finding.cve, "name": finding.name, "host": finding.host, "severity": finding.severity, "cvss": finding.cvss, "detectedAt": summary.scanned_at.isoformat() if summary.scanned_at else None})
+    rows = session.query(FindingIndex, summary_model).join(summary_model, join_col == summary_model.id).filter(summary_model.tenant_id == current_user.tenant_id, summary_model.scanner_type == scanner_type_normalized, summary_model.scanned_at >= range_start, summary_model.scanned_at <= range_end).order_by(case((FindingIndex.severity.ilike("%critical%"), 1), (FindingIndex.severity.ilike("%high%"), 2), (FindingIndex.severity.ilike("%medium%"), 3), (FindingIndex.severity.ilike("%low%"), 4), else_=5), summary_model.scanned_at.desc()).limit(20).all()
+    for finding, summary in rows:
+        recent_findings.append({"cve": finding.event_type if domain == "noc" else finding.cve, "name": finding.name, "host": finding.host, "severity": finding.severity, "cvss": finding.cvss, "detectedAt": summary.scanned_at.isoformat() if summary.scanned_at else None})
     return {"success": True, "domain": domain, "scanner_type": scanner_type_normalized, "period": {"start_date": range_start.isoformat(), "end_date": range_end.isoformat(), "days": max(1, (range_end - range_start).days + 1)}, "topCVEs": top_items[:10], "trend_7_days": trend, "hostDistribution": {"totalUniqueHosts": total_hosts, "avgVulnerabilitiesPerHost": round((sum((summary.critical_count + summary.high_count + summary.medium_count + summary.low_count + summary.info_count) for summary in summaries) / total_hosts), 2) if total_hosts else 0, "mostCriticalHost": {"host": most_critical_host_row.host if most_critical_host_row else None, "criticalCount": int(most_critical_host_row.critical_count or 0) if most_critical_host_row else 0}}, "recentFindings": recent_findings, "agentInfo": _build_agent_info(session, summary_model, current_user.tenant_id, scanner_type_normalized)}
 
 
@@ -1136,13 +832,12 @@ def get_scan_findings(scan_summary_id: int, current_user: User = Depends(get_cur
     if _is_demo_tenant(current_user, session):
         return demo_scan_findings(scan_summary_id)
     summary_model = _summary_model_for_domain(resolved_domain)
-    findings_model = _findings_model_for_domain(resolved_domain)
     scan = session.scalar(select(summary_model).where(summary_model.id == scan_summary_id, summary_model.tenant_id == current_user.tenant_id))
     if not scan:
         raise NotFoundError("Scan summary not found")
     if resolved_domain == "noc":
-        findings = session.scalars(select(findings_model).where(findings_model.scan_summary_noc_id == scan_summary_id)).all()
-        payload = [finding.to_dict() for finding in findings]
-        return {"events": payload, "findings": payload, "count": len(payload), "domain": resolved_domain}
-    findings = session.scalars(select(findings_model).where(findings_model.scan_summary_id == scan_summary_id)).all()
-    return {"findings": [finding.to_dict() for finding in findings], "count": len(findings), "domain": resolved_domain}
+        findings = session.scalars(select(FindingIndex).where(FindingIndex.scan_summary_noc_id == scan_summary_id)).all()
+    else:
+        findings = session.scalars(select(FindingIndex).where(FindingIndex.scan_summary_soc_id == scan_summary_id)).all()
+    payload = [finding.to_dict() for finding in findings]
+    return {"findings": payload, "count": len(payload), "domain": resolved_domain}

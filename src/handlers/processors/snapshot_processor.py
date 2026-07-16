@@ -8,11 +8,10 @@ from sqlalchemy import select
 from src.persistence.db import get_engine
 from src.persistence.models import (
     AgentApiKey,
+    FindingIndex,
     IngestIdempotencyRecord,
     Integration,
     PendingIngestion,
-    ScanFinding,
-    ScanNocEvent,
     ScanSummary,
     ScanSummaryNoc,
     SnapshotArtifact,
@@ -207,45 +206,6 @@ def handler(event: dict, context) -> dict:
                     )
                     session.flush()
 
-            if domain == "noc":
-                session.query(ScanNocEvent).filter_by(scan_summary_noc_id=scan_summary.id).delete()
-                for fd in validated_findings:
-                    session.add(
-                        ScanNocEvent(
-                            scan_summary_noc_id=scan_summary.id,
-                            scan_id=scan_id,
-                            name=fd.get("name"),
-                            severity=fd.get("severity"),
-                            event_type=fd.get("event_type") or fd.get("type") or fd.get("category"),
-                            status=fd.get("status"),
-                            source=fd.get("source"),
-                            host=fd.get("host"),
-                            service=fd.get("service"),
-                            description=fd.get("description"),
-                            impact=fd.get("impact"),
-                        )
-                    )
-            else:
-                session.query(ScanFinding).filter_by(scan_summary_id=scan_summary.id).delete()
-                for fd in validated_findings:
-                    session.add(
-                        ScanFinding(
-                            scan_summary_id=scan_summary.id,
-                            scan_id=scan_id,
-                            name=fd.get("name"),
-                            severity=fd.get("severity"),
-                            cvss=fd.get("cvss"),
-                            cve=fd.get("cve"),
-                            oid=fd.get("oid"),
-                            host=fd.get("host"),
-                            port=fd.get("port"),
-                            protocol=fd.get("protocol"),
-                            description=fd.get("description"),
-                            solution=fd.get("solution"),
-                            impact=fd.get("impact"),
-                        )
-                    )
-
             raw_bytes = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
             checksum = hashlib.sha256(raw_bytes).hexdigest()
             size_bytes = len(raw_bytes)
@@ -267,6 +227,7 @@ def handler(event: dict, context) -> dict:
             )
             if existing_artifact:
                 artifact = existing_artifact
+                session.query(FindingIndex).filter_by(snapshot_artifact_id=artifact.id).delete()
             else:
                 artifact = SnapshotArtifact(tenant_id=tenant_id)
                 session.add(artifact)
@@ -292,6 +253,37 @@ def handler(event: dict, context) -> dict:
                 "domain": domain,
                 "findings_count": len(validated_findings),
             }
+            session.flush()
+
+            for idx, fd in enumerate(validated_findings):
+                session.add(
+                    FindingIndex(
+                        tenant_id=tenant_id,
+                        snapshot_artifact_id=artifact.id,
+                        scan_summary_soc_id=artifact.scan_summary_soc_id,
+                        scan_summary_noc_id=artifact.scan_summary_noc_id,
+                        scan_id=scan_id,
+                        scanner_type=scanner_type,
+                        domain=domain,
+                        finding_idx=idx,
+                        severity=fd.get("severity"),
+                        name=fd.get("name"),
+                        cve=fd.get("cve"),
+                        host=fd.get("host"),
+                        port=fd.get("port"),
+                        protocol=fd.get("protocol"),
+                        status=fd.get("status"),
+                        event_type=fd.get("event_type") or fd.get("type") or fd.get("category"),
+                        service=fd.get("service"),
+                        cvss=fd.get("cvss"),
+                        description=fd.get("description"),
+                        solution=fd.get("solution"),
+                        impact=fd.get("impact"),
+                        s3_bucket=bucket,
+                        s3_key=prod_key,
+                        detected_at=scan_summary.scanned_at,
+                    )
+                )
 
             pending.status = "completed"
             pending.s3_key = prod_key
