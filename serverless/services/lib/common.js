@@ -275,6 +275,7 @@ function buildService(options) {
         useStaticCache: false,
         pipCmdExtraArgs: ['--only-binary', ':all:'],
         slim: true,
+        noDeploy: ['boto3', 'botocore', 's3transfer', 'jmespath'],
       },
     },
   };
