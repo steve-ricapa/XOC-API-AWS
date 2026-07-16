@@ -12,9 +12,8 @@ from src.persistence.db import session_scope
 from src.persistence.models import (
     AgentApiKey,
     Alert,
+    FindingIndex,
     Integration,
-    ScanFinding,
-    ScanNocEvent,
     ScanSummary,
     ScanSummaryNoc,
     System,
@@ -59,9 +58,9 @@ def _cleanup_tenant_demo_data(session: Session, tenant_id: int) -> None:
     soc_ids = list(session.scalars(select(ScanSummary.id).where(ScanSummary.tenant_id == tenant_id, ScanSummary.scanner_type.in_(SOC_PROVIDERS))))
     noc_ids = list(session.scalars(select(ScanSummaryNoc.id).where(ScanSummaryNoc.tenant_id == tenant_id, ScanSummaryNoc.scanner_type.in_(NOC_PROVIDERS))))
     if soc_ids:
-        session.execute(delete(ScanFinding).where(ScanFinding.scan_summary_id.in_(soc_ids)))
+        session.execute(delete(FindingIndex).where(FindingIndex.scan_summary_soc_id.in_(soc_ids)))
     if noc_ids:
-        session.execute(delete(ScanNocEvent).where(ScanNocEvent.scan_summary_noc_id.in_(noc_ids)))
+        session.execute(delete(FindingIndex).where(FindingIndex.scan_summary_noc_id.in_(noc_ids)))
     session.execute(delete(ScanSummary).where(ScanSummary.tenant_id == tenant_id, ScanSummary.scanner_type.in_(SOC_PROVIDERS)))
     session.execute(delete(ScanSummaryNoc).where(ScanSummaryNoc.tenant_id == tenant_id, ScanSummaryNoc.scanner_type.in_(NOC_PROVIDERS)))
 
@@ -151,27 +150,32 @@ def _seed_soc_scans(session: Session, tenant_id: int, provider: str, agent_key: 
         session.flush()
 
         findings_to_create = rng.randint(10, 24)
-        for finding_index in range(findings_to_create):
+        for finding_idx in range(findings_to_create):
             severity_bucket = rng.choices(
                 ["critical", "high", "medium", "low", "info"],
                 weights=[2, 4, 6, 4, 2],
                 k=1,
             )[0]
             host = f"{provider}-host-{rng.randint(1, total_hosts):02d}.corp.local"
-            finding = ScanFinding(
-                scan_summary_id=scan.id,
+            finding = FindingIndex(
+                tenant_id=tenant_id,
+                scan_summary_soc_id=scan.id,
                 scan_id=scan.scan_id,
-                name=f"{provider.upper()} Finding {finding_index + 1}",
+                scanner_type=provider,
+                domain="soc",
+                finding_idx=finding_idx,
                 severity=severity_bucket,
+                name=f"{provider.upper()} Finding {finding_idx + 1}",
                 cvss=round(rng.uniform(3.4, 9.9), 1),
                 cve=f"CVE-2026-{rng.randint(1000, 9999)}",
-                oid=f"1.3.6.1.4.1.{rng.randint(1000,9999)}.{rng.randint(100,999)}",
                 host=host,
                 port=str(rng.choice([22, 80, 443, 8080, 3306, 5432])),
                 protocol=rng.choice(["tcp", "udp"]),
                 description=f"Synthetic {provider} finding for demo dashboards.",
                 solution="Apply the recommended patch or mitigation.",
                 impact="Potential compromise or service degradation.",
+                s3_bucket="demo-bucket",
+                s3_key=f"demo/{provider}/{scan.scan_id}.json",
             )
             session.add(finding)
 
@@ -235,25 +239,27 @@ def _seed_noc_scans(session: Session, tenant_id: int, provider: str, agent_key: 
         session.flush()
 
         events_to_create = rng.randint(4, 10)
-        for event_index in range(events_to_create):
+        for finding_idx in range(events_to_create):
             severity_bucket = rng.choices(["critical", "high", "medium", "low", "info"], weights=[1, 2, 4, 3, 1], k=1)[0]
-            event = ScanNocEvent(
+            finding = FindingIndex(
+                tenant_id=tenant_id,
                 scan_summary_noc_id=scan.id,
                 scan_id=scan.scan_id,
-                name=f"{provider.upper()} Event {event_index + 1}",
+                scanner_type=provider,
+                domain="noc",
+                finding_idx=finding_idx,
                 severity=severity_bucket,
+                name=f"{provider.upper()} Event {finding_idx + 1}",
                 event_type="availability" if provider == "uptime_kuma" else "performance_alert",
                 status=rng.choice(["active", "resolved", "active"]),
-                source=provider,
                 host=f"{provider}-node-{rng.randint(1, total_hosts):02d}.corp.local",
                 service=rng.choice(["http", "database", "ping", "cpu", "memory"]),
                 description=f"Synthetic {provider} event for demo dashboards.",
                 impact="Service degradation detected.",
-                started_at=scanned_at - timedelta(minutes=rng.randint(3, 180)),
-                ended_at=scanned_at if rng.choice([True, False]) else None,
-                meta_info={"seeded": True},
+                s3_bucket="demo-bucket",
+                s3_key=f"demo/{provider}/{scan.scan_id}.json",
             )
-            session.add(event)
+            session.add(finding)
 
 
 def _seed_systems_alerts_vulns_tickets(session: Session, tenant: Tenant, admin_user: User, integrations: dict[str, Integration], rng: random.Random) -> None:
