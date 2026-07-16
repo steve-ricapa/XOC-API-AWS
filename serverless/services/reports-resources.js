@@ -208,7 +208,7 @@ module.exports = function reportsResources(stage) {
           },
           Targets: [
             {
-              Arn: { Ref: 'ReportRequestsQueue' },
+              Arn: { 'Fn::GetAtt': ['ReportRequestsQueue', 'Arn'] },
               Id: 'ReportRequestsQueueTarget',
               InputTransformer: {
                 InputPathsMap: {
