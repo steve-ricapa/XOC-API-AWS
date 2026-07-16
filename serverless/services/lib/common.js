@@ -269,7 +269,7 @@ function buildService(options) {
     plugins: ['serverless-python-requirements'],
     custom: {
       pythonRequirements: {
-        dockerizePip: true,
+        dockerizePip: false,
         useDownloadCache: true,
         useStaticCache: false,
         pipCmdExtraArgs: ['--only-binary', ':all:'],
