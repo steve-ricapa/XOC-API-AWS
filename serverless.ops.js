@@ -89,6 +89,23 @@ module.exports = buildService({
         protectedRoute(stage, 'GET', '/integrations/{integrationId}/credentials'),
       ],
     }),
+    dashboardApi: lambdaConfig(stage, {
+      handler: 'src/handlers/domains/dashboard.handler',
+      description: 'Dashboard domain API',
+      needsVpc: true,
+      include: [
+        'src/handlers/domains/dashboard.py',
+        'src/handlers/routes/dashboard.py',
+        'src/shared/**',
+        'src/persistence/**',
+        'src/integrations/**',
+        'requirements.txt',
+      ],
+      events: [
+        protectedRoute(stage, 'GET', '/dashboard/home'),
+        protectedRoute(stage, 'GET', '/dashboard/providers/{provider}'),
+      ],
+    }),
     securityOpsApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/security_ops.handler',
       description: 'Security operations domain API',
