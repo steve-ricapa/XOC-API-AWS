@@ -11,7 +11,7 @@ module.exports = buildService({
       needsVpc: true,
       include: [
         'src/handlers/domains/tenant.py',
-        'src/handlers/routes/companies.py',
+        'src/handlers/routes/tenants.py',
         'src/handlers/routes/users.py',
         'src/handlers/routes/audit.py',
         'src/shared/**',

@@ -28,7 +28,7 @@ Contrato oficial:
 No se mantiene compatibilidad con:
 
 - `/api/*`
-- `company` / `company_id`
+- *(legacy `company`/`company_id` — migrado a `tenant`/`tenant_id`)*
 - `apiHttp`
 - tickets SQL legacy
 

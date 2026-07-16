@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from mangum import Mangum
 
-from src.handlers.routes.companies import router as companies_router
+from src.handlers.routes.tenants import router as tenants_router
 from src.handlers.routes.users import router as users_router
 from src.handlers.routes.audit import router as audit_router
 from src.shared.config import get_settings
@@ -41,7 +41,7 @@ async def handle_unexpected_error(_: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=500, content={"error": "Internal server error", "code": "internal_error"})
 
 
-app.include_router(companies_router)
+app.include_router(tenants_router)
 app.include_router(users_router)
 app.include_router(audit_router)
 
