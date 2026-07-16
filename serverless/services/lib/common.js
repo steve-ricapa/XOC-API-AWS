@@ -191,7 +191,7 @@ function lambdaConfig(stage, config) {
 }
 
 function buildService(options) {
-  return async ({ options: cliOptions }) => {
+  return ({ options: cliOptions }) => {
     const stage = (cliOptions && cliOptions.stage) || 'dev';
     const provider = {
       name: 'aws',
@@ -217,7 +217,7 @@ function buildService(options) {
 
     return {
       service: options.service,
-      frameworkVersion: '4',
+      frameworkVersion: '3',
       provider,
       package: commonPackage(),
       functions: options.functions(stage),
