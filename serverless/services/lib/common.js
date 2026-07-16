@@ -274,6 +274,7 @@ function buildService(options) {
         useDownloadCache: true,
         useStaticCache: false,
         pipCmdExtraArgs: ['--only-binary', ':all:'],
+        slim: true,
       },
     },
   };
