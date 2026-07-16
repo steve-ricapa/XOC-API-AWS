@@ -1,0 +1,7 @@
+docxtpl
+python-docx
+Jinja2
+matplotlib
+pandas
+boto3
+lxml
