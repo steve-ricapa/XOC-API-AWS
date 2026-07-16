@@ -48,6 +48,7 @@ function commonPackage() {
       '!node_modules/**',
       '!package-lock.json',
       '!README.md',
+      '!experiments/**',
       '!tests/**',
       '!txdxai_Flask/**',
       '!.git/**',
