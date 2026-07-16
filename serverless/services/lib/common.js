@@ -230,6 +230,13 @@ function buildService(options) {
     package: commonPackage(),
     functions: options.functions(stage),
     resources: options.resources ? options.resources(stage) : undefined,
+    plugins: ['serverless-python-requirements'],
+    custom: {
+      pythonRequirements: {
+        zip: true,
+        slim: true,
+      },
+    },
   };
 }
 
