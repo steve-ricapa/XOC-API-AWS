@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: XOC staging network stack for Lambda, RDS, NAT, and S3 access.
+Description: XOC staging network stack with single-AZ app topology and dual-subnet DB compatibility.
 
 Parameters:
   VpcCidr:
@@ -8,15 +8,9 @@ Parameters:
   PublicSubnetACidr:
     Type: String
     Default: 10.15.0.0/24
-  PublicSubnetBCidr:
-    Type: String
-    Default: 10.15.1.0/24
   LambdaPrivateSubnetACidr:
     Type: String
     Default: 10.15.10.0/24
-  LambdaPrivateSubnetBCidr:
-    Type: String
-    Default: 10.15.11.0/24
   DbPrivateSubnetACidr:
     Type: String
     Default: 10.15.20.0/24
@@ -59,17 +53,6 @@ Resources:
         - Key: Name
           Value: xoc-staging-public-a
 
-  PublicSubnetB:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref Vpc
-      AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: !Ref PublicSubnetBCidr
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: xoc-staging-public-b
-
   LambdaPrivateSubnetA:
     Type: AWS::EC2::Subnet
     Properties:
@@ -80,17 +63,6 @@ Resources:
       Tags:
         - Key: Name
           Value: xoc-staging-lambda-private-a
-
-  LambdaPrivateSubnetB:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref Vpc
-      AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: !Ref LambdaPrivateSubnetBCidr
-      MapPublicIpOnLaunch: false
-      Tags:
-        - Key: Name
-          Value: xoc-staging-lambda-private-b
 
   DbPrivateSubnetA:
     Type: AWS::EC2::Subnet
@@ -154,12 +126,6 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PublicSubnetA
 
-  PublicSubnetBRouteAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnetB
-
   LambdaPrivateRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -180,12 +146,6 @@ Resources:
     Properties:
       RouteTableId: !Ref LambdaPrivateRouteTable
       SubnetId: !Ref LambdaPrivateSubnetA
-
-  LambdaPrivateSubnetBRouteAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref LambdaPrivateRouteTable
-      SubnetId: !Ref LambdaPrivateSubnetB
 
   DbPrivateRouteTable:
     Type: AWS::EC2::RouteTable
@@ -252,8 +212,6 @@ Outputs:
     Value: !Ref DatabaseSecurityGroup
   LambdaPrivateSubnetAId:
     Value: !Ref LambdaPrivateSubnetA
-  LambdaPrivateSubnetBId:
-    Value: !Ref LambdaPrivateSubnetB
   DbPrivateSubnetAId:
     Value: !Ref DbPrivateSubnetA
   DbPrivateSubnetBId:

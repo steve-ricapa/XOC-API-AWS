@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: XOC production PostgreSQL RDS stack.
+Description: XOC staging PostgreSQL RDS stack.
 
 Parameters:
   DbSubnetAId:
@@ -40,19 +40,19 @@ Resources:
   DatabaseSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
-      DBSubnetGroupDescription: XOC DB subnet group. Two subnets are intentionally preserved for RDS VPC compatibility even when the app tier runs in a single AZ.
+      DBSubnetGroupDescription: XOC staging DB subnet group.
       SubnetIds:
         - !Ref DbSubnetAId
         - !Ref DbSubnetBId
       Tags:
         - Key: Name
-          Value: xoc-prod-db-subnet-group
+          Value: xoc-staging-db-subnet-group
 
   DatabaseSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
-      Name: xoc/api/prod/database
-      Description: XOC production PostgreSQL connection secret
+      Name: xoc/api/staging/database
+      Description: XOC staging PostgreSQL connection secret
       SecretString: !Sub |
         {
           "username": "${DatabaseUsername}",
@@ -68,7 +68,7 @@ Resources:
     DeletionPolicy: Snapshot
     UpdateReplacePolicy: Snapshot
     Properties:
-      DBInstanceIdentifier: xoc-prod-postgres
+      DBInstanceIdentifier: xoc-staging-postgres
       DBName: !Ref DatabaseName
       Engine: postgres
       EngineVersion: !Ref EngineVersion

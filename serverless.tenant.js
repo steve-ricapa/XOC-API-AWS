@@ -3,12 +3,21 @@ const { buildService, lambdaConfig, protectedRoute } = require('./serverless/ser
 module.exports = buildService({
   service: 'xoc-api-tenant',
   attachToSharedHttpApi: true,
-  iam: { database: true, vpc: true },
+  iam: { database: true, vpc: true, agentEncryption: true },
   functions: (stage) => ({
     tenantApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/tenant.handler',
       description: 'Tenant domain API',
       needsVpc: true,
+      include: [
+        'src/handlers/domains/tenant.py',
+        'src/handlers/routes/companies.py',
+        'src/handlers/routes/users.py',
+        'src/handlers/routes/audit.py',
+        'src/shared/**',
+        'src/persistence/**',
+        'requirements.txt',
+      ],
       events: [
         protectedRoute(stage, 'GET', '/tenant'),
         protectedRoute(stage, 'PUT', '/tenant'),

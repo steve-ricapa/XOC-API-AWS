@@ -50,6 +50,32 @@ module.exports = function sharedResources(stage) {
           },
         },
       },
+      JwtSecret: {
+        Type: 'AWS::SecretsManager::Secret',
+        Properties: {
+          Name: `xoc-api-shared-${stage}-jwt-secret`,
+          Description: 'JWT signing secret for XOC API',
+          GenerateSecretString: {
+            SecretStringTemplate: '{"secret":""}',
+            GenerateStringKey: 'secret',
+            PasswordLength: 64,
+            ExcludePunctuation: true,
+          },
+        },
+      },
+      AgentKeyEncryptionKeySecret: {
+        Type: 'AWS::SecretsManager::Secret',
+        Properties: {
+          Name: `xoc-api-shared-${stage}-agent-encryption-key`,
+          Description: 'Encryption key for agent keys and integration credentials',
+          GenerateSecretString: {
+            SecretStringTemplate: '{"key":""}',
+            GenerateStringKey: 'key',
+            PasswordLength: 44,
+            ExcludePunctuation: true,
+          },
+        },
+      },
     },
     Outputs: {
       HttpApiId: {
@@ -63,6 +89,12 @@ module.exports = function sharedResources(stage) {
       },
       JwtAuthorizerFunctionName: {
         Value: { Ref: 'JwtAuthorizerLambdaFunction' },
+      },
+      JwtSecretArn: {
+        Value: { Ref: 'JwtSecret' },
+      },
+      AgentKeyEncryptionKeySecretArn: {
+        Value: { Ref: 'AgentKeyEncryptionKeySecret' },
       },
     },
   };

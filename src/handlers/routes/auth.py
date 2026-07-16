@@ -1,13 +1,14 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
 from src.persistence.models import Tenant, User
 from src.shared.auth import create_access_token, create_refresh_token
+from src.shared.config import get_settings
 from src.shared.context import get_user_by_email, get_user_by_username, log_audit
-from src.shared.dependencies import get_current_user_id, require_refresh_claims
-from src.shared.errors import AppError, ConflictError, UnauthorizedError, ValidationError
+from src.shared.dependencies import get_current_user_id, get_request_event, require_refresh_claims
+from src.shared.errors import AppError, ConflictError, ForbiddenError, UnauthorizedError, ValidationError
 from src.shared.schemas import ErrorResponse, LoginRequest, LoginResponse, OnboardingTenantRequest, OnboardingTenantResponse, RefreshResponse, UserResponse, TenantResponse
 
 
@@ -74,7 +75,17 @@ def refresh_token(_: dict = Depends(require_refresh_claims), user_id: int = Depe
 
 
 @router.post("/onboarding/tenant", response_model=OnboardingTenantResponse, status_code=201)
-def create_tenant_with_admin(payload: OnboardingTenantRequest, session: Session = Depends(get_db_session)) -> OnboardingTenantResponse:
+def create_tenant_with_admin(payload: OnboardingTenantRequest, session: Session = Depends(get_db_session), request: Request = None) -> OnboardingTenantResponse:
+    settings = get_settings()
+    if not settings.public_registration_enabled:
+        event = get_request_event(request)
+        request_context = event.get("requestContext") or {}
+        authorizer = request_context.get("authorizer") or {}
+        claims = authorizer.get("lambda", authorizer) if isinstance(authorizer, dict) else {}
+        role = (claims.get("role") or "").upper()
+        if role != "SUPERADMIN":
+            raise ForbiddenError("Public registration is disabled. A superadmin token is required to create a new tenant.")
+
     name = payload.name.strip()
     admin_email = payload.admin_email.strip()
     admin_password = payload.admin_password

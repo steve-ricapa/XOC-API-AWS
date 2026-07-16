@@ -83,9 +83,11 @@ NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverl
 
 ## Network Expectations By Stage
 
-- `dev`, `staging`, and `prod` are expected to keep the same private-network topology.
+- `dev`, `staging`, and `prod` are expected to keep the same single-AZ app topology.
 - `xoc-api-auth`, `xoc-api-chat`, `xoc-api-ops`, `xoc-api-tenant`, and `xoc-api-admin` attach to VPC in every stage.
 - `xoc-api-shared` and `xoc-api-tickets` stay outside VPC in every stage.
+- App-tier Lambdas use a single private Lambda subnet per stage.
+- DB networking still preserves two private DB subnets because the current RDS VPC subnet group flow expects them.
 - Stage network stacks expected by the current stage files:
   - `xoc-infra-network-dev`
   - `xoc-infra-network-staging`

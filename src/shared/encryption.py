@@ -1,15 +1,28 @@
+import base64
 import json
 import os
 from typing import Optional
 
 from cryptography.fernet import Fernet
 
+from src.shared.config import get_secret_string
+
 
 def get_encryption_key() -> bytes:
+    arn = os.environ.get("AGENT_KEY_ENCRYPTION_KEY_ARN")
+    if arn:
+        secret = get_secret_string(arn)
+        try:
+            payload = json.loads(secret)
+            raw = payload.get("key") or secret
+        except json.JSONDecodeError:
+            raw = secret
+        return base64.urlsafe_b64encode(raw.encode("utf-8")[:32])
+
     key = os.environ.get("AGENT_KEY_ENCRYPTION_KEY")
     if not key:
         raise ValueError(
-            "AGENT_KEY_ENCRYPTION_KEY environment variable is required. "
+            "AGENT_KEY_ENCRYPTION_KEY or AGENT_KEY_ENCRYPTION_KEY_ARN is required. "
             "Generate one with Fernet.generate_key() for local use."
         )
     return key.encode("utf-8") if isinstance(key, str) else key

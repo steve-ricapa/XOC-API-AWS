@@ -12,13 +12,13 @@ from src.persistence.db import session_scope
 from src.persistence.models import (
     AgentApiKey,
     Alert,
-    Company,
     Integration,
     ScanFinding,
     ScanNocEvent,
     ScanSummary,
     ScanSummaryNoc,
     System,
+    Tenant,
     Ticket,
     User,
     Vulnerability,
@@ -55,35 +55,35 @@ def _agent_name(provider: str) -> str:
     }[provider]
 
 
-def _cleanup_company_demo_data(session: Session, company_id: int) -> None:
-    soc_ids = list(session.scalars(select(ScanSummary.id).where(ScanSummary.company_id == company_id, ScanSummary.scanner_type.in_(SOC_PROVIDERS))))
-    noc_ids = list(session.scalars(select(ScanSummaryNoc.id).where(ScanSummaryNoc.company_id == company_id, ScanSummaryNoc.scanner_type.in_(NOC_PROVIDERS))))
+def _cleanup_tenant_demo_data(session: Session, tenant_id: int) -> None:
+    soc_ids = list(session.scalars(select(ScanSummary.id).where(ScanSummary.tenant_id == tenant_id, ScanSummary.scanner_type.in_(SOC_PROVIDERS))))
+    noc_ids = list(session.scalars(select(ScanSummaryNoc.id).where(ScanSummaryNoc.tenant_id == tenant_id, ScanSummaryNoc.scanner_type.in_(NOC_PROVIDERS))))
     if soc_ids:
         session.execute(delete(ScanFinding).where(ScanFinding.scan_summary_id.in_(soc_ids)))
     if noc_ids:
         session.execute(delete(ScanNocEvent).where(ScanNocEvent.scan_summary_noc_id.in_(noc_ids)))
-    session.execute(delete(ScanSummary).where(ScanSummary.company_id == company_id, ScanSummary.scanner_type.in_(SOC_PROVIDERS)))
-    session.execute(delete(ScanSummaryNoc).where(ScanSummaryNoc.company_id == company_id, ScanSummaryNoc.scanner_type.in_(NOC_PROVIDERS)))
+    session.execute(delete(ScanSummary).where(ScanSummary.tenant_id == tenant_id, ScanSummary.scanner_type.in_(SOC_PROVIDERS)))
+    session.execute(delete(ScanSummaryNoc).where(ScanSummaryNoc.tenant_id == tenant_id, ScanSummaryNoc.scanner_type.in_(NOC_PROVIDERS)))
 
-    integration_ids = list(session.scalars(select(Integration.id).where(Integration.company_id == company_id, Integration.provider.in_(ALL_PROVIDERS))))
+    integration_ids = list(session.scalars(select(Integration.id).where(Integration.tenant_id == tenant_id, Integration.provider.in_(ALL_PROVIDERS))))
     if integration_ids:
-        session.execute(delete(System).where(System.company_id == company_id, System.integration_id.in_(integration_ids)))
-        session.execute(delete(Alert).where(Alert.company_id == company_id, Alert.integration_id.in_(integration_ids)))
-        session.execute(delete(Vulnerability).where(Vulnerability.company_id == company_id, Vulnerability.integration_id.in_(integration_ids)))
-    session.execute(delete(Ticket).where(Ticket.company_id == company_id, Ticket.subject.like("Demo %")))
-    session.execute(delete(AgentApiKey).where(AgentApiKey.company_id == company_id, AgentApiKey.integration_type.in_(ALL_PROVIDERS)))
-    session.execute(delete(Integration).where(Integration.company_id == company_id, Integration.provider.in_(ALL_PROVIDERS)))
+        session.execute(delete(System).where(System.tenant_id == tenant_id, System.integration_id.in_(integration_ids)))
+        session.execute(delete(Alert).where(Alert.tenant_id == tenant_id, Alert.integration_id.in_(integration_ids)))
+        session.execute(delete(Vulnerability).where(Vulnerability.tenant_id == tenant_id, Vulnerability.integration_id.in_(integration_ids)))
+    session.execute(delete(Ticket).where(Ticket.tenant_id == tenant_id, Ticket.subject.like("Demo %")))
+    session.execute(delete(AgentApiKey).where(AgentApiKey.tenant_id == tenant_id, AgentApiKey.integration_type.in_(ALL_PROVIDERS)))
+    session.execute(delete(Integration).where(Integration.tenant_id == tenant_id, Integration.provider.in_(ALL_PROVIDERS)))
     session.flush()
 
 
-def _create_integrations(session: Session, company_id: int) -> dict[str, Integration]:
+def _create_integrations(session: Session, tenant_id: int) -> dict[str, Integration]:
     integrations: dict[str, Integration] = {}
     for provider in ALL_PROVIDERS:
         credentials_encrypted = None
         if os.environ.get("AGENT_KEY_ENCRYPTION_KEY"):
             credentials_encrypted = encrypt_credentials(_credential_payload(provider))
         integration = Integration(
-            company_id=company_id,
+            tenant_id=tenant_id,
             provider=provider,
             type=provider,
             credentials_encrypted=credentials_encrypted,
@@ -95,13 +95,13 @@ def _create_integrations(session: Session, company_id: int) -> dict[str, Integra
     return integrations
 
 
-def _create_agent_keys(session: Session, company_id: int) -> dict[str, AgentApiKey]:
+def _create_agent_keys(session: Session, tenant_id: int) -> dict[str, AgentApiKey]:
     agent_keys: dict[str, AgentApiKey] = {}
     for index, provider in enumerate(ALL_PROVIDERS, start=1):
         access_key = generate_access_key(40)
         encrypted = encrypt_agent_key(access_key) if os.environ.get("AGENT_KEY_ENCRYPTION_KEY") else None
         agent_key = AgentApiKey(
-            company_id=company_id,
+            tenant_id=tenant_id,
             name=_agent_name(provider),
             integration_type=provider,
             api_key_hash=hash_access_key(access_key),
@@ -115,7 +115,7 @@ def _create_agent_keys(session: Session, company_id: int) -> dict[str, AgentApiK
     return agent_keys
 
 
-def _seed_soc_scans(session: Session, company_id: int, provider: str, agent_key: AgentApiKey, rng: random.Random) -> None:
+def _seed_soc_scans(session: Session, tenant_id: int, provider: str, agent_key: AgentApiKey, rng: random.Random) -> None:
     base_time = _now() - timedelta(days=30)
     for day in range(12):
         scanned_at = base_time + timedelta(days=day * 2, hours=rng.randint(0, 20))
@@ -126,7 +126,7 @@ def _seed_soc_scans(session: Session, company_id: int, provider: str, agent_key:
         info = rng.randint(2, 10)
         total_hosts = rng.randint(8, 28)
         scan = ScanSummary(
-            company_id=company_id,
+            tenant_id=tenant_id,
             agent_api_key_id=agent_key.id,
             scan_id=f"{provider}-scan-{day + 1:03d}",
             scanner_type=provider,
@@ -176,7 +176,7 @@ def _seed_soc_scans(session: Session, company_id: int, provider: str, agent_key:
             session.add(finding)
 
 
-def _seed_noc_scans(session: Session, company_id: int, provider: str, agent_key: AgentApiKey, rng: random.Random) -> None:
+def _seed_noc_scans(session: Session, tenant_id: int, provider: str, agent_key: AgentApiKey, rng: random.Random) -> None:
     base_time = _now() - timedelta(days=30)
     for day in range(12):
         scanned_at = base_time + timedelta(days=day * 2, hours=rng.randint(0, 20))
@@ -214,7 +214,7 @@ def _seed_noc_scans(session: Session, company_id: int, provider: str, agent_key:
                 "avg_response_time_ms": rng.randint(82, 210),
             }
         scan = ScanSummaryNoc(
-            company_id=company_id,
+            tenant_id=tenant_id,
             agent_api_key_id=agent_key.id,
             scan_id=f"{provider}-scan-{day + 1:03d}",
             scanner_type=provider,
@@ -256,13 +256,13 @@ def _seed_noc_scans(session: Session, company_id: int, provider: str, agent_key:
             session.add(event)
 
 
-def _seed_systems_alerts_vulns_tickets(session: Session, company: Company, admin_user: User, integrations: dict[str, Integration], rng: random.Random) -> None:
+def _seed_systems_alerts_vulns_tickets(session: Session, tenant: Tenant, admin_user: User, integrations: dict[str, Integration], rng: random.Random) -> None:
     for provider, integration in integrations.items():
         total = 4 if provider in {"zabbix", "uptime_kuma"} else 3
         for idx in range(1, total + 1):
             session.add(
                 System(
-                    company_id=company.id,
+                    tenant_id=tenant.id,
                     integration_id=integration.id,
                     name=f"{provider}-system-{idx:02d}",
                     type="server",
@@ -276,7 +276,7 @@ def _seed_systems_alerts_vulns_tickets(session: Session, company: Company, admin
         provider = rng.choice(["wazuh", "zabbix", "uptime_kuma"])
         session.add(
             Alert(
-                company_id=company.id,
+                tenant_id=tenant.id,
                 integration_id=integrations[provider].id,
                 external_id=f"alert-{provider}-{idx:03d}",
                 title=f"Demo {provider} alert {idx}",
@@ -294,7 +294,7 @@ def _seed_systems_alerts_vulns_tickets(session: Session, company: Company, admin
         provider = rng.choice(vuln_providers)
         session.add(
             Vulnerability(
-                company_id=company.id,
+                tenant_id=tenant.id,
                 integration_id=integrations[provider].id,
                 cve_id=f"CVE-2026-{2000 + idx}",
                 title=f"Demo vulnerability {idx}",
@@ -312,7 +312,7 @@ def _seed_systems_alerts_vulns_tickets(session: Session, company: Company, admin
     for idx in range(1, 9):
         session.add(
             Ticket(
-                company_id=company.id,
+                tenant_id=tenant.id,
                 created_by_user_id=admin_user.id,
                 subject=f"Demo ticket {idx}",
                 description="Synthetic ticket for dashboard and workflow demos.",
@@ -325,38 +325,38 @@ def _seed_systems_alerts_vulns_tickets(session: Session, company: Company, admin
         )
 
 
-def seed_company(company_id: int, random_seed: int = 20260620) -> None:
+def seed_tenant(tenant_id: int, random_seed: int = 20260620) -> None:
     rng = random.Random(random_seed)
     with session_scope() as session:
-        company = session.get(Company, company_id)
-        if not company:
-            raise ValueError(f"Company {company_id} not found")
-        admin_user = session.scalar(select(User).where(User.company_id == company_id).order_by(User.id.asc()))
+        tenant = session.get(Tenant, tenant_id)
+        if not tenant:
+            raise ValueError(f"Tenant {tenant_id} not found")
+        admin_user = session.scalar(select(User).where(User.tenant_id == tenant_id).order_by(User.id.asc()))
         if not admin_user:
-            raise ValueError(f"Company {company_id} has no users")
+            raise ValueError(f"Tenant {tenant_id} has no users")
 
-        _cleanup_company_demo_data(session, company_id)
-        integrations = _create_integrations(session, company_id)
-        agent_keys = _create_agent_keys(session, company_id)
+        _cleanup_tenant_demo_data(session, tenant_id)
+        integrations = _create_integrations(session, tenant_id)
+        agent_keys = _create_agent_keys(session, tenant_id)
 
         for provider in SOC_PROVIDERS:
-            _seed_soc_scans(session, company_id, provider, agent_keys[provider], rng)
+            _seed_soc_scans(session, tenant_id, provider, agent_keys[provider], rng)
         for provider in NOC_PROVIDERS:
-            _seed_noc_scans(session, company_id, provider, agent_keys[provider], rng)
+            _seed_noc_scans(session, tenant_id, provider, agent_keys[provider], rng)
 
-        _seed_systems_alerts_vulns_tickets(session, company, admin_user, integrations, rng)
+        _seed_systems_alerts_vulns_tickets(session, tenant, admin_user, integrations, rng)
 
-        print(f"Seed completed for company_id={company_id}")
+        print(f"Seed completed for tenant_id={tenant_id}")
         print(f"Integrations created: {len(integrations)}")
         print(f"Agent keys created: {len(agent_keys)}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Seed demo company data for dashboards and summaries")
-    parser.add_argument("--company-id", type=int, required=True)
+    parser = argparse.ArgumentParser(description="Seed demo tenant data for dashboards and summaries")
+    parser.add_argument("--tenant-id", type=int, required=True, dest="tenant_id")
     parser.add_argument("--seed", type=int, default=20260620)
     args = parser.parse_args()
-    seed_company(args.company_id, args.seed)
+    seed_tenant(args.tenant_id, args.seed)
 
 
 if __name__ == "__main__":

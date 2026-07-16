@@ -23,6 +23,7 @@ function commonEnvironment(stage) {
     POWERTOOLS_METRICS_NAMESPACE: 'XOC/API',
     JWT_SECRET_KEY: stageRef(stage, 'jwtSecretKey'),
     JWT_SECRET_KEY_SSM_PATH: stageRef(stage, 'jwtSecretKeySsmPath'),
+    JWT_SECRET_ARN: stageRef(stage, 'jwtSecretArn'),
     DATABASE_SECRET_ARN: stageRef(stage, 'databaseSecretArn'),
     SNAPSHOTS_BUCKET_NAME: stageRef(stage, 'snapshotsBucketName'),
     CORS_ALLOWED_ORIGINS: stageRef(stage, 'corsAllowedOriginsCsv'),
@@ -34,6 +35,8 @@ function commonEnvironment(stage) {
     EVENT_BUS_NAME: `xoc-api-tickets-${stage}-bus`,
     TICKETS_TABLE_NAME: `xoc-api-tickets-${stage}-tickets`,
     AGENT_KEY_ENCRYPTION_KEY: "${env:AGENT_KEY_ENCRYPTION_KEY, ''}",
+    AGENT_KEY_ENCRYPTION_KEY_ARN: stageRef(stage, 'agentKeyEncryptionKeyArn'),
+    PUBLIC_REGISTRATION_ENABLED: stageRef(stage, 'publicRegistrationEnabled'),
   };
 }
 
@@ -64,11 +67,13 @@ function iamStatements(stage, capabilities = {}) {
   const statements = [];
   const relaxed = isRelaxedStage(stage);
 
-  statements.push({
-    Effect: 'Allow',
-    Action: ['ssm:GetParameter'],
-    Resource: '*',
-  });
+  if (relaxed) {
+    statements.push({
+      Effect: 'Allow',
+      Action: ['ssm:GetParameter'],
+      Resource: '*',
+    });
+  }
 
   if (capabilities.database) {
     statements.push({
@@ -115,6 +120,20 @@ function iamStatements(stage, capabilities = {}) {
       Resource: relaxed ? '*' : [`arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:stateMachine:xoc-api-tickets-${stage}-ticket-workflow`],
     });
   }
+  if (capabilities.jwt) {
+    statements.push({
+      Effect: 'Allow',
+      Action: ['secretsmanager:GetSecretValue'],
+      Resource: relaxed ? '*' : [stageRef(stage, 'jwtSecretArn')],
+    });
+  }
+  if (capabilities.agentEncryption) {
+    statements.push({
+      Effect: 'Allow',
+      Action: ['secretsmanager:GetSecretValue'],
+      Resource: relaxed ? '*' : [stageRef(stage, 'agentKeyEncryptionKeyArn')],
+    });
+  }
   if (capabilities.vpc) {
     statements.push({
       Effect: 'Allow',
@@ -159,7 +178,7 @@ function lambdaConfig(stage, config) {
     memorySize: config.memorySize || 512,
     timeout: config.timeout || 20,
     package: {
-      patterns: ['src/**', 'requirements.txt'],
+      patterns: config.include || ['src/**', 'requirements.txt'],
     },
   };
   if (config.events) {

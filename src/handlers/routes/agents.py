@@ -19,7 +19,7 @@ router = APIRouter(prefix="/agents", tags=["agents"])
 RUNTIME_SETTINGS_MISSING_MESSAGE = "Runtime settings not configured for this tenant"
 
 
-def get_company_runtime_settings(session: Session, tenant_id: int) -> TenantRuntimeSettings | None:
+def get_tenant_runtime_settings(session: Session, tenant_id: int) -> TenantRuntimeSettings | None:
     return session.scalar(
         select(TenantRuntimeSettings).where(
             TenantRuntimeSettings.tenant_id == tenant_id,
@@ -45,7 +45,7 @@ def authenticate_agent_from_user(
 ) -> dict:
     agent_type = (payload or {}).get("agentType", "SOPHIA")
 
-    runtime_settings = get_company_runtime_settings(session, current_user.tenant_id)
+    runtime_settings = get_tenant_runtime_settings(session, current_user.tenant_id)
     if not runtime_settings:
         raise UnauthorizedError(RUNTIME_SETTINGS_MISSING_MESSAGE)
 

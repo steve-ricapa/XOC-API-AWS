@@ -3,12 +3,19 @@ const { buildService, lambdaConfig, protectedRoute, publicRoute } = require('./s
 module.exports = buildService({
   service: 'xoc-api-ops',
   attachToSharedHttpApi: true,
-  iam: { database: true, snapshots: true, vpc: true },
+  iam: { database: true, snapshots: true, vpc: true, agentEncryption: true },
   functions: (stage) => ({
     scansApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/scans.handler',
       description: 'Scans domain API',
       needsVpc: true,
+      include: [
+        'src/handlers/domains/scans.py',
+        'src/handlers/routes/scans.py',
+        'src/shared/**',
+        'src/persistence/**',
+        'requirements.txt',
+      ],
       events: [
         publicRoute('POST', '/scans/ingest'),
         protectedRoute(stage, 'GET', '/scans'),
@@ -33,6 +40,14 @@ module.exports = buildService({
       handler: 'src/handlers/domains/integrations.handler',
       description: 'Integrations domain API',
       needsVpc: true,
+      include: [
+        'src/handlers/domains/integrations.py',
+        'src/handlers/routes/integrations.py',
+        'src/shared/**',
+        'src/persistence/**',
+        'src/integrations/**',
+        'requirements.txt',
+      ],
       events: [
         protectedRoute(stage, 'GET', '/integrations'),
         protectedRoute(stage, 'POST', '/integrations'),
@@ -52,6 +67,16 @@ module.exports = buildService({
       handler: 'src/handlers/domains/security_ops.handler',
       description: 'Security operations domain API',
       needsVpc: true,
+      include: [
+        'src/handlers/domains/security_ops.py',
+        'src/handlers/routes/alerts.py',
+        'src/handlers/routes/analytics.py',
+        'src/handlers/routes/systems.py',
+        'src/handlers/routes/vulnerabilities.py',
+        'src/shared/**',
+        'src/persistence/**',
+        'requirements.txt',
+      ],
       events: [
         protectedRoute(stage, 'GET', '/alerts/active'),
         protectedRoute(stage, 'POST', '/alerts/{alertId}/resolve'),

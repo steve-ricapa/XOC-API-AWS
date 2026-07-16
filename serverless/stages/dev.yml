@@ -6,20 +6,22 @@ corsAllowedOrigins:
   - http://localhost:5173
   - http://localhost:5000
 corsAllowedOriginsCsv: http://localhost:3000,http://localhost:5173,http://localhost:5000
-jwtSecretKey: xoc-demo-dev-jwt-secret-change-me
+jwtSecretKey: ""
 jwtSecretKeySsmPath: ""
+jwtSecretArn: ${cf:xoc-api-shared-dev.JwtSecretArn}
+agentKeyEncryptionKeyArn: ${cf:xoc-api-shared-dev.AgentKeyEncryptionKeySecretArn}
 agentsFunctionBaseUrl: ""
 agentsFunctionRouteSophia: /api/agents/SophiaDurableAgent/run
 agentsFunctionRouteSophiaHistory: /api/agents/SophiaDurableAgent/history
 agentsFunctionRouteSophiaDelete: /api/agents/SophiaDurableAgent/threads
 agentsFunctionRouteVictor: /api/agents/VictorDurableAgent/run
-databaseSecretArn: arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:xoc/api/dev/database
-snapshotsBucketName: xoc-dev-snapshots-placeholder
-snapshotsBucketArn: arn:aws:s3:::xoc-dev-snapshots-placeholder
+databaseSecretArn: ${cf:xoc-infra-data-dev.DatabaseSecretArn}
+snapshotsBucketName: ${cf:xoc-infra-storage-dev.SnapshotsBucketName}
+snapshotsBucketArn: ${cf:xoc-infra-storage-dev.SnapshotsBucketArn}
 ticketsPointInTimeRecoveryEnabled: false
+publicRegistrationEnabled: "true"
 apiVpc:
   securityGroupIds:
     - ${cf:xoc-infra-network-dev.LambdaSecurityGroupId}
   subnetIds:
     - ${cf:xoc-infra-network-dev.LambdaPrivateSubnetAId}
-    - ${cf:xoc-infra-network-dev.LambdaPrivateSubnetBId}

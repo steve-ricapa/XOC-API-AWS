@@ -200,7 +200,7 @@ def list_chat_sessions(current_user=Depends(get_current_user), db_session: Sessi
 def chat_history(
     current_user=Depends(get_current_user),
     db_session: Session = Depends(get_db_session),
-    companyId: str = None,
+    tenantId: str = None,
     session_id: str = None,
     sessionId: str = None,
     thread_id: str = None,
@@ -211,7 +211,7 @@ def chat_history(
     if _is_demo_tenant(current_user, db_session):
         raise ValidationError("Chat history is disabled in demo mode")
 
-    tenant_id = companyId or current_user.tenant_id
+    tenant_id = tenantId or current_user.tenant_id
     resolved_session_id = session_id or sessionId
     resolved_thread_id = thread_id or threadId
 
@@ -341,7 +341,7 @@ def proxy_chat(
     if not message:
         raise ValidationError("Missing required field: message")
 
-    tenant_id = payload.get("companyId") or current_user.tenant_id
+    tenant_id = payload.get("tenantId") or current_user.tenant_id
     demo_mode = _is_demo_tenant(current_user, db_session)
 
     runtime_settings = _resolve_agent_routes(db_session, int(tenant_id))

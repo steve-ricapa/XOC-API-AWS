@@ -9,6 +9,12 @@ module.exports = buildService({
     ticketsDynamoApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/tickets_dynamo.handler',
       description: 'Tickets domain API (DynamoDB-backed)',
+      include: [
+        'src/handlers/domains/tickets_dynamo.py',
+        'src/shared/**',
+        'src/persistence/**',
+        'requirements.txt',
+      ],
       events: [
         protectedRoute(stage, 'GET', '/tickets'),
         protectedRoute(stage, 'POST', '/tickets'),

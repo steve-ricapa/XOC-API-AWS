@@ -45,7 +45,7 @@ def _severity_counts(provider: str, index: int) -> dict:
     }
 
 
-def _build_scan(provider: str, index: int, company_id: int | None) -> dict:
+def _build_scan(provider: str, index: int, tenant_id: int | None) -> dict:
     config = DEMO_PROVIDERS.get(provider, DEMO_PROVIDERS["other"])
     base_time = _base_time() - timedelta(hours=index * 6)
     counts = _severity_counts(provider, index)
@@ -55,7 +55,7 @@ def _build_scan(provider: str, index: int, company_id: int | None) -> dict:
 
     return {
         "id": config["base_id"] + index,
-        "company_id": company_id or 0,
+        "tenant_id": tenant_id or 0,
         "agent_api_key_id": None,
         "scan_id": scan_id,
         "scanner_type": provider,
@@ -74,21 +74,21 @@ def _build_scan(provider: str, index: int, company_id: int | None) -> dict:
     }
 
 
-def demo_scans(scanner_type: str | None, days: int, limit: int, company_id: int | None) -> dict:
+def demo_scans(scanner_type: str | None, days: int, limit: int, tenant_id: int | None) -> dict:
     providers = [scanner_type] if scanner_type else list(DEMO_PROVIDERS.keys())
     scans = []
     for provider in providers:
         if provider not in DEMO_PROVIDERS:
             continue
         for idx in range(3):
-            scans.append(_build_scan(provider, idx, company_id))
+            scans.append(_build_scan(provider, idx, tenant_id))
     scans.sort(key=lambda item: item.get("scanned_at") or "", reverse=True)
     scans = scans[:limit]
     return {"scans": scans, "count": len(scans), "period_days": days}
 
 
-def demo_latest_scans(scanner_type: str | None, days: int, company_id: int | None) -> dict:
-    data = demo_scans(scanner_type, days, limit=50, company_id=company_id)
+def demo_latest_scans(scanner_type: str | None, days: int, tenant_id: int | None) -> dict:
+    data = demo_scans(scanner_type, days, limit=50, tenant_id=tenant_id)
     scans = data["scans"]
     totals = {
         "critical": sum(item.get("critical_count", 0) for item in scans),
@@ -107,10 +107,10 @@ def demo_latest_scans(scanner_type: str | None, days: int, company_id: int | Non
     }
 
 
-def demo_scan(scan_summary_id: int, company_id: int | None) -> dict | None:
+def demo_scan(scan_summary_id: int, tenant_id: int | None) -> dict | None:
     for provider in DEMO_PROVIDERS:
         for idx in range(3):
-            scan = _build_scan(provider, idx, company_id)
+            scan = _build_scan(provider, idx, tenant_id)
             if scan["id"] == scan_summary_id:
                 return scan
     return None
@@ -153,8 +153,8 @@ def demo_scanner_analytics(scanner_type: str) -> dict:
     return {"success": True, "scanner_type": scanner_type, "topCVEs": top_cves, "trend_7_days": trend_7_days, "hostDistribution": host_distribution, "recentFindings": recent_findings, "agentInfo": {"name": f"{scanner_type.upper()}-DEMO", "lastUsed": _base_time().isoformat()}}
 
 
-def demo_scans_summary(days: int, company_id: int | None) -> dict:
-    data = demo_scans(None, days, limit=20, company_id=company_id)
+def demo_scans_summary(days: int, tenant_id: int | None) -> dict:
+    data = demo_scans(None, days, limit=20, tenant_id=tenant_id)
     scans = data["scans"]
     totals = {
         "critical": sum(item.get("critical_count", 0) for item in scans),

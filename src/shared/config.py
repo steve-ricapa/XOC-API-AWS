@@ -13,6 +13,7 @@ class Settings:
     app_stage: str
     app_region: str
     jwt_secret_key_ssm_path: str | None
+    jwt_secret_arn: str | None
     database_secret_arn: str | None
     database_url_ssm_path: str | None
     snapshots_bucket_name: str | None
@@ -24,6 +25,7 @@ class Settings:
     agents_function_route_sophia_delete: str | None
     agents_function_route_victor: str | None
     enable_api_docs: bool
+    public_registration_enabled: bool
 
 
 def _split_csv(value: str | None) -> list[str]:
@@ -39,6 +41,7 @@ def get_settings() -> Settings:
         app_stage=app_stage,
         app_region=os.environ.get("APP_REGION", "us-east-1"),
         jwt_secret_key_ssm_path=os.environ.get("JWT_SECRET_KEY_SSM_PATH"),
+        jwt_secret_arn=os.environ.get("JWT_SECRET_ARN"),
         database_secret_arn=os.environ.get("DATABASE_SECRET_ARN"),
         database_url_ssm_path=os.environ.get("DATABASE_URL_SSM_PATH"),
         snapshots_bucket_name=os.environ.get("SNAPSHOTS_BUCKET_NAME"),
@@ -50,6 +53,7 @@ def get_settings() -> Settings:
         agents_function_route_sophia_delete=os.environ.get("AGENTS_FUNCTION_ROUTE_SOPHIA_DELETE"),
         agents_function_route_victor=os.environ.get("AGENTS_FUNCTION_ROUTE_VICTOR"),
         enable_api_docs=app_stage not in {"prod"},
+        public_registration_enabled=os.environ.get("PUBLIC_REGISTRATION_ENABLED", "true").strip().lower() in ("true", "1", "yes"),
     )
 
 
@@ -94,14 +98,24 @@ def get_database_url() -> str | None:
 
 
 def get_jwt_secret_key() -> str:
+    settings = get_settings()
+
+    if settings.jwt_secret_arn:
+        secret = get_secret_string(settings.jwt_secret_arn)
+        try:
+            payload = json.loads(secret)
+            return payload.get("secret") or secret
+        except json.JSONDecodeError:
+            return secret
+
     direct_secret = os.environ.get("JWT_SECRET_KEY")
     if direct_secret:
         return direct_secret
 
-    settings = get_settings()
-    if not settings.jwt_secret_key_ssm_path:
-        raise ConfigurationError("JWT secret source is not configured")
-    return get_ssm_parameter(settings.jwt_secret_key_ssm_path)
+    if settings.jwt_secret_key_ssm_path:
+        return get_ssm_parameter(settings.jwt_secret_key_ssm_path)
+
+    raise ConfigurationError("JWT secret source is not configured")
 
 
 def get_snapshots_bucket_name() -> str:

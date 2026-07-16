@@ -4,20 +4,22 @@ logRetentionInDays: 30
 corsAllowedOrigins:
   - https://staging.example.com
 corsAllowedOriginsCsv: https://staging.example.com
-jwtSecretKey: xoc-demo-staging-jwt-secret-change-me
+jwtSecretKey: ""
 jwtSecretKeySsmPath: ""
+jwtSecretArn: ${cf:xoc-api-shared-staging.JwtSecretArn}
+agentKeyEncryptionKeyArn: ${cf:xoc-api-shared-staging.AgentKeyEncryptionKeySecretArn}
 agentsFunctionBaseUrl: ""
 agentsFunctionRouteSophia: /api/agents/SophiaDurableAgent/run
 agentsFunctionRouteSophiaHistory: /api/agents/SophiaDurableAgent/history
 agentsFunctionRouteSophiaDelete: /api/agents/SophiaDurableAgent/threads
 agentsFunctionRouteVictor: /api/agents/VictorDurableAgent/run
-databaseSecretArn: arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:xoc/api/staging/database
-snapshotsBucketName: xoc-staging-snapshots-placeholder
-snapshotsBucketArn: arn:aws:s3:::xoc-staging-snapshots-placeholder
+databaseSecretArn: ${cf:xoc-infra-data-staging.DatabaseSecretArn}
+snapshotsBucketName: ${cf:xoc-infra-storage-staging.SnapshotsBucketName}
+snapshotsBucketArn: ${cf:xoc-infra-storage-staging.SnapshotsBucketArn}
 ticketsPointInTimeRecoveryEnabled: false
+publicRegistrationEnabled: "false"
 apiVpc:
   securityGroupIds:
     - ${cf:xoc-infra-network-staging.LambdaSecurityGroupId}
   subnetIds:
     - ${cf:xoc-infra-network-staging.LambdaPrivateSubnetAId}
-    - ${cf:xoc-infra-network-staging.LambdaPrivateSubnetBId}

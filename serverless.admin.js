@@ -3,12 +3,20 @@ const { buildService, lambdaConfig, protectedRoute } = require('./serverless/ser
 module.exports = buildService({
   service: 'xoc-api-admin',
   attachToSharedHttpApi: true,
-  iam: { database: true, vpc: true },
+  iam: { database: true, vpc: true, agentEncryption: true, dynamo: true },
   functions: (stage) => ({
     adminApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/admin.handler',
       description: 'Admin & Superadmin domain API',
       needsVpc: true,
+      include: [
+        'src/handlers/domains/admin.py',
+        'src/handlers/routes/admin.py',
+        'src/handlers/routes/superadmin.py',
+        'src/shared/**',
+        'src/persistence/**',
+        'requirements.txt',
+      ],
       events: [
         protectedRoute(stage, 'POST', '/admin/agent-instances'),
         protectedRoute(stage, 'GET', '/admin/agent-instances'),

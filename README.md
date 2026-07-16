@@ -72,13 +72,19 @@ Notas operativas de prod:
 
 ## Topologia de stages
 
-`dev`, `staging` y `prod` deben mantener la misma topologia base:
+`dev`, `staging` y `prod` mantienen la misma topologia base:
 
-- VPC privada para servicios que usan RDS privado
-- NAT para salida a internet desde subnets privadas
-- subnets privadas Lambda en 2 AZ
+- app tier en 1 AZ
+- una subnet publica
+- una subnet privada Lambda
+- un NAT Gateway
 - `jwtAuthorizer` fuera de VPC
 - `tickets` fuera de VPC
+
+Restriccion importante:
+
+- RDS administrado en VPC sigue conservando dos subnets privadas de DB por compatibilidad con `DBSubnetGroup`.
+- Eso no significa HA regional ni HA completa. Solo evita romper el despliegue de RDS.
 
 Stacks de red esperados:
 

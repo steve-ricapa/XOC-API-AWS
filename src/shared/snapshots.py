@@ -23,14 +23,14 @@ def build_snapshot_checksum(payload: dict[str, Any]) -> tuple[str, bytes]:
     return hashlib.sha256(raw_bytes).hexdigest(), raw_bytes
 
 
-def build_snapshot_s3_key(*, company_id: int, provider: str, snapshot_type: str, captured_at: datetime | None = None, snapshot_id: str | None = None) -> str:
+def build_snapshot_s3_key(*, tenant_id: int, provider: str, snapshot_type: str, captured_at: datetime | None = None, snapshot_id: str | None = None) -> str:
     timestamp = captured_at or datetime.utcnow()
     normalized_provider = (provider or "unknown").strip().lower().replace(" ", "_")
     normalized_type = (snapshot_type or "snapshot").strip().lower().replace(" ", "_")
     unique_id = snapshot_id or str(uuid.uuid4())
     stage = get_settings().app_stage
     return (
-        f"{stage}/company/{company_id}/provider/{normalized_provider}/"
+        f"{stage}/tenant/{tenant_id}/provider/{normalized_provider}/"
         f"type/{normalized_type}/{timestamp:%Y/%m/%d}/{unique_id}.json"
     )
 
@@ -53,7 +53,7 @@ def fetch_snapshot_payload(*, key: str) -> dict[str, Any]:
 
 @dataclass(frozen=True)
 class SnapshotArtifactInput:
-    company_id: int
+    tenant_id: int
     provider: str
     snapshot_type: str
     domain: str
@@ -73,7 +73,7 @@ class SnapshotArtifactInput:
 def store_snapshot_artifact(*, session: Session, payload: dict[str, Any], artifact_input: SnapshotArtifactInput, existing_artifact: SnapshotArtifact | None = None) -> SnapshotArtifact:
     bucket_name = get_snapshots_bucket_name()
     key = existing_artifact.s3_key if existing_artifact else build_snapshot_s3_key(
-        company_id=artifact_input.company_id,
+        tenant_id=artifact_input.tenant_id,
         provider=artifact_input.provider,
         snapshot_type=artifact_input.snapshot_type,
         captured_at=artifact_input.captured_at,
@@ -81,7 +81,7 @@ def store_snapshot_artifact(*, session: Session, payload: dict[str, Any], artifa
     checksum, size_bytes = upload_snapshot_payload(key=key, payload=payload)
 
     artifact = existing_artifact or SnapshotArtifact(
-        company_id=artifact_input.company_id,
+        tenant_id=artifact_input.tenant_id,
         integration_id=artifact_input.integration_id,
         provider=artifact_input.provider,
         snapshot_type=artifact_input.snapshot_type,
