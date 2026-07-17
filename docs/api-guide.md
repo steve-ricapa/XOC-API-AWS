@@ -361,6 +361,29 @@ Authorization: Bearer <token>
 
 ---
 
+### Dashboard
+
+| Método | Path                               | Auth | Descripción                                      |
+|--------|------------------------------------|------|--------------------------------------------------|
+| GET    | `/dashboard/home`                  | PROT | Pantalla principal consolidada del tenant        |
+| GET    | `/dashboard/providers/{provider}`  | PROT | Pantalla por proveedor/integración operativa     |
+
+Notas:
+
+- `provider` soportado: `openvas`, `insightvm`, `nessus`, `wazuh`, `zabbix`, `uptime_kuma`.
+- `GET /dashboard/providers/{provider}` acepta `preset`, `from`, `to` para filtros temporales.
+- `recent_findings` ya incluye `id`, `domain`, `scan_id`, `scan_summary_soc_id`, `scan_summary_noc_id` para navegación del frontend.
+
+---
+
+### Findings
+
+| Método | Path                     | Auth | Descripción                          |
+|--------|--------------------------|------|--------------------------------------|
+| GET    | `/findings/{findingId}`  | PROT | Obtener detalle puntual de hallazgo  |
+
+---
+
 ### Alerts
 
 | Método | Path                      | Auth | Descripción                          |
@@ -398,6 +421,22 @@ Authorization: Bearer <token>
 | GET    | `/vulnerabilities`               | PROT | Listar vulnerabilidades (filtros: status, severity) |
 | GET    | `/vulnerabilities/{vulnId}`      | PROT | Obtener vulnerabilidad               |
 | POST   | `/vulnerabilities/{vulnId}/patch`| PROT | Iniciar parche (status → "patching") |
+
+---
+
+### Reports
+
+| Método | Path                    | Auth | Descripción                                  |
+|--------|-------------------------|------|----------------------------------------------|
+| POST   | `/reports`              | PROT | Solicitar generación asíncrona de reporte    |
+| GET    | `/reports`              | PROT | Listar reportes del tenant                   |
+| GET    | `/reports/{reportId}`   | PROT | Consultar estado y obtener URL de descarga   |
+
+Respuesta esperada:
+
+- `POST /reports` responde `202` con `reportId` y `status=PENDING`.
+- `GET /reports/{reportId}` devuelve `PENDING`, `PROCESSING`, `COMPLETED` o `FAILED`.
+- En `COMPLETED`, incluye `downloadUrl` temporal.
 
 ---
 
