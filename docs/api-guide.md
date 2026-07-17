@@ -591,6 +591,23 @@ Respuesta esperada:
 
 ---
 
+### XOC Ops
+
+Endpoints internos para operación cross-tenant de `ADMIN_XOC` y `SUPERADMIN`.
+
+| Método | Path                            | Auth                    | Descripción                                      |
+|--------|---------------------------------|-------------------------|--------------------------------------------------|
+| GET    | `/xoc-ops/clients`              | ADMIN_XOC / SUPERADMIN  | Lista de tenants con metadata operativa resumida |
+| GET    | `/xoc-ops/kpis`                 | ADMIN_XOC / SUPERADMIN  | KPIs globales del monitor XOC                    |
+| GET    | `/xoc-ops/clients/{tenantId}`   | ADMIN_XOC / SUPERADMIN  | Resumen puntual de un tenant para selección      |
+
+Notas:
+
+- Estos endpoints son control-plane operativo y no requieren token delegado.
+- Para entrar al contexto de un tenant y usar `/dashboard/*`, `/integrations/*`, `/tenant/*`, `/users/*`, etc., `ADMIN_XOC` debe emitir primero `POST /superadmin/tenants/{tenantId}/impersonation-token`.
+
+---
+
 ## Auditoría
 
 Cada operación relevante registra un log de auditoría. El endpoint para consulta manual es:

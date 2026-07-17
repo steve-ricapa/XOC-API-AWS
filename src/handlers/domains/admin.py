@@ -5,6 +5,7 @@ from mangum import Mangum
 
 from src.handlers.routes.admin import router as admin_router
 from src.handlers.routes.superadmin import router as superadmin_router
+from src.handlers.routes.xoc_ops import router as xoc_ops_router
 from src.shared.config import get_settings
 from src.shared.errors import AppError
 from src.shared.logging import logger
@@ -42,5 +43,6 @@ async def handle_unexpected_error(_: Request, exc: Exception) -> JSONResponse:
 
 app.include_router(admin_router)
 app.include_router(superadmin_router)
+app.include_router(xoc_ops_router)
 
 handler = Mangum(app)
