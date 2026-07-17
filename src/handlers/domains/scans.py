@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from mangum import Mangum
 
-from src.handlers.routes.scans import router as scans_router
+from src.handlers.routes.scans import findings_router, router as scans_router
 from src.shared.config import get_settings
 from src.shared.errors import AppError
 from src.shared.logging import logger
@@ -40,5 +40,6 @@ async def handle_unexpected_error(_: Request, exc: Exception) -> JSONResponse:
 
 
 app.include_router(scans_router)
+app.include_router(findings_router)
 
 handler = Mangum(app)

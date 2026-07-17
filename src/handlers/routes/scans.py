@@ -21,6 +21,7 @@ from src.shared.snapshots import fetch_snapshot_payload, generate_download_url, 
 
 
 router = APIRouter(prefix="/scans", tags=["scans"])
+findings_router = APIRouter(prefix="/findings", tags=["findings"])
 
 ALLOWED_SCANNER_TYPES = OFFICIAL_INTEGRATION_TYPES
 ALLOWED_SUMMARY_TYPES = ["vulnerability", "security_events", "noc_health", "availability", "network_discovery", "other"]
@@ -841,3 +842,16 @@ def get_scan_findings(scan_summary_id: int, current_user: User = Depends(get_cur
         findings = session.scalars(select(FindingIndex).where(FindingIndex.scan_summary_soc_id == scan_summary_id)).all()
     payload = [finding.to_dict() for finding in findings]
     return {"findings": payload, "count": len(payload), "domain": resolved_domain}
+
+
+@findings_router.get("/{finding_id}")
+def get_finding_detail(finding_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
+    finding = session.scalar(
+        select(FindingIndex).where(
+            FindingIndex.id == finding_id,
+            FindingIndex.tenant_id == current_user.tenant_id,
+        )
+    )
+    if not finding:
+        raise NotFoundError("Finding not found")
+    return finding.to_dict()

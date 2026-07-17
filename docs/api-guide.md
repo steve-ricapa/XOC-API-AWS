@@ -302,6 +302,7 @@ Content-Type: application/json
 | POST   | `/scans/ingest`                             | PÚBL*| Ingestar resultados de scan (vía API key)|
 | GET    | `/scans/{scanSummaryId}`                    | PROT | Obtener scan por ID                      |
 | GET    | `/scans/{scanSummaryId}/findings`           | PROT | Hallazgos de un scan                     |
+| GET    | `/findings/{findingId}`                     | PROT | Detalle de un hallazgo                   |
 | GET    | `/scans/{scannerType}/analytics`            | PROT | Analíticas por tipo de scanner           |
 | GET    | `/scans/snapshots`                          | PROT | Listar snapshots                         |
 | GET    | `/scans/snapshots/{artifactId}`             | PROT | Obtener metadata de snapshot             |

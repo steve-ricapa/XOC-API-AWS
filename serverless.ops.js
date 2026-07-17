@@ -24,6 +24,7 @@ module.exports = buildService({
         protectedRoute(stage, 'GET', '/scans/summary'),
         protectedRoute(stage, 'GET', '/scans/{scanSummaryId}'),
         protectedRoute(stage, 'GET', '/scans/{scanSummaryId}/findings'),
+        protectedRoute(stage, 'GET', '/findings/{findingId}'),
         protectedRoute(stage, 'GET', '/scans/{scannerType}/analytics'),
         protectedRoute(stage, 'GET', '/scans/snapshots'),
         protectedRoute(stage, 'GET', '/scans/snapshots/{artifactId}'),

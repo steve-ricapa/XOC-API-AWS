@@ -232,11 +232,16 @@ def _build_recent_findings_for_provider(session: Session, tenant_id: int, provid
     ).limit(limit).all()
     return [
         {
+            "id": finding.id,
             "cve": finding.cve,
             "name": finding.name,
             "host": finding.host,
             "severity": finding.severity,
             "cvss": finding.cvss,
+            "domain": finding.domain,
+            "scan_id": finding.scan_id,
+            "scan_summary_soc_id": finding.scan_summary_soc_id,
+            "scan_summary_noc_id": finding.scan_summary_noc_id,
             "detectedAt": summary.scanned_at.isoformat() if summary.scanned_at else None,
         }
         for finding, summary in rows
