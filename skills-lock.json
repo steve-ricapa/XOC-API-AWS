@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "microsoft-foundry": {
+      "source": "microsoft/azure-skills",
+      "sourceType": "github",
+      "skillPath": "skills/microsoft-foundry/SKILL.md",
+      "computedHash": "e9654fec004bbe2372deba2bb6097fd1887ff253205a3a5284bdc341c5e46ba9"
+    }
+  }
+}

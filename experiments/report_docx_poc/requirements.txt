@@ -1,7 +1,13 @@
+sqlalchemy
+psycopg2-binary
+python-dotenv
+azure-ai-projects>=2.1.0
+azure-identity
+azure-core
+openai
 docxtpl
 python-docx
 Jinja2
 matplotlib
 pandas
-boto3
 lxml

@@ -1,17 +1,17 @@
 {
   "tenant": {
     "id": "tenant-pepitosstart",
-    "name": "PepitosStart"
+    "name": "PepitosStart",
+    "tenant_id": "tenant-pepitosstart-001"
   },
   "report": {
-    "id": "report-demo-002",
-    "title": "Minority Report - XOC | PepitosStart",
+    "id": "report-demo-001",
+    "title": "Reporte Operativo Semanal XOC | PepitosStart",
     "service": "Servicio de Monitoreo Proactivo XOC",
-    "generated_at": "2026-07-16 13:18:00",
-    "period": "Del 01 de julio al 07 de julio del 2026",
+    "generated_at": "2026-06-26 18:00:00",
+    "period": "Del 20 de junio al 26 de junio del 2026",
     "prepared_by": "TXDXSECURE",
-    "executive_summary": "Durante el periodo evaluado en PepitosStart se identificaron multiples vulnerabilidades distribuidas entre la superficie web externa, infraestructura publica, servidores criticos, equipos de red y activos OT/IoT. El monitoreo permitio consolidar hallazgos de severidad critica, alta y media que requieren tratamiento prioritario, incluyendo paneles expuestos, software desactualizado, debilidades criptograficas y configuraciones inseguras. El presente informe resume la postura observada y organiza la informacion de forma editable para revision y seguimiento analitico.",
-    "results": "Se consolidaron hallazgos relevantes en varios dominios, se priorizaron exposiciones criticas y altas, y se genero una base estructurada para seguimiento tecnico, validacion de mitigaciones y coordinacion con los responsables de remediacion."
+    "scope": "Web externo, IPs publicas, firewall, servidores, switching, WIFI, desktops y activos OT/IoT priorizados por PepitosStart."
   },
   "tools": [
     "MonEvents",
@@ -19,273 +19,504 @@
     "MonVulC",
     "MonApps",
     "MonNet",
-    "MonInfra"
+    "MonInfra",
+    "OpenVAS",
+    "InsightVM",
+    "Wazuh SIEM",
+    "Zabbix",
+    "Nessus",
+    "Uptime Kuma"
   ],
   "severity_summary": {
-    "critical": 4,
-    "high": 11,
-    "medium": 19,
-    "low": 9,
-    "informational": 58
+    "previous": {
+      "critical": 3,
+      "high": 9,
+      "medium": 27,
+      "low": 14,
+      "informational": 142
+    },
+    "current": {
+      "critical": 2,
+      "high": 7,
+      "medium": 33,
+      "low": 8,
+      "informational": 147
+    }
   },
-  "findings": [
+  "security_posture": {
+    "global_score": 72,
+    "risk_level": "Alto",
+    "trend": "Mejora parcial con riesgo alto residual",
+    "critical_open": 2,
+    "high_open": 7,
+    "sla_at_risk": 2,
+    "mttr_hours": 26,
+    "main_risks": [
+      "Virtualizacion fuera de soporte en infraestructura critica.",
+      "Exposicion de componentes web y criptografia debil en activos publicados.",
+      "Credenciales por defecto y debilidades SSH en equipos de red.",
+      "Servicios heredados sobre activos OT/IoT y desktop con deuda de hardening."
+    ]
+  },
+  "cases": [
     {
-      "id": "WEB-101",
-      "domain": "Dominio de Web Externo",
-      "title": "Panel administrativo expuesto sin restriccion geográfica",
-      "affected_hosts": "admin.pepitosstart.io",
+      "id": "CASE-001",
+      "title": "ESXi fuera de soporte",
       "severity": "Critico",
-      "description": "Se detecto acceso a panel administrativo desde internet sin filtrado geografico ni capa adicional de autenticacion.",
-      "recommendation": "Restringir acceso por VPN o listas de control, habilitar MFA y rotar credenciales de administracion."
+      "status": "Abierto",
+      "domain": "Infraestructura de Computo - Servers",
+      "asset": "esxi-prd-01",
+      "created_at": "2026-06-20",
+      "updated_at": "2026-06-26",
+      "sla_target_hours": 72,
+      "elapsed_hours": 44,
+      "sla_status": "Dentro SLA",
+      "owner": "Cliente",
+      "summary": "Hipervisor principal fuera de soporte.",
+      "next_action": "Planificar upgrade o migracion"
     },
     {
-      "id": "WEB-104",
-      "domain": "Dominio de Web Externo",
-      "title": "Framework web desactualizado con CVE publicos",
-      "affected_hosts": "portal.pepitosstart.io",
+      "id": "CASE-002",
+      "title": "Token expuesto en recurso web",
       "severity": "Alto",
-      "description": "El portal principal expone componentes desactualizados con vulnerabilidades conocidas y exploits publicos.",
-      "recommendation": "Actualizar framework y dependencias, ejecutar pruebas de regresion y revisar WAF."
+      "status": "En analisis",
+      "domain": "Web Externo",
+      "asset": "portal.jockeysalud.pe",
+      "created_at": "2026-06-20",
+      "updated_at": "2026-06-26",
+      "sla_target_hours": 96,
+      "elapsed_hours": 40,
+      "sla_status": "Dentro SLA",
+      "owner": "XOC",
+      "summary": "Exposicion de token de autorizacion en recurso JavaScript.",
+      "next_action": "Rotar secreto y remover exposicion"
     },
     {
-      "id": "WEB-110",
-      "domain": "Dominio de Web Externo",
-      "title": "Cabeceras HTTP de seguridad incompletas",
-      "affected_hosts": "landing.pepitosstart.io",
-      "severity": "Medio",
-      "description": "Se observan cabeceras de endurecimiento incompletas en activos web publicos.",
-      "recommendation": "Aplicar CSP, HSTS, X-Frame-Options y politicas de seguridad recomendadas."
-    },
-    {
-      "id": "IP-201",
-      "domain": "Dominio de IPs Publicas",
-      "title": "Interfaz de gestion expuesta en servicio RDP",
-      "affected_hosts": "34.122.18.91",
+      "id": "CASE-003",
+      "title": "Credenciales por defecto OT",
       "severity": "Critico",
-      "description": "Se detecto acceso remoto administrativo expuesto a internet sobre un activo de gestion.",
-      "recommendation": "Retirar exposicion publica, encapsular via VPN y validar registros de acceso."
+      "status": "En remediacion",
+      "domain": "Infraestructura OT/IoT",
+      "asset": "ot-firebird-01",
+      "created_at": "2026-06-21",
+      "updated_at": "2026-06-26",
+      "sla_target_hours": 48,
+      "elapsed_hours": 45,
+      "sla_status": "En riesgo",
+      "owner": "Cliente",
+      "summary": "Credenciales default sobre servicio industrial.",
+      "next_action": "Rotar credenciales y aislar servicio"
     },
     {
-      "id": "IP-208",
-      "domain": "Dominio de IPs Publicas",
-      "title": "TLS debil y certificado autofirmado en servicio expuesto",
-      "affected_hosts": "34.122.18.95",
+      "id": "CASE-004",
+      "title": "Cipher suites debiles en switches",
       "severity": "Alto",
-      "description": "El activo expuesto presenta cifrados debiles y certificado no confiable.",
-      "recommendation": "Renovar certificado, deshabilitar protocolos obsoletos y endurecer configuracion TLS."
+      "status": "Abierto",
+      "domain": "Infraestructura de Red - Switches",
+      "asset": "switch-core-02",
+      "created_at": "2026-06-21",
+      "updated_at": "2026-06-26",
+      "sla_target_hours": 96,
+      "elapsed_hours": 58,
+      "sla_status": "En riesgo",
+      "owner": "Cliente",
+      "summary": "Persisten algoritmos debiles sobre interfaces de administracion.",
+      "next_action": "Actualizar baseline criptografica"
     },
     {
-      "id": "FW-301",
-      "domain": "Dominio de FW",
-      "title": "Reglas any-any temporales sin justificacion vigente",
-      "affected_hosts": "fw-edge-01",
-      "severity": "Alto",
-      "description": "Se observan reglas amplias que incrementan la superficie de ataque y no cuentan con trazabilidad vigente.",
-      "recommendation": "Eliminar reglas temporales innecesarias y aplicar minimo privilegio."
-    },
-    {
-      "id": "FW-305",
-      "domain": "Dominio de FW",
-      "title": "Objetos de red obsoletos sin depuracion",
-      "affected_hosts": "fw-edge-01",
+      "id": "CASE-005",
+      "title": "TLS obsoleto en AP",
       "severity": "Medio",
-      "description": "Persisten objetos heredados y configuraciones no utilizadas que complejizan la administracion.",
-      "recommendation": "Depurar objetos de red, documentar cambios y revisar impacto antes de aplicar limpieza."
+      "status": "Abierto",
+      "domain": "Infraestructura de Red - WIFI",
+      "asset": "ap-core-01",
+      "created_at": "2026-06-22",
+      "updated_at": "2026-06-26",
+      "sla_target_hours": 120,
+      "elapsed_hours": 33,
+      "sla_status": "Dentro SLA",
+      "owner": "XOC",
+      "summary": "TLS 1.0/1.1 habilitado en portal AP.",
+      "next_action": "Actualizar configuracion TLS"
     },
     {
-      "id": "SRV-401",
-      "domain": "Dominio Infraestructura de Computo - Servers",
-      "title": "Hipervisor fuera de soporte",
-      "affected_hosts": "esxi-prd-01",
+      "id": "CASE-006",
+      "title": "Hardening parcial en desktops",
+      "severity": "Medio",
+      "status": "Resuelto",
+      "domain": "Infraestructura de Computo - Desktops",
+      "asset": "42 endpoints",
+      "created_at": "2026-06-20",
+      "updated_at": "2026-06-25",
+      "sla_target_hours": 168,
+      "elapsed_hours": 52,
+      "sla_status": "Dentro SLA",
+      "owner": "Cliente",
+      "summary": "Ajustes sobre debilidades TLS y SSH en estaciones.",
+      "next_action": "Monitorear regresion"
+    }
+  ],
+  "sla_summary": {},
+  "mitre_mapping": [
+    {
+      "tactic": "Initial Access",
+      "technique": "Public-Facing Application",
+      "evidence": "Token expuesto en recurso web",
+      "domain": "Web Externo",
+      "severity": "Alto",
+      "status": "Abierto"
+    },
+    {
+      "tactic": "Credential Access",
+      "technique": "Default Credentials",
+      "evidence": "Credenciales Firebird por defecto",
+      "domain": "Infraestructura OT/IoT",
       "severity": "Critico",
-      "description": "Se detecto plataforma de virtualizacion fuera de soporte con riesgo elevado de explotacion.",
-      "recommendation": "Planificar actualizacion prioritaria y revisar dependencias de carga critica."
+      "status": "En remediacion"
     },
     {
-      "id": "SRV-409",
-      "domain": "Dominio Infraestructura de Computo - Servers",
-      "title": "Parche critico pendiente en servidor de base de datos",
-      "affected_hosts": "db-prd-02",
+      "tactic": "Defense Evasion",
+      "technique": "Impair Defenses",
+      "evidence": "Configuraciones criptograficas debiles",
+      "domain": "Infraestructura de Red - Switches",
       "severity": "Alto",
-      "description": "El servidor de base de datos mantiene parches pendientes para vulnerabilidades explotables remotamente.",
-      "recommendation": "Aplicar parches en ventana controlada y validar backups previos."
+      "status": "Abierto"
     },
     {
-      "id": "SRV-417",
-      "domain": "Dominio Infraestructura de Computo - Servers",
-      "title": "Certificado autofirmado en servicio interno critico",
-      "affected_hosts": "srv-api-int-03",
-      "severity": "Medio",
-      "description": "Se detecto certificado autofirmado en servicio utilizado por integraciones internas.",
-      "recommendation": "Migrar a certificados confiables y revisar dependencias de clientes internos."
-    },
-    {
-      "id": "SW-501",
-      "domain": "Dominio Infraestructura de Red - Switches",
-      "title": "Credenciales por defecto en interfaz web de administracion",
-      "affected_hosts": "sw-core-02",
-      "severity": "Critico",
-      "description": "Se detectaron credenciales por defecto funcionales en interfaz de administracion de red.",
-      "recommendation": "Rotar credenciales de inmediato, revisar accesos y habilitar AAA centralizado."
-    },
-    {
-      "id": "SW-508",
-      "domain": "Dominio Infraestructura de Red - Switches",
-      "title": "Algoritmos SSH debiles habilitados",
-      "affected_hosts": "sw-dist-07, sw-dist-08",
-      "severity": "Medio",
-      "description": "Se identifican algoritmos de intercambio de llaves y MAC debiles en equipos de red.",
-      "recommendation": "Deshabilitar algoritmos debiles y actualizar baseline criptografica."
-    },
-    {
-      "id": "WIFI-601",
-      "domain": "Dominio Infraestructura de Red - WIFI",
-      "title": "Portal cautivo con certificados expirados",
-      "affected_hosts": "ap-gateway-01",
-      "severity": "Medio",
-      "description": "El portal cautivo presenta certificado expirado y configuracion criptografica obsoleta.",
-      "recommendation": "Renovar certificado y revisar compatibilidad con clientes actuales."
-    },
-    {
-      "id": "WIFI-603",
-      "domain": "Dominio Infraestructura de Red - WIFI",
-      "title": "SSID de administracion visible",
-      "affected_hosts": "ap-admin-mgmt",
+      "tactic": "Discovery",
+      "technique": "Network Service Discovery",
+      "evidence": "Timestamps e ICMP replies expuestos",
+      "domain": "IPs Publicas",
       "severity": "Bajo",
-      "description": "Se detecto SSID de administracion visible que facilita reconocimiento de superficie.",
-      "recommendation": "Ocultar SSID administrativo y reforzar segmentacion."
+      "status": "Monitoreado"
     },
     {
-      "id": "DK-701",
-      "domain": "Dominio Infraestructura de Computo - Desktops",
-      "title": "Versiones obsoletas de navegador corporativo",
-      "affected_hosts": "42 endpoints",
+      "tactic": "Persistence",
+      "technique": "External Remote Services",
+      "evidence": "Servicios administrativos heredados",
+      "domain": "Infraestructura de Computo - Servers",
       "severity": "Medio",
-      "description": "Se identifican endpoints con versiones antiguas del navegador corporativo.",
-      "recommendation": "Forzar actualizacion desde gestion centralizada y bloquear versiones heredadas."
+      "status": "Abierto"
+    }
+  ],
+  "top_assets": [
+    {
+      "asset": "esxi-prd-01",
+      "type": "Server",
+      "domain": "Infraestructura de Computo - Servers",
+      "risk_score": 94,
+      "critical": 1,
+      "high": 0,
+      "medium": 2,
+      "low": 0,
+      "recommendation": "Actualizar plataforma y reforzar TLS"
     },
     {
-      "id": "DK-707",
-      "domain": "Dominio Infraestructura de Computo - Desktops",
-      "title": "Proteccion EDR deshabilitada en estaciones puntuales",
-      "affected_hosts": "ws-fin-02, ws-mkt-04",
-      "severity": "Alto",
-      "description": "Se detectaron estaciones con agente EDR inactivo o fuera de comunicacion.",
-      "recommendation": "Restaurar proteccion, revisar causa de deshabilitacion y validar telemetria."
+      "asset": "portal.jockeysalud.pe",
+      "type": "Web",
+      "domain": "Web Externo",
+      "risk_score": 90,
+      "critical": 0,
+      "high": 2,
+      "medium": 2,
+      "low": 0,
+      "recommendation": "Eliminar exposicion de secretos y endurecer HTTPS"
     },
     {
-      "id": "OT-801",
-      "domain": "Dominio Infraestructura OT/IoT",
-      "title": "Servicios Telnet habilitados en controlador IoT",
-      "affected_hosts": "iot-ctrl-01",
-      "severity": "Alto",
-      "description": "Se mantiene servicio Telnet habilitado en activo IoT con credenciales locales.",
-      "recommendation": "Deshabilitar Telnet, habilitar gestion segura y revisar segmentacion."
+      "asset": "switch-core-02",
+      "type": "Switch",
+      "domain": "Infraestructura de Red - Switches",
+      "risk_score": 89,
+      "critical": 0,
+      "high": 2,
+      "medium": 6,
+      "low": 3,
+      "recommendation": "Actualizar baseline SSH/TLS"
     },
     {
-      "id": "OT-806",
-      "domain": "Dominio Infraestructura OT/IoT",
-      "title": "Firmware desactualizado en gateway industrial",
-      "affected_hosts": "ot-gw-03",
-      "severity": "Medio",
-      "description": "Se detecta firmware por debajo del baseline recomendado por fabricante.",
-      "recommendation": "Planificar actualizacion con validacion operativa previa."
+      "asset": "ot-firebird-01",
+      "type": "OT/IoT",
+      "domain": "Infraestructura OT/IoT",
+      "risk_score": 91,
+      "critical": 1,
+      "high": 1,
+      "medium": 4,
+      "low": 0,
+      "recommendation": "Cambiar credenciales y segmentar acceso"
+    },
+    {
+      "asset": "ap-core-01",
+      "type": "Access Point",
+      "domain": "Infraestructura de Red - WIFI",
+      "risk_score": 78,
+      "critical": 0,
+      "high": 1,
+      "medium": 5,
+      "low": 2,
+      "recommendation": "Deshabilitar TLS heredado y SSH debil"
+    }
+  ],
+  "domain_scores": [
+    {
+      "domain": "Web Externo",
+      "score": 66,
+      "risk": "Alto",
+      "trend": "Estable",
+      "comment": "Persisten componentes web con exposicion de secretos y HTTPS mejorable."
+    },
+    {
+      "domain": "IPs Publicas",
+      "score": 78,
+      "risk": "Medio",
+      "trend": "Estable",
+      "comment": "Se mantienen hallazgos informativos de reconocimiento externo."
+    },
+    {
+      "domain": "FW",
+      "score": 81,
+      "risk": "Medio",
+      "trend": "Mejora",
+      "comment": "Perimetro estable con hallazgos menores residuales."
+    },
+    {
+      "domain": "Infraestructura de Computo - Servers",
+      "score": 58,
+      "risk": "Alto",
+      "trend": "Empeora",
+      "comment": "La criticidad se concentra en virtualizacion EOL."
+    },
+    {
+      "domain": "Infraestructura de Red - Switches",
+      "score": 61,
+      "risk": "Alto",
+      "trend": "Estable",
+      "comment": "Riesgo sostenido por hardening criptografico insuficiente."
+    },
+    {
+      "domain": "Infraestructura de Red - WIFI",
+      "score": 69,
+      "risk": "Medio",
+      "trend": "Estable",
+      "comment": "Persisten debilidades TLS/SSH sobre APs."
+    },
+    {
+      "domain": "Infraestructura de Computo - Desktops",
+      "score": 73,
+      "risk": "Medio",
+      "trend": "Mejora",
+      "comment": "Se redujo parte del backlog tecnico en estaciones."
+    },
+    {
+      "domain": "Infraestructura OT/IoT",
+      "score": 55,
+      "risk": "Alto",
+      "trend": "Estable",
+      "comment": "Se mantienen riesgos criticos por credenciales default y cifrado debil."
     }
   ],
   "domains": [
     {
-      "name": "Dominio de Web Externo",
-      "summary": "El dominio web externo de PepitosStart presenta vulnerabilidades relevantes asociadas a exposicion administrativa, software desactualizado y controles de endurecimiento incompletos.",
+      "name": "Web Externo",
+      "summary": "El dominio web externo concentra exposicion de secretos, cipher suites vulnerables y configuraciones HTTPS que requieren ajuste inmediato.",
+      "score": 66,
+      "risk": "Alto",
       "findings": [
-        "WEB-101",
-        "WEB-104",
-        "WEB-110"
+        "WE01",
+        "WE03",
+        "WE04",
+        "WE05"
       ]
     },
     {
-      "name": "Dominio de IPs Publicas",
-      "summary": "Se observaron activos publicos con servicios de gestion expuestos y configuraciones TLS inseguras que elevan el riesgo de compromiso remoto.",
+      "name": "IPs Publicas",
+      "summary": "Las IPs publicas mantienen hallazgos de bajo impacto, principalmente utiles para reconocimiento y enumeracion externa.",
+      "score": 78,
+      "risk": "Medio",
       "findings": [
-        "IP-201",
-        "IP-208"
+        "PB01",
+        "PB02"
       ]
     },
     {
-      "name": "Dominio de FW",
-      "summary": "La revision de perimetro evidencia reglas amplias y objetos heredados que requieren afinamiento y depuracion para reducir exposicion.",
+      "name": "FW",
+      "summary": "El perimetro presenta exposiciones informativas residuales sin criticidad alta en este corte.",
+      "score": 81,
+      "risk": "Medio",
       "findings": [
-        "FW-301",
-        "FW-305"
+        "FW01",
+        "FW02"
       ]
     },
     {
-      "name": "Dominio Infraestructura de Computo - Servers",
-      "summary": "El dominio de servidores concentra hallazgos criticos y altos relacionados con virtualizacion fuera de soporte, parches pendientes y certificados no confiables.",
+      "name": "Infraestructura de Computo - Servers",
+      "summary": "Los servidores concentran el mayor impacto operativo por EOL en virtualizacion y certificados no confiables.",
+      "score": 58,
+      "risk": "Alto",
       "findings": [
-        "SRV-401",
-        "SRV-409",
-        "SRV-417"
+        "SR-01",
+        "SR-02",
+        "SR-03",
+        "SR-04",
+        "SR-07",
+        "SR-09"
       ]
     },
     {
-      "name": "Dominio Infraestructura de Red - Switches",
-      "summary": "Se detectaron debilidades significativas en equipos de switching, incluyendo credenciales por defecto y configuraciones criptograficas debiles.",
+      "name": "Infraestructura de Red - Switches",
+      "summary": "El dominio de switches mantiene riesgo alto por traversal, suites debiles, SSH inseguro y exposiciones informativas de red.",
+      "score": 61,
+      "risk": "Alto",
       "findings": [
-        "SW-501",
-        "SW-508"
+        "SW-01",
+        "SW-02",
+        "SW-03",
+        "SW-04",
+        "SW-06"
       ]
     },
     {
-      "name": "Dominio Infraestructura de Red - WIFI",
-      "summary": "La capa WIFI mantiene exposicion media y baja por certificados expirados y practicas de publicacion administrativa mejorables.",
+      "name": "Infraestructura de Red - WIFI",
+      "summary": "Los APs mantienen exposicion media por SSH heredado, TLS obsoleto y algoritmos MAC debiles.",
+      "score": 69,
+      "risk": "Medio",
       "findings": [
-        "WIFI-601",
-        "WIFI-603"
+        "AP01",
+        "AP02",
+        "AP03",
+        "AP05"
       ]
     },
     {
-      "name": "Dominio Infraestructura de Computo - Desktops",
-      "summary": "En endpoints se observan oportunidades de mejora sobre actualizacion de software y continuidad de proteccion EDR en estaciones puntuales.",
+      "name": "Infraestructura de Computo - Desktops",
+      "summary": "Las estaciones muestran mejora parcial, aunque persisten debilidades TLS, SSH y enumeracion RPC.",
+      "score": 73,
+      "risk": "Medio",
       "findings": [
-        "DK-701",
-        "DK-707"
+        "DK-01",
+        "DK-02",
+        "DK-03",
+        "DK-04"
       ]
     },
     {
-      "name": "Dominio Infraestructura OT/IoT",
-      "summary": "Los activos OT/IoT presentan servicios inseguros y firmware pendiente de actualizacion, lo que exige tratamiento diferenciado y seguimiento operativo.",
+      "name": "Infraestructura OT/IoT",
+      "summary": "Los activos OT/IoT mantienen el riesgo mas sensible por credenciales default y controles criptograficos heredados.",
+      "score": 55,
+      "risk": "Alto",
       "findings": [
-        "OT-801",
-        "OT-806"
+        "OT-01",
+        "OT-02",
+        "OT-03",
+        "OT-04"
       ]
     }
   ],
+  "findings": [
+    {
+      "id": "WE01",
+      "domain": "Web Externo",
+      "title": "Exposicion de token de autorizacion en recurso JavaScript publico",
+      "affected_hosts": "1",
+      "severity": "Alto",
+      "description": "Se identifico un token expuesto en un recurso publico.",
+      "recommendation": "Rotar secreto y remover referencia del codigo cliente.",
+      "evidence": "Recurso JavaScript accesible desde Internet con token embebido.",
+      "source_tool": "MonApps",
+      "status": "Pendiente",
+      "remediation_priority": "Alta"
+    }
+  ],
+  "technical_evidence": [
+    {
+      "finding_id": "SR-01",
+      "asset": "esxi-prd-01",
+      "severity": "Critico",
+      "source_tool": "Nessus",
+      "evidence": "Operating System End of Life Detection",
+      "impact": "Mayor exposicion a fallas sin soporte",
+      "recommendation": "Actualizar o migrar plataforma",
+      "status": "Pendiente"
+    }
+  ],
+  "operational_timeline": [
+    {
+      "date": "2026-06-20",
+      "event": "Inicio del corte semanal y consolidacion de hallazgos",
+      "category": "Monitoreo",
+      "impact": "Se habilita priorizacion inicial del backlog"
+    }
+  ],
   "actions_worked": [
-    "Correlacion de eventos y priorizacion de alertas sobre activos publicos de PepitosStart.",
-    "Revision de vulnerabilidades criticas en servicios administrativos expuestos y plataformas de virtualizacion.",
-    "Validacion de configuraciones TLS y certificados en servicios web y activos publicados a internet.",
-    "Analisis de reglas perimetrales y objetos heredados en firewall para identificar excesos de permisos.",
-    "Revision de baseline criptografica en switches y equipos de red administrables.",
-    "Seguimiento de proteccion EDR y estado de actualizacion en endpoints corporativos."
+    "Consolidacion de hallazgos sobre activos web, red, servidores y OT priorizados.",
+    "Validacion tecnica de credenciales default, TLS debil y plataformas fuera de soporte.",
+    "Seguimiento del backlog de remediacion sobre switching, APs y estaciones.",
+    "Correlacion de evidencia tecnica para priorizacion de criticidades abiertas.",
+    "Construccion del resumen ejecutivo semanal para seguimiento con el cliente."
+  ],
+  "automation_suggestions": [
+    {
+      "name": "Alerta automatica de credenciales por defecto",
+      "domain": "OT/IoT",
+      "priority": "Alta",
+      "benefit": "Reducir tiempo de deteccion de riesgos criticos administrativos",
+      "status": "Propuesta"
+    }
+  ],
+  "next_actions": [
+    {
+      "action": "Actualizar ESXi fuera de soporte",
+      "owner": "Cliente",
+      "priority": "Critica",
+      "due_date": "2026-07-03",
+      "dependency": "Ventana de mantenimiento"
+    }
+  ],
+  "results": {
+    "summary": "Se consolido una vista semanal ejecutiva y tecnica de la postura de seguridad de Jockey Salud, con foco en criticidades abiertas, riesgos por dominio y acciones inmediatas.",
+    "highlights": [
+      "Se identifico mejora parcial en backlog de desktops.",
+      "Se mantuvo trazabilidad entre hallazgos, casos y SLA.",
+      "Persisten riesgos altos y criticos en servidores y OT/IoT."
+    ]
+  },
+  "pending_findings": [
+    "Actualizacion del hipervisor fuera de soporte.",
+    "Rotacion de credenciales por defecto en activo OT.",
+    "Hardening criptografico de switches y APs.",
+    "Remocion de token expuesto en recurso web publico."
   ],
   "security_news": [
     {
-      "title": "Campana activa de robo de credenciales orientada a startups tecnológicas",
-      "date": "2026-07-05",
+      "title": "Campanas de abuso de credenciales contra portales corporativos",
+      "date": "2026-06-25",
       "source": "XOC Threat Intel",
-      "summary": "Se observaron campañas de phishing con paginas falsas de autenticacion y robo de sesiones dirigidas a empresas de crecimiento acelerado.",
+      "summary": "Se mantienen campanas orientadas al robo de credenciales y abuso de sesiones sobre portales expuestos a Internet.",
       "links": [
-        "https://example.com/news/startup-phishing"
+        "https://example.com/news/credential-theft"
       ]
     },
     {
-      "title": "Nueva vulnerabilidad critica en gateway perimetral ampliamente desplegado",
-      "date": "2026-07-03",
+      "title": "Nueva alerta de seguridad sobre componentes perimetrales heredados",
+      "date": "2026-06-24",
       "source": "Vendor Advisory",
-      "summary": "El fabricante publico una alerta por ejecucion remota no autenticada que afecta dispositivos perimetrales en versiones heredadas.",
+      "summary": "Fabricantes publicaron alertas y parches para componentes perimetrales con exposicion remota no autenticada.",
       "links": [
         "https://example.com/news/perimeter-rce"
       ]
+    }
+  ],
+  "annex": [
+    {
+      "reference": "Consolidado MonVulE/MonVulC",
+      "detail": "Backlog tecnico consolidado por dominio y severidad."
+    },
+    {
+      "reference": "Bitacora operativa XOC",
+      "detail": "Seguimiento de acciones, owners y ventanas de remediacion."
+    },
+    {
+      "reference": "Evidencia Wazuh, Zabbix y Nessus",
+      "detail": "Soporte tecnico usado para validacion del corte semanal."
     }
   ]
 }
