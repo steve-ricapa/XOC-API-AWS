@@ -60,6 +60,38 @@ ssh -A -o ConnectTimeout=20 -o ServerAliveInterval=15 ubuntu@13.223.193.42
 printf '#!/bin/bash\necho "pepe123"\n' > /tmp/ssh-askpass.sh && chmod +x /tmp/ssh-askpass.sh && eval $(ssh-agent -s) > /dev/null && SSH_ASKPASS_REQUIRE=force SSH_ASKPASS=/tmp/ssh-askpass.sh ssh-add ~/.ssh/xoc-ec2 </dev/null 2>&1 && ssh -A -o ConnectTimeout=20 -o ServerAliveInterval=15 ubuntu@13.223.193.42 "cd ~/XOC_AWS && git pull origin main && npm run deploy:ops:prod 2>&1"
 ```
 
+## Common EC2 workflows
+
+- SSH and check host health:
+
+```bash
+printf '#!/bin/bash\necho "pepe123"\n' > /tmp/ssh-askpass.sh && chmod +x /tmp/ssh-askpass.sh && eval $(ssh-agent -s) > /dev/null && SSH_ASKPASS_REQUIRE=force SSH_ASKPASS=/tmp/ssh-askpass.sh ssh-add ~/.ssh/xoc-ec2 </dev/null 2>&1 && ssh -A -o ConnectTimeout=20 -o ServerAliveInterval=15 ubuntu@13.223.193.42 "echo OK && nproc && free -h && cd ~/XOC_AWS && git status --short"
+```
+
+- Pull latest code on EC2:
+
+```bash
+printf '#!/bin/bash\necho "pepe123"\n' > /tmp/ssh-askpass.sh && chmod +x /tmp/ssh-askpass.sh && eval $(ssh-agent -s) > /dev/null && SSH_ASKPASS_REQUIRE=force SSH_ASKPASS=/tmp/ssh-askpass.sh ssh-add ~/.ssh/xoc-ec2 </dev/null 2>&1 && ssh -A -o ConnectTimeout=20 -o ServerAliveInterval=15 ubuntu@13.223.193.42 "cd ~/XOC_AWS && git pull origin main"
+```
+
+- Deploy only admin stack:
+
+```bash
+printf '#!/bin/bash\necho "pepe123"\n' > /tmp/ssh-askpass.sh && chmod +x /tmp/ssh-askpass.sh && eval $(ssh-agent -s) > /dev/null && SSH_ASKPASS_REQUIRE=force SSH_ASKPASS=/tmp/ssh-askpass.sh ssh-add ~/.ssh/xoc-ec2 </dev/null 2>&1 && ssh -A -o ConnectTimeout=20 -o ServerAliveInterval=15 ubuntu@13.223.193.42 "cd ~/XOC_AWS && rm -rf .serverless ~/.cache/serverless-python-requirements && npm run deploy:admin:prod 2>&1"
+```
+
+- Deploy only ops stack:
+
+```bash
+printf '#!/bin/bash\necho "pepe123"\n' > /tmp/ssh-askpass.sh && chmod +x /tmp/ssh-askpass.sh && eval $(ssh-agent -s) > /dev/null && SSH_ASKPASS_REQUIRE=force SSH_ASKPASS=/tmp/ssh-askpass.sh ssh-add ~/.ssh/xoc-ec2 </dev/null 2>&1 && ssh -A -o ConnectTimeout=20 -o ServerAliveInterval=15 ubuntu@13.223.193.42 "cd ~/XOC_AWS && rm -rf .serverless ~/.cache/serverless-python-requirements && npm run deploy:ops:prod 2>&1"
+```
+
+- Deploy only reports stack:
+
+```bash
+printf '#!/bin/bash\necho "pepe123"\n' > /tmp/ssh-askpass.sh && chmod +x /tmp/ssh-askpass.sh && eval $(ssh-agent -s) > /dev/null && SSH_ASKPASS_REQUIRE=force SSH_ASKPASS=/tmp/ssh-askpass.sh ssh-add ~/.ssh/xoc-ec2 </dev/null 2>&1 && ssh -A -o ConnectTimeout=20 -o ServerAliveInterval=15 ubuntu@13.223.193.42 "cd ~/XOC_AWS && rm -rf .serverless ~/.cache/serverless-python-requirements && npm run deploy:reports:prod 2>&1"
+```
+
 ## EC2 deploy gotchas
 
 - The repo remote on EC2 should be HTTPS for pulls from the public repo. If `git pull` fails with `github.com: Permission denied (publickey)`, run:
