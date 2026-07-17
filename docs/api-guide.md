@@ -373,6 +373,37 @@ Notas:
 - `provider` soportado: `openvas`, `insightvm`, `nessus`, `wazuh`, `zabbix`, `uptime_kuma`.
 - `GET /dashboard/providers/{provider}` acepta `preset`, `from`, `to` para filtros temporales.
 - `recent_findings` ya incluye `id`, `domain`, `scan_id`, `scan_summary_soc_id`, `scan_summary_noc_id` para navegación del frontend.
+- `GET /dashboard/home` ahora incluye `integration_status`, un arreglo listo para tarjetas de estado en frontend.
+
+Ejemplo parcial de `integration_status`:
+
+```json
+{
+  "integration_status": [
+    {
+      "provider": "openvas",
+      "label": "OpenVAS Scans",
+      "navigation_slug": "openvas",
+      "configured": true,
+      "active": true,
+      "has_data": true,
+      "last_sync": "2026-07-16T21:00:00Z",
+      "agent_name": "OpenVAS Scanner Agent",
+      "status_text": "Activo y sincronizado",
+      "summary_slots": [
+        { "label": "Escaneos", "value": 12 },
+        { "label": "Vulns", "value": 148 },
+        { "label": "Criticas", "value": 6, "danger": true }
+      ]
+    }
+  ]
+}
+```
+
+Regla de negocio:
+
+- `active = true` significa que la integración tiene una `AgentApiKey` activa asociada a ese `integration_type`.
+- `configured = true` significa que existe la integración configurada para el tenant.
 
 ---
 

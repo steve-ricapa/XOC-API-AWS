@@ -106,7 +106,20 @@ Este documento resume qué endpoint debe consumir cada pantalla y qué recomenda
 - El home oficial es `GET /dashboard/home`.
 - `GET /integrations/dashboard/summary` puede quedar como compat o bloque auxiliar, pero no como contrato principal nuevo.
 
-5. Mantener fallback de navegación.
+5. Usar `integration_status` para la columna/panel de estado de integraciones.
+
+- `GET /dashboard/home` ya trae `integration_status` listo para UI.
+- No recalcular estado de integraciones disparando llamadas separadas por provider en la pantalla principal.
+- `active` ya representa la regla de negocio correcta: existe `AgentApiKey` activa para esa integración.
+- `navigation_slug` debe usarse para navegar a `/dashboard/{provider}`.
+
+6. Reducir fan-out de requests en el home.
+
+- `IntegrationStatus` debe consumir solo `GET /dashboard/home`.
+- `UnifiedTrendChart` y widgets globales deben priorizar `GET /dashboard/home` cuando el dato ya esté allí.
+- Reservar llamadas por provider para pantallas detalladas `/dashboard/:provider`.
+
+7. Mantener fallback de navegación.
 
 - Si una tabla trae `finding.id`, navegar a detalle.
 - Si no lo trae, tratarlo como bug de contrato y no inventar lookup secundario en frontend.
