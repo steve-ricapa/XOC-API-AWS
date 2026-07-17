@@ -12,7 +12,7 @@ from src.shared.errors import ForbiddenError, NotFoundError, ValidationError
 from src.shared.integration_types import OFFICIAL_INTEGRATION_TYPES, normalize_integration_type
 from src.shared.security_keys import generate_access_key, hash_access_key
 from src.shared.schemas import TenantsListResponse, TenantResponse, RuntimeSettingsEnvelope, RuntimeSettingsResponse, UpdateTenantRequest, UpdateTenantResponse, UpsertRuntimeSettingsRequest, UpsertRuntimeSettingsResponse
-from src.shared.context import get_tenant, log_audit, require_admin, require_same_tenant
+from src.shared.context import effective_tenant_id_of, get_tenant, log_audit, require_admin, require_tenant_read_access
 
 
 router = APIRouter(prefix="/tenant", tags=["tenant"])
@@ -46,18 +46,16 @@ def _get_agent_key_or_404(session: Session, tenant_id: int, key_id: int) -> Agen
 
 @router.get("", response_model=TenantsListResponse)
 def get_tenants(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> TenantsListResponse:
-    if current_user.role == "ADMIN":
-        tenant = session.get(Tenant, current_user.tenant_id)
-        tenants = [tenant] if tenant else []
-    else:
-        tenants = []
+    require_tenant_read_access(current_user)
+    tenant = session.get(Tenant, effective_tenant_id_of(current_user))
+    tenants = [tenant] if tenant else []
     return TenantsListResponse(tenants=[TenantResponse(**tenant.to_dict()) for tenant in tenants])
 
 
 @router.put("", response_model=UpdateTenantResponse)
 def update_tenant(payload: UpdateTenantRequest, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> UpdateTenantResponse:
     require_admin(current_user)
-    tenant = get_tenant(session, current_user.tenant_id)
+    tenant = get_tenant(session, effective_tenant_id_of(current_user))
     if payload.name is not None:
         tenant.name = payload.name
     log_audit(session, actor_user_id=current_user.id, action="UPDATE", entity_type="TENANT", entity_id=tenant.id, payload={"name": tenant.name})
@@ -68,7 +66,7 @@ def update_tenant(payload: UpdateTenantRequest, current_user: User = Depends(get
 @router.get("/agent-keys")
 def list_agent_api_keys(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
     require_admin(current_user)
-    tenant_id = current_user.tenant_id
+    tenant_id = effective_tenant_id_of(current_user)
     agent_keys = session.scalars(
         select(AgentApiKey).where(AgentApiKey.tenant_id == tenant_id).order_by(AgentApiKey.created_at.desc())
     ).all()
@@ -78,7 +76,7 @@ def list_agent_api_keys(current_user: User = Depends(get_current_user), session:
 @router.post("/agent-keys", status_code=status.HTTP_201_CREATED)
 def create_agent_api_key(payload: dict, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
     require_admin(current_user)
-    tenant_id = current_user.tenant_id
+    tenant_id = effective_tenant_id_of(current_user)
 
     tenant = session.get(Tenant, tenant_id)
     if not tenant:
@@ -121,13 +119,13 @@ def create_agent_api_key(payload: dict, current_user: User = Depends(get_current
 @router.get("/agent-keys/{key_id}")
 def get_agent_api_key(key_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
     require_admin(current_user)
-    return _get_agent_key_or_404(session, current_user.tenant_id, key_id).to_dict()
+    return _get_agent_key_or_404(session, effective_tenant_id_of(current_user), key_id).to_dict()
 
 
 @router.delete("/agent-keys/{key_id}")
 def delete_agent_api_key(key_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
     require_admin(current_user)
-    agent_key = _get_agent_key_or_404(session, current_user.tenant_id, key_id)
+    agent_key = _get_agent_key_or_404(session, effective_tenant_id_of(current_user), key_id)
     log_audit(session, actor_user_id=current_user.id, action="DELETE", entity_type="AGENT_API_KEY", entity_id=key_id, payload={"name": agent_key.name})
     session.delete(agent_key)
     session.commit()
@@ -137,7 +135,7 @@ def delete_agent_api_key(key_id: int, current_user: User = Depends(get_current_u
 @router.post("/agent-keys/{key_id}/regenerate")
 def regenerate_agent_api_key(key_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
     require_admin(current_user)
-    agent_key = _get_agent_key_or_404(session, current_user.tenant_id, key_id)
+    agent_key = _get_agent_key_or_404(session, effective_tenant_id_of(current_user), key_id)
     new_key = generate_access_key(40)
     agent_key.api_key_hash = hash_access_key(new_key)
     agent_key.api_key_encrypted = encrypt_agent_key(new_key)
@@ -149,7 +147,7 @@ def regenerate_agent_api_key(key_id: int, current_user: User = Depends(get_curre
 @router.post("/agent-keys/{key_id}/toggle")
 def toggle_agent_api_key(key_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
     require_admin(current_user)
-    agent_key = _get_agent_key_or_404(session, current_user.tenant_id, key_id)
+    agent_key = _get_agent_key_or_404(session, effective_tenant_id_of(current_user), key_id)
     agent_key.is_active = not agent_key.is_active
     status = "activated" if agent_key.is_active else "deactivated"
     log_audit(session, actor_user_id=current_user.id, action="TOGGLE", entity_type="AGENT_API_KEY", entity_id=key_id, payload={"name": agent_key.name, "is_active": agent_key.is_active})
@@ -160,13 +158,14 @@ def toggle_agent_api_key(key_id: int, current_user: User = Depends(get_current_u
 @router.get("/runtime-settings", response_model=RuntimeSettingsEnvelope)
 def get_runtime_settings(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> RuntimeSettingsEnvelope:
     require_admin(current_user)
-    runtime_settings = session.scalar(select(TenantRuntimeSettings).where(TenantRuntimeSettings.tenant_id == current_user.tenant_id))
+    runtime_settings = session.scalar(select(TenantRuntimeSettings).where(TenantRuntimeSettings.tenant_id == effective_tenant_id_of(current_user)))
     return RuntimeSettingsEnvelope(runtime_settings=_serialize_runtime_settings(runtime_settings))
 
 
 @router.put("/runtime-settings", response_model=UpsertRuntimeSettingsResponse)
 def upsert_runtime_settings(payload: UpsertRuntimeSettingsRequest, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> UpsertRuntimeSettingsResponse:
     require_admin(current_user)
+    tenant_id = effective_tenant_id_of(current_user)
 
     data = payload.model_dump(by_alias=False, exclude_none=True)
     function_base_url = (data.get("function_base_url") or "").strip()
@@ -179,11 +178,11 @@ def upsert_runtime_settings(payload: UpsertRuntimeSettingsRequest, current_user:
     if not function_base_url:
         raise ValidationError("function_base_url is required")
 
-    runtime_settings = session.scalar(select(TenantRuntimeSettings).where(TenantRuntimeSettings.tenant_id == current_user.tenant_id))
+    runtime_settings = session.scalar(select(TenantRuntimeSettings).where(TenantRuntimeSettings.tenant_id == tenant_id))
     created = False
     if not runtime_settings:
         runtime_settings = TenantRuntimeSettings(
-            tenant_id=current_user.tenant_id,
+            tenant_id=tenant_id,
             function_base_url=function_base_url,
             function_route_sophia=function_route_sophia,
             function_route_sophia_history=function_route_sophia_history,
@@ -206,6 +205,6 @@ def upsert_runtime_settings(payload: UpsertRuntimeSettingsRequest, current_user:
         runtime_settings.extra_json = data.get("extra_json")
 
     session.flush()
-    log_audit(session, actor_user_id=current_user.id, action="CREATE" if created else "UPDATE", entity_type="TENANT_RUNTIME_SETTINGS", entity_id=runtime_settings.id, payload={"tenant_id": current_user.tenant_id, "is_active": runtime_settings.is_active})
+    log_audit(session, actor_user_id=current_user.id, action="CREATE" if created else "UPDATE", entity_type="TENANT_RUNTIME_SETTINGS", entity_id=runtime_settings.id, payload={"tenant_id": tenant_id, "is_active": runtime_settings.is_active})
     session.commit()
     return UpsertRuntimeSettingsResponse(message="Runtime settings saved successfully", runtime_settings=_serialize_runtime_settings(runtime_settings))

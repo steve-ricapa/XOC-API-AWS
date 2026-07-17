@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
 from src.persistence.models import AgentInstance, User
-from src.shared.context import log_audit, require_admin
+from src.shared.context import effective_tenant_id_of, log_audit, require_admin
 from src.shared.dependencies import get_current_user
 from src.shared.encryption import encrypt_agent_key
 from src.shared.errors import NotFoundError, ValidationError, AppError
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 def _get_instance_or_404(session: Session, user: User, instance_id: str) -> AgentInstance:
     instance = session.get(AgentInstance, instance_id)
-    if not instance or instance.tenant_id != user.tenant_id:
+    if not instance or instance.tenant_id != effective_tenant_id_of(user):
         raise NotFoundError("Agent instance not found")
     return instance
 
@@ -47,7 +47,7 @@ def create_agent_instance(payload: dict, current_user: User = Depends(get_curren
     }
 
     instance = AgentInstance(
-        tenant_id=current_user.tenant_id,
+        tenant_id=effective_tenant_id_of(current_user),
         agent_type=agent_type,
         client_access_key_hash=access_key_hash,
         client_access_key_encrypted=access_key_encrypted,
@@ -63,7 +63,7 @@ def create_agent_instance(payload: dict, current_user: User = Depends(get_curren
 @router.get("/agent-instances")
 def list_agent_instances(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
     require_admin(current_user)
-    instances = session.query(AgentInstance).filter_by(tenant_id=current_user.tenant_id).all()
+    instances = session.query(AgentInstance).filter_by(tenant_id=effective_tenant_id_of(current_user)).all()
     log_audit(session, actor_user_id=current_user.id, action="LIST", entity_type="AGENT_INSTANCE", entity_id=None, payload={"count": len(instances)})
     return {"agent_instances": [instance.to_dict() for instance in instances]}
 

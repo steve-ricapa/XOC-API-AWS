@@ -1,7 +1,7 @@
 import os
 import secrets
 import string
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
 from fastapi import APIRouter, Depends, Header, status
@@ -14,7 +14,8 @@ from src.persistence.models import (
     AuditLog, Tenant, Integration, IntegrationCapabilityTemplate,
     IntegrationCapabilityTemplateAssignment, User,
 )
-from src.shared.context import log_audit, require_superadmin, get_user_by_email
+from src.shared.auth import create_access_token
+from src.shared.context import get_user_by_email, log_audit, require_platform_operator, require_superadmin
 from src.shared.dependencies import get_current_user
 from src.shared.errors import NotFoundError, ValidationError, ConflictError, ForbiddenError
 from src.shared.integration_types import OFFICIAL_INTEGRATION_TYPES, normalize_integration_type
@@ -270,7 +271,7 @@ def list_tenants(
     limit: int = None,
     offset: int = None,
 ) -> dict:
-    require_superadmin(current_user)
+    require_platform_operator(current_user)
     query = session.query(Tenant)
     if q:
         query = query.filter(Tenant.name.ilike(f"%{q}%"))
@@ -320,7 +321,7 @@ def get_tenant(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> dict:
-    require_superadmin(current_user)
+    require_platform_operator(current_user)
     tenant = session.get(Tenant, tenant_id)
     if not tenant:
         raise NotFoundError("Tenant not found")
@@ -345,7 +346,7 @@ def update_tenant(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> dict:
-    require_superadmin(current_user)
+    require_platform_operator(current_user)
     tenant = session.get(Tenant, tenant_id)
     if not tenant:
         raise NotFoundError("Tenant not found")
@@ -369,6 +370,49 @@ def update_tenant(
     log_audit(session, actor_user_id=current_user.id, action="UPDATE", entity_type="TENANT", entity_id=tenant.id, payload={"name": tenant.name, "plan_status": tenant.plan_status})
     session.commit()
     return {"message": "Tenant updated successfully", "tenant": tenant.to_dict()}
+
+
+@router.post("/tenants/{tenant_id}/impersonation-token")
+def create_tenant_impersonation_token(
+    tenant_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> dict:
+    require_platform_operator(current_user)
+    tenant = session.get(Tenant, tenant_id)
+    if not tenant:
+        raise NotFoundError("Tenant not found")
+
+    access_token = create_access_token(
+        identity=str(current_user.id),
+        additional_claims={
+            "tenant_id": current_user.tenant_id,
+            "role": current_user.role,
+            "actor_user_id": current_user.id,
+            "actor_tenant_id": current_user.tenant_id,
+            "acting_tenant_id": tenant.id,
+            "delegation": True,
+            "delegation_type": "tenant_impersonation",
+            "scopes": ["tenant:impersonate"],
+        },
+        expires_delta=timedelta(hours=1),
+    )
+    log_audit(
+        session,
+        actor_user_id=current_user.id,
+        action="IMPERSONATE",
+        entity_type="TENANT",
+        entity_id=tenant.id,
+        payload={"tenant_id": tenant.id, "actor_role": current_user.role},
+    )
+    session.commit()
+    return {
+        "message": "Tenant impersonation token created successfully",
+        "tenant": tenant.to_dict(),
+        "access_token": access_token,
+        "expires_in": 3600,
+        "delegation": True,
+    }
 
 
 @router.get("/tenants/{tenant_id}/integrations")
@@ -471,8 +515,8 @@ def create_user(
     if not password:
         raise ValidationError("password is required")
     role = (payload.get("role") or "USER").strip().upper()
-    if role not in ("ADMIN", "USER", "SUPERADMIN"):
-        raise ValidationError("role must be ADMIN, USER, or SUPERADMIN")
+    if role not in ("ADMIN", "USER", "ADMIN_XOC", "SUPERADMIN"):
+        raise ValidationError("role must be ADMIN, USER, ADMIN_XOC, or SUPERADMIN")
     existing = session.query(User).filter(User.username == username).first()
     if existing:
         raise ConflictError("Username already exists")
@@ -560,8 +604,8 @@ def update_user(
         user.username = username
     if "role" in payload:
         new_role = payload["role"].strip().upper()
-        if new_role not in ("ADMIN", "USER", "SUPERADMIN"):
-            raise ValidationError("role must be ADMIN, USER, or SUPERADMIN")
+        if new_role not in ("ADMIN", "USER", "ADMIN_XOC", "SUPERADMIN"):
+            raise ValidationError("role must be ADMIN, USER, ADMIN_XOC, or SUPERADMIN")
         if user.role == "SUPERADMIN" and new_role != "SUPERADMIN":
             other_superadmins = session.query(User).filter(User.role == "SUPERADMIN", User.id != user_id).count()
             if other_superadmins == 0:

@@ -155,8 +155,9 @@ Respuesta (201):
 |-------|-----------------|-------------|
 | **PÚBLICO** | Ninguno | Sin autenticación |
 | **PROTEGIDO** | `Authorization: Bearer <access_token>` | JWT válido |
-| **ADMIN** | `Authorization: Bearer <access_token>` | JWT válido + role=ADMIN |
-| **SUPERADMIN** | `Authorization: Bearer <access_token>` | JWT válido + role=SUPERADMIN |
+| **ADMIN** | `Authorization: Bearer <access_token>` | Admin del tenant actual |
+| **ADMIN_XOC** | `Authorization: Bearer <access_token>` | Operador interno XOC; usa delegación para operar tenants |
+| **SUPERADMIN** | `Authorization: Bearer <access_token>` | Gobierno global de plataforma |
 | **SUPERADMIN + Confirm** | `Authorization: Bearer <access_token>` + `X-Superadmin-Confirm: true` | Operaciones sensibles |
 
 ---
@@ -207,6 +208,11 @@ Respuesta:
 | POST   | `/tenant/agent-keys/{keyId}/toggle`     | ADMIN | Activar/desactivar API key     |
 | GET    | `/tenant/runtime-settings`      | ADMIN   | Obtener runtime settings              |
 | PUT    | `/tenant/runtime-settings`      | ADMIN   | Crear/actualizar runtime settings     |
+
+Nota de delegación:
+
+- `ADMIN_XOC` y `SUPERADMIN` no deben operar endpoints tenant-scoped con su token base.
+- Deben obtener un token delegado por tenant con `POST /superadmin/tenants/{tenantId}/impersonation-token` y usar ese token para `/tenant/*`, `/users/*`, `/integrations/*`, `/dashboard/*`, `/scans/*`, `/reports/*`, etc.
 
 Ejemplo: Crear API key de agente
 
@@ -302,6 +308,7 @@ Content-Type: application/json
 | POST   | `/scans/ingest`                             | PÚBL*| Ingestar resultados de scan (vía API key)|
 | GET    | `/scans/{scanSummaryId}`                    | PROT | Obtener scan por ID                      |
 | GET    | `/scans/{scanSummaryId}/findings`           | PROT | Hallazgos de un scan                     |
+| GET    | `/findings/{findingId}`                     | PROT | Detalle de un hallazgo                   |
 | GET    | `/scans/{scannerType}/analytics`            | PROT | Analíticas por tipo de scanner           |
 | GET    | `/scans/snapshots`                          | PROT | Listar snapshots                         |
 | GET    | `/scans/snapshots/{artifactId}`             | PROT | Obtener metadata de snapshot             |
@@ -360,6 +367,60 @@ Authorization: Bearer <token>
 
 ---
 
+### Dashboard
+
+| Método | Path                               | Auth | Descripción                                      |
+|--------|------------------------------------|------|--------------------------------------------------|
+| GET    | `/dashboard/home`                  | PROT | Pantalla principal consolidada del tenant        |
+| GET    | `/dashboard/providers/{provider}`  | PROT | Pantalla por proveedor/integración operativa     |
+
+Notas:
+
+- `provider` soportado: `openvas`, `insightvm`, `nessus`, `wazuh`, `zabbix`, `uptime_kuma`.
+- `GET /dashboard/providers/{provider}` acepta `preset`, `from`, `to` para filtros temporales.
+- `recent_findings` ya incluye `id`, `domain`, `scan_id`, `scan_summary_soc_id`, `scan_summary_noc_id` para navegación del frontend.
+- `GET /dashboard/home` ahora incluye `integration_status`, un arreglo listo para tarjetas de estado en frontend.
+
+Ejemplo parcial de `integration_status`:
+
+```json
+{
+  "integration_status": [
+    {
+      "provider": "openvas",
+      "label": "OpenVAS Scans",
+      "navigation_slug": "openvas",
+      "configured": true,
+      "active": true,
+      "has_data": true,
+      "last_sync": "2026-07-16T21:00:00Z",
+      "agent_name": "OpenVAS Scanner Agent",
+      "status_text": "Activo y sincronizado",
+      "summary_slots": [
+        { "label": "Escaneos", "value": 12 },
+        { "label": "Vulns", "value": 148 },
+        { "label": "Criticas", "value": 6, "danger": true }
+      ]
+    }
+  ]
+}
+```
+
+Regla de negocio:
+
+- `active = true` significa que la integración tiene una `AgentApiKey` activa asociada a ese `integration_type`.
+- `configured = true` significa que existe la integración configurada para el tenant.
+
+---
+
+### Findings
+
+| Método | Path                     | Auth | Descripción                          |
+|--------|--------------------------|------|--------------------------------------|
+| GET    | `/findings/{findingId}`  | PROT | Obtener detalle puntual de hallazgo  |
+
+---
+
 ### Alerts
 
 | Método | Path                      | Auth | Descripción                          |
@@ -397,6 +458,22 @@ Authorization: Bearer <token>
 | GET    | `/vulnerabilities`               | PROT | Listar vulnerabilidades (filtros: status, severity) |
 | GET    | `/vulnerabilities/{vulnId}`      | PROT | Obtener vulnerabilidad               |
 | POST   | `/vulnerabilities/{vulnId}/patch`| PROT | Iniciar parche (status → "patching") |
+
+---
+
+### Reports
+
+| Método | Path                    | Auth | Descripción                                  |
+|--------|-------------------------|------|----------------------------------------------|
+| POST   | `/reports`              | PROT | Solicitar generación asíncrona de reporte    |
+| GET    | `/reports`              | PROT | Listar reportes del tenant                   |
+| GET    | `/reports/{reportId}`   | PROT | Consultar estado y obtener URL de descarga   |
+
+Respuesta esperada:
+
+- `POST /reports` responde `202` con `reportId` y `status=PENDING`.
+- `GET /reports/{reportId}` devuelve `PENDING`, `PROCESSING`, `COMPLETED` o `FAILED`.
+- En `COMPLETED`, incluye `downloadUrl` temporal.
 
 ---
 
@@ -438,10 +515,11 @@ Authorization: Bearer <token>
 
 | Método | Path                                               | Auth         | Descripción                              |
 |--------|----------------------------------------------------|--------------|------------------------------------------|
-| GET    | `/superadmin/tenants`                              | SUPERADMIN   | Listar tenants (filtros: search, dates, paginación) |
+| GET    | `/superadmin/tenants`                              | ADMIN_XOC / SUPERADMIN | Listar tenants (filtros: search, dates, paginación) |
 | POST   | `/superadmin/tenants`                              | SUPERADMIN   | Crear tenant                             |
-| GET    | `/superadmin/tenants/{tenantId}`                   | SUPERADMIN   | Detalle del tenant con conteos           |
-| PATCH  | `/superadmin/tenants/{tenantId}`                   | SUPERADMIN   | Actualizar tenant                        |
+| GET    | `/superadmin/tenants/{tenantId}`                   | ADMIN_XOC / SUPERADMIN | Detalle del tenant con conteos           |
+| PATCH  | `/superadmin/tenants/{tenantId}`                   | ADMIN_XOC / SUPERADMIN | Actualizar tenant                        |
+| POST   | `/superadmin/tenants/{tenantId}/impersonation-token` | ADMIN_XOC / SUPERADMIN | Emitir token delegado para operar el tenant |
 | GET    | `/superadmin/tenants/{tenantId}/integrations`      | SUPERADMIN   | Integraciones + capabilities del tenant  |
 | GET    | `/superadmin/tenants/{tenantId}/capabilities`      | SUPERADMIN   | Capacidades efectivas del tenant         |
 | GET    | `/superadmin/tenants/{tenantId}/capability-templates` | SUPERADMIN | Templates asignados al tenant           |

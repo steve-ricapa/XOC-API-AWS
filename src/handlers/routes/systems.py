@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
 from src.persistence.models import System, User
-from src.shared.context import log_audit
+from src.shared.context import effective_tenant_id_of, log_audit, require_tenant_read_access
 from src.shared.dependencies import get_current_user
 from src.shared.errors import NotFoundError
 
@@ -14,7 +14,8 @@ router = APIRouter(prefix="/systems", tags=["systems"])
 
 @router.get("/status")
 def get_systems_status(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
-    systems = session.scalars(select(System).where(System.tenant_id == current_user.tenant_id)).all()
+    require_tenant_read_access(current_user)
+    systems = session.scalars(select(System).where(System.tenant_id == effective_tenant_id_of(current_user))).all()
     systems_with_health = [system for system in systems if system.health_score is not None]
     avg_health = sum(system.health_score for system in systems_with_health) / len(systems_with_health) if systems_with_health else 0
     status_summary = {
@@ -32,7 +33,8 @@ def get_systems_status(current_user: User = Depends(get_current_user), session: 
 
 @router.get("")
 def get_systems(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
-    systems = session.scalars(select(System).where(System.tenant_id == current_user.tenant_id)).all()
+    require_tenant_read_access(current_user)
+    systems = session.scalars(select(System).where(System.tenant_id == effective_tenant_id_of(current_user))).all()
     log_audit(session, actor_user_id=current_user.id, action="VIEW", entity_type="SYSTEMS")
     session.commit()
     return {"systems": [system.to_dict() for system in systems]}
@@ -40,7 +42,8 @@ def get_systems(current_user: User = Depends(get_current_user), session: Session
 
 @router.get("/{system_id}")
 def get_system(system_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
+    require_tenant_read_access(current_user)
     system = session.get(System, system_id)
-    if not system or system.tenant_id != current_user.tenant_id:
+    if not system or system.tenant_id != effective_tenant_id_of(current_user):
         raise NotFoundError("System not found")
     return system.to_dict()

@@ -34,6 +34,7 @@ function commonEnvironment(stage) {
     AGENTS_FUNCTION_ROUTE_VICTOR: stageRef(stage, 'agentsFunctionRouteVictor'),
     EVENT_BUS_NAME: `xoc-api-tickets-${stage}-bus`,
     TICKETS_TABLE_NAME: `xoc-api-tickets-${stage}-tickets`,
+    REPORTS_TABLE_NAME: `xoc-api-reports-${stage}-reports`,
     AGENT_KEY_ENCRYPTION_KEY: "${env:AGENT_KEY_ENCRYPTION_KEY, ''}",
     AGENT_KEY_ENCRYPTION_KEY_ARN: stageRef(stage, 'agentKeyEncryptionKeyArn'),
     PUBLIC_REGISTRATION_ENABLED: stageRef(stage, 'publicRegistrationEnabled'),
@@ -47,6 +48,7 @@ function commonPackage() {
       '!node_modules/**',
       '!package-lock.json',
       '!README.md',
+      '!experiments/**',
       '!tests/**',
       '!txdxai_Flask/**',
       '!.git/**',
@@ -149,6 +151,41 @@ function iamStatements(stage, capabilities = {}) {
       Resource: '*',
     });
   }
+  if (capabilities.reports) {
+    statements.push({
+      Effect: 'Allow',
+      Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:Query'],
+      Resource: relaxed ? '*' : [
+        `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-reports-${stage}-reports`,
+        `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-reports-${stage}-reports/index/*`,
+      ],
+    });
+    statements.push({
+      Effect: 'Allow',
+      Action: ['events:PutEvents'],
+      Resource: relaxed ? '*' : [`arn:aws:events:${'${aws:region}'}:${'${aws:accountId}'}:event-bus/xoc-api-reports-${stage}-bus`],
+    });
+    statements.push({
+      Effect: 'Allow',
+      Action: ['states:StartExecution', 'states:DescribeExecution', 'states:StopExecution'],
+      Resource: relaxed ? '*' : [`arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:stateMachine:xoc-api-reports-${stage}-*`],
+    });
+    statements.push({
+      Effect: 'Allow',
+      Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
+      Resource: relaxed ? '*' : [`${stageRef(stage, 'snapshotsBucketArn')}/reports/*`],
+    });
+    statements.push({
+      Effect: 'Allow',
+      Action: ['s3:ListBucket'],
+      Resource: relaxed ? '*' : [`${stageRef(stage, 'snapshotsBucketArn')}`],
+    });
+    statements.push({
+      Effect: 'Allow',
+      Action: ['sqs:ReceiveMessage', 'sqs:DeleteMessage', 'sqs:GetQueueAttributes'],
+      Resource: relaxed ? '*' : [`arn:aws:sqs:${'${aws:region}'}:${'${aws:accountId}'}:xoc-api-reports-${stage}-*`],
+    });
+  }
   return statements;
 }
 
@@ -233,9 +270,12 @@ function buildService(options) {
     plugins: ['serverless-python-requirements'],
     custom: {
       pythonRequirements: {
-        dockerizePip: true,
+        dockerizePip: false,
         useDownloadCache: true,
         useStaticCache: false,
+        pipCmdExtraArgs: ['--only-binary', ':all:'],
+        slim: true,
+        noDeploy: ['boto3', 'botocore', 's3transfer', 'jmespath'],
       },
     },
   };

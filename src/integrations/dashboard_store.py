@@ -27,6 +27,15 @@ _SUPPORTED_PROVIDERS = {"openvas", "insightvm", "nessus", "wazuh", "zabbix", "up
 _VULN_PROVIDERS = {"openvas", "insightvm", "nessus"}
 _NOC_PROVIDERS = {"zabbix", "uptime_kuma"}
 
+_HOME_PROVIDER_META = {
+    "openvas": {"label": "OpenVAS Scans", "navigation_slug": "openvas"},
+    "insightvm": {"label": "InsightVM / Rapid7", "navigation_slug": "insightvm"},
+    "nessus": {"label": "Nessus Scans", "navigation_slug": "nessus"},
+    "wazuh": {"label": "Wazuh SIEM", "navigation_slug": "wazuh"},
+    "zabbix": {"label": "Zabbix Monitor", "navigation_slug": "zabbix"},
+    "uptime_kuma": {"label": "Uptime Kuma", "navigation_slug": "uptime"},
+}
+
 
 def _parse_range(preset: str | None = None, from_date: str | None = None, to_date: str | None = None, default_days: int = 30, max_days: int = 90) -> dict:
     now = datetime.utcnow()
@@ -232,11 +241,16 @@ def _build_recent_findings_for_provider(session: Session, tenant_id: int, provid
     ).limit(limit).all()
     return [
         {
+            "id": finding.id,
             "cve": finding.cve,
             "name": finding.name,
             "host": finding.host,
             "severity": finding.severity,
             "cvss": finding.cvss,
+            "domain": finding.domain,
+            "scan_id": finding.scan_id,
+            "scan_summary_soc_id": finding.scan_summary_soc_id,
+            "scan_summary_noc_id": finding.scan_summary_noc_id,
             "detectedAt": summary.scanned_at.isoformat() if summary.scanned_at else None,
         }
         for finding, summary in rows
@@ -476,6 +490,83 @@ def _build_uptime_kuma_dashboard(session: Session, tenant_id: int, range_info: d
     }
 
 
+def _integration_status_text(*, configured: bool, active: bool, has_data: bool) -> str:
+    if not configured:
+        return "Pendiente de configurar"
+    if active and has_data:
+        return "Activo y sincronizado"
+    if active:
+        return "Activo sin datos"
+    return "Configurado sin agente activo"
+
+
+def _build_integration_summary_slots(provider: str, item: dict) -> list[dict]:
+    if provider in _VULN_PROVIDERS:
+        vulnerabilities = item.get("vulnerabilities") or item.get("summary") or {}
+        total_vulns = sum(int(vulnerabilities.get(key, 0) or 0) for key in ("critical", "high", "medium", "low", "info"))
+        scans_total = int((item.get("scans") or {}).get("total", 0) or 0)
+        return [
+            {"label": "Escaneos", "value": scans_total},
+            {"label": "Vulns", "value": total_vulns},
+            {"label": "Criticas", "value": int(vulnerabilities.get("critical", 0) or 0), "danger": True},
+        ]
+
+    if provider == "wazuh":
+        alerts = item.get("alerts") or {}
+        critical = int(alerts.get("critical", 0) or 0)
+        high = int(alerts.get("high", 0) or 0)
+        medium = int(alerts.get("medium", 0) or 0)
+        low = int(alerts.get("low", 0) or 0)
+        agents = item.get("agents") or {}
+        return [
+            {"label": "Agentes", "value": int(agents.get("active", 0) or 0)},
+            {"label": "Alertas", "value": critical + high + medium + low},
+            {"label": "Crit + High", "value": critical + high, "danger": True},
+        ]
+
+    if provider == "zabbix":
+        return [
+            {"label": "Hosts", "value": int(item.get("hosts_monitored", 0) or 0)},
+            {"label": "Alertas", "value": int(item.get("alerts", 0) or 0), "danger": True},
+            {"label": "Online", "value": int(item.get("hosts_monitored", 0) or 0)},
+        ]
+
+    if provider == "uptime_kuma":
+        services = item.get("services") or {}
+        return [
+            {"label": "Monitores", "value": int(services.get("total", 0) or 0)},
+            {"label": "Online", "value": int(services.get("up", 0) or 0)},
+            {"label": "Caidos", "value": int(services.get("down", 0) or 0), "danger": True},
+        ]
+
+    return []
+
+
+def _build_home_integration_status(integrations_block: dict) -> list[dict]:
+    result = []
+    for provider in ("openvas", "insightvm", "nessus", "wazuh", "zabbix", "uptime_kuma"):
+        item = integrations_block.get(provider) or {}
+        meta = _HOME_PROVIDER_META[provider]
+        configured = bool(item.get("configured"))
+        active = bool(item.get("active"))
+        has_data = bool(item.get("has_data"))
+        result.append(
+            {
+                "provider": provider,
+                "label": meta["label"],
+                "navigation_slug": meta["navigation_slug"],
+                "configured": configured,
+                "active": active,
+                "has_data": has_data,
+                "last_sync": item.get("last_sync"),
+                "agent_name": item.get("agent_name") or (item.get("agentInfo") or {}).get("name"),
+                "status_text": _integration_status_text(configured=configured, active=active, has_data=has_data),
+                "summary_slots": _build_integration_summary_slots(provider, item),
+            }
+        )
+    return result
+
+
 def build_home_dashboard(session: Session, tenant_id: int) -> dict:
     integrations_block = build_dashboard_summary(session, tenant_id)
     range_info = _parse_range("30d")
@@ -495,6 +586,7 @@ def build_home_dashboard(session: Session, tenant_id: int) -> dict:
 
     return {
         "integrations": integrations_block,
+        "integration_status": _build_home_integration_status(integrations_block),
         "summary": integrations_block.get("summary", {}),
         "top_threats": top_threats,
         "tickets": {
