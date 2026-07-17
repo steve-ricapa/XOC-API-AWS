@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
 from src.persistence.models import User
-from src.shared.context import log_audit, require_admin
+from src.shared.context import effective_tenant_id_of, log_audit, normalize_role, require_admin, require_tenant_read_access
 from src.shared.dependencies import get_current_user
 from src.shared.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from src.shared.schemas import CreateUserRequest, CreateUserResponse, UpdateUserRequest, UpdateUserResponse, UserResponse, UsersListResponse
@@ -15,19 +15,21 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 def _get_tenant_user_or_404(session: Session, current_user: User, user_id: int) -> User:
     user = session.get(User, user_id)
-    if not user or user.tenant_id != current_user.tenant_id:
+    if not user or user.tenant_id != effective_tenant_id_of(current_user):
         raise NotFoundError("User not found")
     return user
 
 
 @router.get("", response_model=UsersListResponse)
 def get_users(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> UsersListResponse:
-    users = session.scalars(select(User).where(User.tenant_id == current_user.tenant_id)).all()
+    require_tenant_read_access(current_user)
+    users = session.scalars(select(User).where(User.tenant_id == effective_tenant_id_of(current_user))).all()
     return UsersListResponse(users=[UserResponse(**user.to_dict()) for user in users])
 
 
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user(user_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> UserResponse:
+    require_tenant_read_access(current_user)
     user = _get_tenant_user_or_404(session, current_user, user_id)
     return UserResponse(**user.to_dict())
 
@@ -47,6 +49,7 @@ def create_user(payload: CreateUserRequest, current_user: User = Depends(get_cur
         raise ConflictError("Email already exists")
 
     user = User(tenant_id=current_user.tenant_id, username=payload.username, email=payload.email, role=payload.role)
+    user.tenant_id = effective_tenant_id_of(current_user)
     user.set_password(payload.password)
     session.add(user)
     session.flush()
@@ -58,7 +61,7 @@ def create_user(payload: CreateUserRequest, current_user: User = Depends(get_cur
 @router.put("/{user_id}", response_model=UpdateUserResponse)
 def update_user(user_id: int, payload: UpdateUserRequest, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> UpdateUserResponse:
     user = _get_tenant_user_or_404(session, current_user, user_id)
-    if current_user.role != "ADMIN" and current_user.id != user_id:
+    if normalize_role(current_user.role) != "ADMIN" and not getattr(current_user, "delegation_active", False) and current_user.id != user_id:
         raise ForbiddenError("Access denied")
 
     if payload.email is not None:
@@ -68,7 +71,7 @@ def update_user(user_id: int, payload: UpdateUserRequest, current_user: User = D
         user.email = payload.email
     if payload.password is not None:
         user.set_password(payload.password)
-    if payload.role is not None and current_user.role == "ADMIN":
+    if payload.role is not None and (normalize_role(current_user.role) == "ADMIN" or getattr(current_user, "delegation_active", False)):
         if payload.role not in ["ADMIN", "USER"]:
             raise ValidationError("role must be ADMIN or USER")
         user.role = payload.role

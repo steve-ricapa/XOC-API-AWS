@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from src.persistence.db import get_db_session
 from src.persistence.models import AgentApiKey, FindingIndex, PendingIngestion, ScanSummary, ScanSummaryNoc, SnapshotArtifact, Tenant, User
 from src.shared.config import get_settings
-from src.shared.context import log_audit
+from src.shared.context import effective_tenant_id_of, log_audit, require_tenant_read_access
 from src.shared.dependencies import get_current_user, get_request_claims, get_request_tenant_context
 from src.shared.errors import ForbiddenError, NotFoundError, ValidationError
 from src.shared.integration_types import OFFICIAL_INTEGRATION_TYPES, normalize_integration_type
@@ -54,7 +54,7 @@ _SUMMARY_TYPE_DOMAIN_MAP = {
 
 
 def _is_demo_tenant(current_user: User, session: Session) -> bool:
-    tenant = session.get(Tenant, current_user.tenant_id)
+    tenant = session.get(Tenant, effective_tenant_id_of(current_user))
     plan_status = (getattr(tenant, "plan_status", "") or "").strip().upper()
     return plan_status == "DEMO"
 
@@ -487,7 +487,7 @@ def get_scans(
     if scanner_type and not scanner_type_normalized:
         raise ValidationError(f"Invalid scanner_type. Allowed: {', '.join(ALLOWED_SCANNER_TYPES)}")
     if _is_demo_tenant(current_user, session):
-        payload = demo_scans(scanner_type=scanner_type_normalized, days=days, limit=limit, tenant_id=current_user.tenant_id)
+        payload = demo_scans(scanner_type=scanner_type_normalized, days=days, limit=limit, tenant_id=effective_tenant_id_of(current_user))
         log_audit(session, actor_user_id=current_user.id, action="VIEW", entity_type="SCAN_SUMMARIES_DEMO", payload={"count": payload.get("count", 0)})
         session.commit()
         return payload
@@ -496,7 +496,7 @@ def get_scans(
     if not resolved_domain:
         raise ValidationError("Invalid domain. Allowed: soc, noc")
     summary_model = _summary_model_for_domain(resolved_domain)
-    query = select(summary_model).where(summary_model.tenant_id == current_user.tenant_id, summary_model.scanned_at >= range_start, summary_model.scanned_at <= range_end)
+    query = select(summary_model).where(summary_model.tenant_id == effective_tenant_id_of(current_user), summary_model.scanned_at >= range_start, summary_model.scanned_at <= range_end)
     if scanner_type_normalized:
         query = query.where(summary_model.scanner_type == scanner_type_normalized)
     if status:
@@ -523,7 +523,7 @@ def get_latest_scans(
     if scanner_type and not scanner_type_normalized:
         raise ValidationError(f"Invalid scanner_type. Allowed: {', '.join(ALLOWED_SCANNER_TYPES)}")
     if _is_demo_tenant(current_user, session):
-        payload = demo_latest_scans(scanner_type=scanner_type_normalized, days=days, tenant_id=current_user.tenant_id)
+        payload = demo_latest_scans(scanner_type=scanner_type_normalized, days=days, tenant_id=effective_tenant_id_of(current_user))
         log_audit(session, actor_user_id=current_user.id, action="VIEW", entity_type="SCAN_LATEST_DEMO", payload={"count": payload.get("count", 0)})
         session.commit()
         return payload
@@ -532,7 +532,7 @@ def get_latest_scans(
     if not resolved_domain:
         raise ValidationError("Invalid domain. Allowed: soc, noc")
     summary_model = _summary_model_for_domain(resolved_domain)
-    query = select(summary_model).where(summary_model.tenant_id == current_user.tenant_id, summary_model.scanned_at >= range_start, summary_model.scanned_at <= range_end)
+    query = select(summary_model).where(summary_model.tenant_id == effective_tenant_id_of(current_user), summary_model.scanned_at >= range_start, summary_model.scanned_at <= range_end)
     if scanner_type_normalized:
         query = query.where(summary_model.scanner_type == scanner_type_normalized)
     if status:
@@ -572,7 +572,7 @@ def get_latest_scans(
 @router.get("/summary")
 def get_scans_summary(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session), days: int = 30) -> dict:
     if _is_demo_tenant(current_user, session):
-        payload = demo_scans_summary(days, current_user.tenant_id)
+        payload = demo_scans_summary(days, effective_tenant_id_of(current_user))
         log_audit(session, actor_user_id=current_user.id, action="VIEW", entity_type="SCAN_DASHBOARD_DEMO", payload={"days": payload.get("period_days")})
         session.commit()
         return payload
@@ -582,23 +582,23 @@ def get_scans_summary(current_user: User = Depends(get_current_user), session: S
     by_scanner_counts = {}
     latest_scan_candidates = []
     for summary_model in (ScanSummary, ScanSummaryNoc):
-        total_scans += session.query(summary_model).filter(summary_model.tenant_id == current_user.tenant_id, summary_model.scanned_at >= time_threshold).count()
+        total_scans += session.query(summary_model).filter(summary_model.tenant_id == effective_tenant_id_of(current_user), summary_model.scanned_at >= time_threshold).count()
         totals = session.query(
             func.sum(summary_model.critical_count).label("critical"),
             func.sum(summary_model.high_count).label("high"),
             func.sum(summary_model.medium_count).label("medium"),
             func.sum(summary_model.low_count).label("low"),
             func.sum(summary_model.info_count).label("info"),
-        ).filter(summary_model.tenant_id == current_user.tenant_id, summary_model.scanned_at >= time_threshold, summary_model.status == "completed").first()
+        ).filter(summary_model.tenant_id == effective_tenant_id_of(current_user), summary_model.scanned_at >= time_threshold, summary_model.status == "completed").first()
         total_critical += int(totals.critical or 0) if totals else 0
         total_high += int(totals.high or 0) if totals else 0
         total_medium += int(totals.medium or 0) if totals else 0
         total_low += int(totals.low or 0) if totals else 0
         total_info += int(totals.info or 0) if totals else 0
-        by_scanner_rows = session.query(summary_model.scanner_type, func.count(summary_model.id).label("count")).filter(summary_model.tenant_id == current_user.tenant_id, summary_model.scanned_at >= time_threshold).group_by(summary_model.scanner_type).all()
+        by_scanner_rows = session.query(summary_model.scanner_type, func.count(summary_model.id).label("count")).filter(summary_model.tenant_id == effective_tenant_id_of(current_user), summary_model.scanned_at >= time_threshold).group_by(summary_model.scanner_type).all()
         for row in by_scanner_rows:
             by_scanner_counts[row.scanner_type] = by_scanner_counts.get(row.scanner_type, 0) + int(row.count or 0)
-        latest_scan_candidates.extend(session.query(summary_model).filter(summary_model.tenant_id == current_user.tenant_id).order_by(summary_model.scanned_at.desc()).limit(5).all())
+        latest_scan_candidates.extend(session.query(summary_model).filter(summary_model.tenant_id == effective_tenant_id_of(current_user)).order_by(summary_model.scanned_at.desc()).limit(5).all())
     latest_scan_candidates.sort(key=lambda scan: scan.scanned_at or datetime.min, reverse=True)
     latest_scans = latest_scan_candidates[:5]
     trend_data = []
@@ -613,7 +613,7 @@ def get_scans_summary(current_user: User = Depends(get_current_user), session: S
                 func.sum(summary_model.medium_count).label("medium"),
                 func.sum(summary_model.low_count).label("low"),
                 func.sum(summary_model.info_count).label("info"),
-            ).filter(summary_model.tenant_id == current_user.tenant_id, summary_model.scanned_at >= day_start, summary_model.scanned_at < day_end, summary_model.status == "completed").first()
+            ).filter(summary_model.tenant_id == effective_tenant_id_of(current_user), summary_model.scanned_at >= day_start, summary_model.scanned_at < day_end, summary_model.status == "completed").first()
             day_critical += int(day_totals.critical or 0) if day_totals else 0
             day_high += int(day_totals.high or 0) if day_totals else 0
             day_medium += int(day_totals.medium or 0) if day_totals else 0
@@ -773,10 +773,10 @@ def get_scanner_analytics(
     domain = _infer_domain_from_integration(scanner_type_normalized) or "soc"
     summary_model = ScanSummaryNoc if domain == "noc" else ScanSummary
     join_col = FindingIndex.scan_summary_noc_id if domain == "noc" else FindingIndex.scan_summary_soc_id
-    summaries = session.scalars(select(summary_model).where(summary_model.tenant_id == current_user.tenant_id, summary_model.scanner_type == scanner_type_normalized, summary_model.scanned_at >= range_start, summary_model.scanned_at <= range_end)).all()
+    summaries = session.scalars(select(summary_model).where(summary_model.tenant_id == effective_tenant_id_of(current_user), summary_model.scanner_type == scanner_type_normalized, summary_model.scanned_at >= range_start, summary_model.scanned_at <= range_end)).all()
     top_items = []
     cve_col = FindingIndex.event_type if domain == "noc" else FindingIndex.cve
-    rows = session.query(cve_col, FindingIndex.severity, func.count(func.distinct(FindingIndex.host)).label("host_count"), func.max(FindingIndex.cvss).label("cvss_score")).join(summary_model, join_col == summary_model.id).filter(summary_model.tenant_id == current_user.tenant_id, summary_model.scanner_type == scanner_type_normalized, summary_model.scanned_at >= range_start, summary_model.scanned_at <= range_end, cve_col.is_not(None), cve_col != "").group_by(cve_col, FindingIndex.severity).all()
+    rows = session.query(cve_col, FindingIndex.severity, func.count(func.distinct(FindingIndex.host)).label("host_count"), func.max(FindingIndex.cvss).label("cvss_score")).join(summary_model, join_col == summary_model.id).filter(summary_model.tenant_id == effective_tenant_id_of(current_user), summary_model.scanner_type == scanner_type_normalized, summary_model.scanned_at >= range_start, summary_model.scanned_at <= range_end, cve_col.is_not(None), cve_col != "").group_by(cve_col, FindingIndex.severity).all()
     for row in rows:
         impact = (row.host_count or 0) * (row.cvss_score or 0)
         top_items.append({"cve_id": getattr(row, cve_col.key), "severity": row.severity, "hosts_affected": row.host_count, "cvss_score": row.cvss_score, "impact_score": impact})
@@ -788,24 +788,24 @@ def get_scanner_analytics(
     for i in range(total_days):
         day_start = range_start_day + timedelta(days=i)
         day_end = day_start + timedelta(days=1)
-        counts = session.query(func.sum(summary_model.critical_count).label("critical"), func.sum(summary_model.high_count).label("high"), func.sum(summary_model.medium_count).label("medium"), func.sum(summary_model.low_count).label("low"), func.sum(summary_model.info_count).label("info")).filter(summary_model.tenant_id == current_user.tenant_id, summary_model.scanner_type == scanner_type_normalized, summary_model.scanned_at >= day_start, summary_model.scanned_at < day_end, summary_model.status == "completed").first()
+        counts = session.query(func.sum(summary_model.critical_count).label("critical"), func.sum(summary_model.high_count).label("high"), func.sum(summary_model.medium_count).label("medium"), func.sum(summary_model.low_count).label("low"), func.sum(summary_model.info_count).label("info")).filter(summary_model.tenant_id == effective_tenant_id_of(current_user), summary_model.scanner_type == scanner_type_normalized, summary_model.scanned_at >= day_start, summary_model.scanned_at < day_end, summary_model.status == "completed").first()
         trend.append({"date": day_start.strftime("%Y-%m-%d"), "critical": int(counts.critical or 0), "high": int(counts.high or 0), "medium": int(counts.medium or 0), "low": int(counts.low or 0), "info": int(counts.info or 0)})
     total_hosts = sum(summary.total_hosts or 0 for summary in summaries)
     most_critical_host_row = session.query(
         FindingIndex.host,
         func.count(FindingIndex.id).label("critical_count"),
     ).join(summary_model, join_col == summary_model.id).filter(
-        summary_model.tenant_id == current_user.tenant_id,
+        summary_model.tenant_id == effective_tenant_id_of(current_user),
         summary_model.scanner_type == scanner_type_normalized,
         summary_model.scanned_at >= range_start,
         summary_model.scanned_at <= range_end,
         FindingIndex.severity.ilike("%critical%"),
     ).group_by(FindingIndex.host).order_by(func.count(FindingIndex.id).desc()).first()
     recent_findings = []
-    rows = session.query(FindingIndex, summary_model).join(summary_model, join_col == summary_model.id).filter(summary_model.tenant_id == current_user.tenant_id, summary_model.scanner_type == scanner_type_normalized, summary_model.scanned_at >= range_start, summary_model.scanned_at <= range_end).order_by(case((FindingIndex.severity.ilike("%critical%"), 1), (FindingIndex.severity.ilike("%high%"), 2), (FindingIndex.severity.ilike("%medium%"), 3), (FindingIndex.severity.ilike("%low%"), 4), else_=5), summary_model.scanned_at.desc()).limit(20).all()
+    rows = session.query(FindingIndex, summary_model).join(summary_model, join_col == summary_model.id).filter(summary_model.tenant_id == effective_tenant_id_of(current_user), summary_model.scanner_type == scanner_type_normalized, summary_model.scanned_at >= range_start, summary_model.scanned_at <= range_end).order_by(case((FindingIndex.severity.ilike("%critical%"), 1), (FindingIndex.severity.ilike("%high%"), 2), (FindingIndex.severity.ilike("%medium%"), 3), (FindingIndex.severity.ilike("%low%"), 4), else_=5), summary_model.scanned_at.desc()).limit(20).all()
     for finding, summary in rows:
         recent_findings.append({"cve": finding.event_type if domain == "noc" else finding.cve, "name": finding.name, "host": finding.host, "severity": finding.severity, "cvss": finding.cvss, "detectedAt": summary.scanned_at.isoformat() if summary.scanned_at else None})
-    return {"success": True, "domain": domain, "scanner_type": scanner_type_normalized, "period": {"start_date": range_start.isoformat(), "end_date": range_end.isoformat(), "days": max(1, (range_end - range_start).days + 1)}, "topCVEs": top_items[:10], "trend_7_days": trend, "hostDistribution": {"totalUniqueHosts": total_hosts, "avgVulnerabilitiesPerHost": round((sum((summary.critical_count + summary.high_count + summary.medium_count + summary.low_count + summary.info_count) for summary in summaries) / total_hosts), 2) if total_hosts else 0, "mostCriticalHost": {"host": most_critical_host_row.host if most_critical_host_row else None, "criticalCount": int(most_critical_host_row.critical_count or 0) if most_critical_host_row else 0}}, "recentFindings": recent_findings, "agentInfo": _build_agent_info(session, summary_model, current_user.tenant_id, scanner_type_normalized)}
+    return {"success": True, "domain": domain, "scanner_type": scanner_type_normalized, "period": {"start_date": range_start.isoformat(), "end_date": range_end.isoformat(), "days": max(1, (range_end - range_start).days + 1)}, "topCVEs": top_items[:10], "trend_7_days": trend, "hostDistribution": {"totalUniqueHosts": total_hosts, "avgVulnerabilitiesPerHost": round((sum((summary.critical_count + summary.high_count + summary.medium_count + summary.low_count + summary.info_count) for summary in summaries) / total_hosts), 2) if total_hosts else 0, "mostCriticalHost": {"host": most_critical_host_row.host if most_critical_host_row else None, "criticalCount": int(most_critical_host_row.critical_count or 0) if most_critical_host_row else 0}}, "recentFindings": recent_findings, "agentInfo": _build_agent_info(session, summary_model, effective_tenant_id_of(current_user), scanner_type_normalized)}
 
 
 @router.get("/{scan_summary_id}")
@@ -814,13 +814,13 @@ def get_scan(scan_summary_id: int, current_user: User = Depends(get_current_user
     if not resolved_domain:
         raise ValidationError("Invalid domain. Allowed: soc, noc")
     if _is_demo_tenant(current_user, session):
-        scan = demo_scan(scan_summary_id, current_user.tenant_id)
+        scan = demo_scan(scan_summary_id, effective_tenant_id_of(current_user))
         if not scan:
             raise NotFoundError("Scan summary not found")
         return scan
     summary_model = _summary_model_for_domain(resolved_domain)
     scan = session.get(summary_model, scan_summary_id)
-    if not scan or scan.tenant_id != current_user.tenant_id:
+    if not scan or scan.tenant_id != effective_tenant_id_of(current_user):
         raise NotFoundError("Scan summary not found")
     return scan.to_dict()
 
@@ -833,7 +833,7 @@ def get_scan_findings(scan_summary_id: int, current_user: User = Depends(get_cur
     if _is_demo_tenant(current_user, session):
         return demo_scan_findings(scan_summary_id)
     summary_model = _summary_model_for_domain(resolved_domain)
-    scan = session.scalar(select(summary_model).where(summary_model.id == scan_summary_id, summary_model.tenant_id == current_user.tenant_id))
+    scan = session.scalar(select(summary_model).where(summary_model.id == scan_summary_id, summary_model.tenant_id == effective_tenant_id_of(current_user)))
     if not scan:
         raise NotFoundError("Scan summary not found")
     if resolved_domain == "noc":
@@ -849,7 +849,7 @@ def get_finding_detail(finding_id: int, current_user: User = Depends(get_current
     finding = session.scalar(
         select(FindingIndex).where(
             FindingIndex.id == finding_id,
-            FindingIndex.tenant_id == current_user.tenant_id,
+            FindingIndex.tenant_id == effective_tenant_id_of(current_user),
         )
     )
     if not finding:

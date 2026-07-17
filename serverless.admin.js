@@ -32,6 +32,7 @@ module.exports = buildService({
         protectedRoute(stage, 'POST', '/superadmin/tenants'),
         protectedRoute(stage, 'GET', '/superadmin/tenants/{tenantId}'),
         protectedRoute(stage, 'PATCH', '/superadmin/tenants/{tenantId}'),
+        protectedRoute(stage, 'POST', '/superadmin/tenants/{tenantId}/impersonation-token'),
         protectedRoute(stage, 'GET', '/superadmin/tenants/{tenantId}/integrations'),
         protectedRoute(stage, 'GET', '/superadmin/tenants/{tenantId}/capabilities'),
         protectedRoute(stage, 'GET', '/superadmin/tenants/{tenantId}/capability-templates'),

@@ -15,6 +15,7 @@ from src.persistence.models import AgentSession, Tenant, TenantRuntimeSettings
 from src.shared.auth import create_access_token
 from src.shared.capabilities import collect_automation_capabilities
 from src.shared.config import get_settings
+from src.shared.context import effective_tenant_id_of, require_tenant_read_access
 from src.shared.dependencies import get_current_user
 from src.shared.errors import AppError, UnauthorizedError, ValidationError
 
@@ -74,7 +75,7 @@ def _resolve_agent_routes(session: Session, tenant_id: int) -> dict[str, str]:
 def _is_demo_tenant(current_user, db_session: Session) -> bool:
     user_tenant = getattr(current_user, "tenant", None)
     if not user_tenant:
-        user_tenant = db_session.get(Tenant, current_user.tenant_id)
+        user_tenant = db_session.get(Tenant, effective_tenant_id_of(current_user))
     plan_status = (user_tenant.plan_status or "").strip().upper() if user_tenant else ""
     return plan_status == "DEMO"
 
@@ -178,6 +179,8 @@ def _build_session_title(message: str, max_length: int = 160) -> str:
 
 @router.get("/sessions")
 def list_chat_sessions(current_user=Depends(get_current_user), db_session: Session = Depends(get_db_session)) -> dict:
+    require_tenant_read_access(current_user)
+    tenant_id = effective_tenant_id_of(current_user)
     limit_raw = None
     try:
         limit = int(limit_raw) if limit_raw else 50
@@ -187,7 +190,7 @@ def list_chat_sessions(current_user=Depends(get_current_user), db_session: Sessi
 
     sessions = db_session.execute(
         select(AgentSession).where(
-            AgentSession.tenant_id == current_user.tenant_id,
+            AgentSession.tenant_id == tenant_id,
             AgentSession.user_id == current_user.id,
             AgentSession.purpose == "sophia_chat",
         ).order_by(AgentSession.last_activity_at.desc()).limit(limit)
@@ -208,10 +211,14 @@ def chat_history(
     limit: int = None,
     order: str = None,
 ) -> dict:
+    require_tenant_read_access(current_user)
     if _is_demo_tenant(current_user, db_session):
         raise ValidationError("Chat history is disabled in demo mode")
 
-    tenant_id = tenantId or current_user.tenant_id
+    effective_tenant_id = effective_tenant_id_of(current_user)
+    tenant_id = tenantId or effective_tenant_id
+    if int(tenant_id) != int(effective_tenant_id):
+        raise ValidationError("Requested tenant does not match delegated tenant context")
     resolved_session_id = session_id or sessionId
     resolved_thread_id = thread_id or threadId
 
@@ -280,24 +287,26 @@ def delete_chat_session(
     current_user=Depends(get_current_user),
     db_session: Session = Depends(get_db_session),
 ) -> dict:
+    require_tenant_read_access(current_user)
+    tenant_id = effective_tenant_id_of(current_user)
     chat_session = db_session.execute(
         select(AgentSession).where(
             AgentSession.id == session_id,
-            AgentSession.tenant_id == current_user.tenant_id,
+            AgentSession.tenant_id == tenant_id,
             AgentSession.user_id == current_user.id,
         )
     ).scalar_one_or_none()
     if not chat_session:
         raise ValidationError("Agent session not found")
 
-    runtime_settings = _resolve_agent_routes(db_session, current_user.tenant_id)
+    runtime_settings = _resolve_agent_routes(db_session, tenant_id)
     function_base_url = runtime_settings["function_base_url"]
     delete_route = runtime_settings["function_route_sophia_delete"]
 
     if not function_base_url:
         raise ValidationError("SVAFUNC function_base_url is not configured for this company")
 
-    service_token = _build_agent_invoke_token(current_user.tenant_id, "SOPHIA")
+    service_token = _build_agent_invoke_token(tenant_id, "SOPHIA")
 
     remote_deleted = False
     remote_error = None
@@ -336,12 +345,16 @@ def proxy_chat(
 ) -> dict:
     if not payload:
         raise ValidationError("Request body is required")
+    require_tenant_read_access(current_user)
 
     message = payload.get("message")
     if not message:
         raise ValidationError("Missing required field: message")
 
-    tenant_id = payload.get("tenantId") or current_user.tenant_id
+    effective_tenant_id = effective_tenant_id_of(current_user)
+    tenant_id = payload.get("tenantId") or effective_tenant_id
+    if int(tenant_id) != int(effective_tenant_id):
+        raise ValidationError("Requested tenant does not match delegated tenant context")
     demo_mode = _is_demo_tenant(current_user, db_session)
 
     runtime_settings = _resolve_agent_routes(db_session, int(tenant_id))

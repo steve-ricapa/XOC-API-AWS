@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
 from src.persistence.models import User
-from src.shared.context import require_superadmin
 from src.shared.errors import ForbiddenError, UnauthorizedError
 
 
@@ -76,6 +75,15 @@ def get_current_user(
     user = session.get(User, int(user_id))
     if not user:
         raise UnauthorizedError("User not found")
+    acting_tenant_id = claims.get("actingTenantId") or claims.get("acting_tenant_id")
+    delegation_value = claims.get("delegation")
+    delegation_active = delegation_value in (True, "true", "True", "1", 1)
+    setattr(user, "actor_tenant_id", int(user.tenant_id))
+    setattr(user, "delegation_active", delegation_active)
+    if delegation_active and acting_tenant_id:
+        setattr(user, "effective_tenant_id", int(acting_tenant_id))
+    else:
+        setattr(user, "effective_tenant_id", int(user.tenant_id))
     return user
 
 

@@ -155,8 +155,9 @@ Respuesta (201):
 |-------|-----------------|-------------|
 | **PÚBLICO** | Ninguno | Sin autenticación |
 | **PROTEGIDO** | `Authorization: Bearer <access_token>` | JWT válido |
-| **ADMIN** | `Authorization: Bearer <access_token>` | JWT válido + role=ADMIN |
-| **SUPERADMIN** | `Authorization: Bearer <access_token>` | JWT válido + role=SUPERADMIN |
+| **ADMIN** | `Authorization: Bearer <access_token>` | Admin del tenant actual |
+| **ADMIN_XOC** | `Authorization: Bearer <access_token>` | Operador interno XOC; usa delegación para operar tenants |
+| **SUPERADMIN** | `Authorization: Bearer <access_token>` | Gobierno global de plataforma |
 | **SUPERADMIN + Confirm** | `Authorization: Bearer <access_token>` + `X-Superadmin-Confirm: true` | Operaciones sensibles |
 
 ---
@@ -207,6 +208,11 @@ Respuesta:
 | POST   | `/tenant/agent-keys/{keyId}/toggle`     | ADMIN | Activar/desactivar API key     |
 | GET    | `/tenant/runtime-settings`      | ADMIN   | Obtener runtime settings              |
 | PUT    | `/tenant/runtime-settings`      | ADMIN   | Crear/actualizar runtime settings     |
+
+Nota de delegación:
+
+- `ADMIN_XOC` y `SUPERADMIN` no deben operar endpoints tenant-scoped con su token base.
+- Deben obtener un token delegado por tenant con `POST /superadmin/tenants/{tenantId}/impersonation-token` y usar ese token para `/tenant/*`, `/users/*`, `/integrations/*`, `/dashboard/*`, `/scans/*`, `/reports/*`, etc.
 
 Ejemplo: Crear API key de agente
 
@@ -509,10 +515,11 @@ Respuesta esperada:
 
 | Método | Path                                               | Auth         | Descripción                              |
 |--------|----------------------------------------------------|--------------|------------------------------------------|
-| GET    | `/superadmin/tenants`                              | SUPERADMIN   | Listar tenants (filtros: search, dates, paginación) |
+| GET    | `/superadmin/tenants`                              | ADMIN_XOC / SUPERADMIN | Listar tenants (filtros: search, dates, paginación) |
 | POST   | `/superadmin/tenants`                              | SUPERADMIN   | Crear tenant                             |
-| GET    | `/superadmin/tenants/{tenantId}`                   | SUPERADMIN   | Detalle del tenant con conteos           |
-| PATCH  | `/superadmin/tenants/{tenantId}`                   | SUPERADMIN   | Actualizar tenant                        |
+| GET    | `/superadmin/tenants/{tenantId}`                   | ADMIN_XOC / SUPERADMIN | Detalle del tenant con conteos           |
+| PATCH  | `/superadmin/tenants/{tenantId}`                   | ADMIN_XOC / SUPERADMIN | Actualizar tenant                        |
+| POST   | `/superadmin/tenants/{tenantId}/impersonation-token` | ADMIN_XOC / SUPERADMIN | Emitir token delegado para operar el tenant |
 | GET    | `/superadmin/tenants/{tenantId}/integrations`      | SUPERADMIN   | Integraciones + capabilities del tenant  |
 | GET    | `/superadmin/tenants/{tenantId}/capabilities`      | SUPERADMIN   | Capacidades efectivas del tenant         |
 | GET    | `/superadmin/tenants/{tenantId}/capability-templates` | SUPERADMIN | Templates asignados al tenant           |

@@ -34,6 +34,14 @@ Este documento resume qué endpoint debe consumir cada pantalla y qué recomenda
 
 ### Reglas de consumo recomendadas
 
+0. Roles internos vs tenant-scoped.
+
+- `SUPERADMIN`: control-plane global.
+- `ADMIN_XOC`: operador interno XOC.
+- `ADMIN`: admin del tenant cliente.
+- `USER`: observador/read-only del tenant.
+- `ADMIN_XOC` y `SUPERADMIN` deben operar rutas tenant-scoped con token delegado por tenant, no con su token base.
+
 1. Separar configuración de operación.
 
 - Usar `/dashboard/*` para pantallas operativas.

@@ -19,7 +19,10 @@ from src.reports.store import (
     table,
     update_report_status,
 )
-from src.shared.dependencies import require_access_claims
+from src.persistence.db import get_db_session
+from src.persistence.models import User
+from src.shared.context import effective_tenant_id_of, require_tenant_read_access
+from src.shared.dependencies import get_current_user, require_access_claims
 from src.shared.errors import ValidationError
 from src.shared.logging import logger
 
@@ -58,12 +61,12 @@ def _compute_request_hash(payload: dict) -> str:
 
 
 @router.post("", status_code=202)
-def request_report(payload: dict, claims: dict = Depends(require_access_claims)):
+def request_report(payload: dict, claims: dict = Depends(require_access_claims), current_user: User = Depends(get_current_user)):
     validation = validate_report_request(payload)
     if not validation["valid"]:
         raise ValidationError("; ".join(validation["errors"]))
 
-    tenant_id = int(claims.get("tenantId") or claims.get("tenant_id") or 0)
+    tenant_id = effective_tenant_id_of(current_user)
     user_id = claims.get("userId") or claims.get("sub")
 
     request_hash = _compute_request_hash(payload)
@@ -89,8 +92,9 @@ def request_report(payload: dict, claims: dict = Depends(require_access_claims))
 
 
 @router.get("/{report_id}")
-def get_report_status(report_id: str, claims: dict = Depends(require_access_claims)):
-    tenant_id = int(claims.get("tenantId") or claims.get("tenant_id") or 0)
+def get_report_status(report_id: str, current_user: User = Depends(get_current_user)):
+    require_tenant_read_access(current_user)
+    tenant_id = effective_tenant_id_of(current_user)
     item = get_report_or_404(tenant_id, report_id)
 
     serialized = serialize_report(item)
@@ -104,7 +108,8 @@ def get_report_status(report_id: str, claims: dict = Depends(require_access_clai
 
 
 @router.get("")
-def list_reports(claims: dict = Depends(require_access_claims), status: str | None = None, limit: int = 50):
-    tenant_id = int(claims.get("tenantId") or claims.get("tenant_id") or 0)
+def list_reports(current_user: User = Depends(get_current_user), status: str | None = None, limit: int = 50):
+    require_tenant_read_access(current_user)
+    tenant_id = effective_tenant_id_of(current_user)
     reports = list_tenant_reports(tenant_id, status=status, limit=min(limit, 200))
     return {"reports": reports, "count": len(reports)}
