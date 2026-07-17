@@ -10,6 +10,8 @@ Este documento resume qué endpoint debe consumir cada pantalla y qué recomenda
 |---|---|---|
 | Login | `POST /auth/login` | Devuelve `access_token`, `refresh_token` y `user` |
 | Refresh de sesión | `POST /auth/refresh` | Usar antes de expirar o ante `401` |
+| Monitor global XOC | `GET /xoc-ops/clients`, `GET /xoc-ops/kpis` | Solo `ADMIN_XOC` / `SUPERADMIN` |
+| Entrada a tenant desde XOC | `GET /xoc-ops/clients/{tenantId}` + `POST /superadmin/tenants/{tenantId}/impersonation-token` | Selección + delegación |
 | Home principal | `GET /dashboard/home` | Fuente principal para overview del tenant |
 | Pantalla por integración | `GET /dashboard/providers/{provider}` | No usar `GET /integrations/{integrationId}` para esta pantalla |
 | Configuración de integraciones | `GET /integrations` | Lista de integraciones configuradas |
@@ -42,10 +44,20 @@ Este documento resume qué endpoint debe consumir cada pantalla y qué recomenda
 - `USER`: observador/read-only del tenant.
 - `ADMIN_XOC` y `SUPERADMIN` deben operar rutas tenant-scoped con token delegado por tenant, no con su token base.
 
+Flujo recomendado para `ADMIN_XOC`:
+
+1. Login normal con `POST /auth/login`.
+2. Cargar monitor global con `GET /xoc-ops/clients` y `GET /xoc-ops/kpis`.
+3. Al elegir un tenant, pedir `POST /superadmin/tenants/{tenantId}/impersonation-token`.
+4. Guardar ese token delegado como sesión activa del tenant.
+5. Usar ese token delegado para `/dashboard/*`, `/integrations/*`, `/tenant/*`, `/users/*`, `/scans/*`, `/reports/*`, etc.
+6. Al salir del tenant, descartar el token delegado y volver al token base del operador.
+
 1. Separar configuración de operación.
 
 - Usar `/dashboard/*` para pantallas operativas.
 - Usar `/integrations/*` para CRUD/configuración.
+- Usar `/xoc-ops/*` para monitor global de operadores XOC.
 - Evitar mezclar ambos contratos en una misma vista.
 
 2. Navegar hallazgos siempre por `findingId`.
@@ -93,6 +105,7 @@ Este documento resume qué endpoint debe consumir cada pantalla y qué recomenda
 1. Crear un cliente API por dominio.
 
 - `authApi`
+- `xocOpsApi`
 - `dashboardApi`
 - `integrationsApi`
 - `scansApi`
@@ -103,6 +116,7 @@ Este documento resume qué endpoint debe consumir cada pantalla y qué recomenda
 
 - Interceptor único para `401`.
 - Reintentar una sola vez tras `POST /auth/refresh`.
+- Si existe token delegado de tenant, decidir explícitamente si el refresh aplica sobre ese token o si hay que volver a pedir delegación.
 
 3. Normalizar modelos UI.
 
@@ -113,6 +127,12 @@ Este documento resume qué endpoint debe consumir cada pantalla y qué recomenda
 
 - El home oficial es `GET /dashboard/home`.
 - `GET /integrations/dashboard/summary` puede quedar como compat o bloque auxiliar, pero no como contrato principal nuevo.
+
+4.1. No usar mocks para `ADMIN_XOC` en producción.
+
+- El backend ya soporta `ADMIN_XOC` y `xoc-ops`.
+- El frontend debe retirar cualquier mock temporal de rol `ADMIN_XOC` y confiar en el `role` real del login.
+- El catálogo global de clientes ya no debe salir de mocks locales si `/xoc-ops/*` está disponible.
 
 5. Usar `integration_status` para la columna/panel de estado de integraciones.
 
@@ -135,6 +155,9 @@ Este documento resume qué endpoint debe consumir cada pantalla y qué recomenda
 ### Endpoints especialmente importantes para cerrar frontend
 
 - `GET /dashboard/home`
+- `GET /xoc-ops/clients`
+- `GET /xoc-ops/kpis`
+- `POST /superadmin/tenants/{tenantId}/impersonation-token`
 - `GET /dashboard/providers/{provider}`
 - `GET /scans/{scanSummaryId}/findings`
 - `GET /findings/{findingId}`

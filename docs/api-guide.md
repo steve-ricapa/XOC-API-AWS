@@ -606,6 +606,22 @@ Notas:
 - Estos endpoints son control-plane operativo y no requieren token delegado.
 - Para entrar al contexto de un tenant y usar `/dashboard/*`, `/integrations/*`, `/tenant/*`, `/users/*`, etc., `ADMIN_XOC` debe emitir primero `POST /superadmin/tenants/{tenantId}/impersonation-token`.
 
+Ejemplo de respuesta de delegación:
+
+```json
+{
+  "message": "Tenant impersonation token created successfully",
+  "tenant": {
+    "id": 4,
+    "name": "DemoCorp",
+    "plan_status": "ACTIVE"
+  },
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "expires_in": 3600,
+  "delegation": true
+}
+```
+
 ---
 
 ## Auditoría
