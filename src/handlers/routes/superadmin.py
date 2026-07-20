@@ -500,11 +500,6 @@ def create_user(
     if not payload:
         raise ValidationError("Request body is required")
     tenant_id = payload.get("tenant_id")
-    if not tenant_id:
-        raise ValidationError("tenant_id is required")
-    tenant = session.get(Tenant, int(tenant_id))
-    if not tenant:
-        raise NotFoundError("Tenant not found")
     username = (payload.get("username") or "").strip()
     if not username:
         raise ValidationError("username is required")
@@ -515,15 +510,23 @@ def create_user(
     if not password:
         raise ValidationError("password is required")
     role = (payload.get("role") or "USER").strip().upper()
-    if role not in ("ADMIN", "USER", "ADMIN_XOC", "SUPERADMIN"):
-        raise ValidationError("role must be ADMIN, USER, ADMIN_XOC, or SUPERADMIN")
+    if role not in ("ADMIN", "USER", "ADMIN_XOC"):
+        raise ValidationError("role must be ADMIN, USER, or ADMIN_XOC")
+    if role in ("ADMIN", "USER") and not tenant_id:
+        raise ValidationError("tenant_id is required for ADMIN/USER roles")
+    if role == "ADMIN_XOC" and tenant_id is not None:
+        raise ValidationError("tenant_id must be null for ADMIN_XOC")
+    if tenant_id is not None:
+        tenant = session.get(Tenant, int(tenant_id))
+        if not tenant:
+            raise NotFoundError("Tenant not found")
     existing = session.query(User).filter(User.username == username).first()
     if existing:
         raise ConflictError("Username already exists")
     existing_email = session.query(User).filter(User.email == email).first()
     if existing_email:
         raise ConflictError("Email already exists")
-    user = User(tenant_id=int(tenant_id), username=username, email=email, role=role)
+    user = User(tenant_id=int(tenant_id) if tenant_id is not None else None, username=username, email=email, role=role)
     user.set_password(password)
     session.add(user)
     session.flush()
@@ -603,17 +606,30 @@ def update_user(
             raise ConflictError("Username already exists")
         user.username = username
     if "role" in payload:
-        new_role = payload["role"].strip().upper()
-        if new_role not in ("ADMIN", "USER", "ADMIN_XOC", "SUPERADMIN"):
-            raise ValidationError("role must be ADMIN, USER, ADMIN_XOC, or SUPERADMIN")
-        if user.role == "SUPERADMIN" and new_role != "SUPERADMIN":
-            other_superadmins = session.query(User).filter(User.role == "SUPERADMIN", User.id != user_id).count()
-            if other_superadmins == 0:
-                raise ValidationError("Cannot remove the last SUPERADMIN user")
-        user.role = new_role
-    log_audit(session, actor_user_id=current_user.id, action="UPDATE", entity_type="USER", entity_id=user.id, payload={"email": user.email, "role": user.role})
+        raise ValidationError("role cannot be changed via API")
+    log_audit(session, actor_user_id=current_user.id, action="UPDATE", entity_type="USER", entity_id=user.id, payload={"email": user.email, "username": user.username, "role": user.role})
     session.commit()
     return {"message": "User updated successfully", "user": _serialize_user(user)}
+
+
+@router.delete("/users/{user_id}")
+def delete_user(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+    x_superadmin_confirm: bool = Header(None, alias="X-Superadmin-Confirm"),
+) -> dict:
+    require_superadmin(current_user)
+    _require_confirm(x_superadmin_confirm)
+    user = session.get(User, user_id)
+    if not user:
+        raise NotFoundError("User not found")
+    if user.role == "SUPERADMIN":
+        raise ValidationError("SUPERADMIN users cannot be deleted via API")
+    log_audit(session, actor_user_id=current_user.id, action="DELETE", entity_type="USER", entity_id=user.id, payload={"username": user.username, "email": user.email, "role": user.role, "tenant_id": user.tenant_id})
+    session.delete(user)
+    session.commit()
+    return {"message": "User deleted successfully"}
 
 
 @router.post("/users/{user_id}/password-reset")

@@ -78,12 +78,12 @@ def get_current_user(
     acting_tenant_id = claims.get("actingTenantId") or claims.get("acting_tenant_id")
     delegation_value = claims.get("delegation")
     delegation_active = delegation_value in (True, "true", "True", "1", 1)
-    setattr(user, "actor_tenant_id", int(user.tenant_id))
+    setattr(user, "actor_tenant_id", user.tenant_id)
     setattr(user, "delegation_active", delegation_active)
     if delegation_active and acting_tenant_id:
         setattr(user, "effective_tenant_id", int(acting_tenant_id))
     else:
-        setattr(user, "effective_tenant_id", int(user.tenant_id))
+        setattr(user, "effective_tenant_id", user.tenant_id)
     return user
 
 

@@ -49,8 +49,11 @@ def login(payload: LoginRequest, session: Session = Depends(get_db_session)) -> 
     if not user or not user.check_password(password):
         raise UnauthorizedError("Invalid email or password")
 
-    tenant = session.get(Tenant, user.tenant_id)
-    access_token = create_access_token(identity=str(user.id), additional_claims={"tenant_id": user.tenant_id, "role": user.role})
+    tenant = session.get(Tenant, user.tenant_id) if user.tenant_id else None
+    claims = {"role": user.role}
+    if user.tenant_id is not None:
+        claims["tenant_id"] = user.tenant_id
+    access_token = create_access_token(identity=str(user.id), additional_claims=claims)
     refresh_token = create_refresh_token(identity=str(user.id))
     log_audit(session, actor_user_id=user.id, action="LOGIN", entity_type="USER", entity_id=user.id)
     session.commit()
@@ -69,7 +72,10 @@ def refresh_token(_: dict = Depends(require_refresh_claims), user_id: int = Depe
     if not user:
         raise UnauthorizedError("User not found")
 
-    access_token = create_access_token(identity=str(user.id), additional_claims={"tenant_id": user.tenant_id, "role": user.role})
+    claims = {"role": user.role}
+    if user.tenant_id is not None:
+        claims["tenant_id"] = user.tenant_id
+    access_token = create_access_token(identity=str(user.id), additional_claims=claims)
     refresh_token = create_refresh_token(identity=str(user.id))
     return RefreshResponse(access_token=access_token, refresh_token=refresh_token)
 
@@ -125,7 +131,10 @@ def create_tenant_with_admin(payload: OnboardingTenantRequest, session: Session 
     log_audit(session, actor_user_id=admin_user.id, action="CREATE", entity_type="USER", entity_id=admin_user.id, payload={"email": admin_user.email, "role": "ADMIN", "onboarding": True})
     session.commit()
 
-    access_token = create_access_token(identity=str(admin_user.id), additional_claims={"tenant_id": admin_user.tenant_id, "role": admin_user.role})
+    claims = {"role": admin_user.role}
+    if admin_user.tenant_id is not None:
+        claims["tenant_id"] = admin_user.tenant_id
+    access_token = create_access_token(identity=str(admin_user.id), additional_claims=claims)
     refresh_token = create_refresh_token(identity=str(admin_user.id))
 
     return OnboardingTenantResponse(

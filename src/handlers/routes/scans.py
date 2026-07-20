@@ -368,7 +368,7 @@ def list_snapshot_artifacts(
     resolved_domain = normalize_domain(domain, default="soc") if domain else None
     if domain and not resolved_domain:
         raise ValidationError("Invalid domain. Allowed: soc, noc")
-    query = select(SnapshotArtifact).where(SnapshotArtifact.tenant_id == current_user.tenant_id)
+    query = select(SnapshotArtifact).where(SnapshotArtifact.tenant_id == effective_tenant_id_of(current_user))
     if provider:
         query = query.where(SnapshotArtifact.provider == provider)
     if snapshot_type:
@@ -383,13 +383,13 @@ def list_snapshot_artifacts(
 
 @router.get("/snapshots/{artifact_id}")
 def get_snapshot_artifact(artifact_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
-    artifact = _get_snapshot_artifact_or_404(session, current_user.tenant_id, artifact_id)
+    artifact = _get_snapshot_artifact_or_404(session, effective_tenant_id_of(current_user), artifact_id)
     return artifact.to_dict()
 
 
 @router.get("/snapshots/{artifact_id}/payload")
 def get_snapshot_payload(artifact_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
-    artifact = _get_snapshot_artifact_or_404(session, current_user.tenant_id, artifact_id)
+    artifact = _get_snapshot_artifact_or_404(session, effective_tenant_id_of(current_user), artifact_id)
     return {
         "snapshot": artifact.to_dict(),
         "download_url": generate_download_url(s3_key=artifact.s3_key),
@@ -398,7 +398,7 @@ def get_snapshot_payload(artifact_id: int, current_user: User = Depends(get_curr
 
 @router.get("/snapshots/{artifact_id}/download-url")
 def get_snapshot_download_url(artifact_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session), expires: int = 3600) -> dict:
-    artifact = _get_snapshot_artifact_or_404(session, current_user.tenant_id, artifact_id)
+    artifact = _get_snapshot_artifact_or_404(session, effective_tenant_id_of(current_user), artifact_id)
     return {
         "snapshot_id": artifact.id,
         "s3_key": artifact.s3_key,

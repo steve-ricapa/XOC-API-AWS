@@ -81,7 +81,7 @@ def require_superadmin(user: User) -> None:
 
 
 def require_same_tenant(user: User, tenant_id: int) -> None:
-    if int(user.tenant_id) != int(tenant_id):
+    if user.tenant_id is None or int(user.tenant_id) != int(tenant_id):
         raise NotFoundError("Tenant not found")
 
 
