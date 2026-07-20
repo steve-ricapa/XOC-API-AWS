@@ -5,33 +5,34 @@ import os
 import tempfile
 from datetime import datetime, timezone
 
-from src.reports.store import get_report_or_404
+from src.reports.store import get_document_job_or_404
 from src.reports.storage import upload_artifact
 from src.shared.logging import logger
 
 
 def handler(event: dict, context) -> dict:
-    report_id = event.get("reportId")
+    document_id = event.get("documentId")
     tenant_id = event.get("tenantId")
-    report_type = event.get("reportType", "")
+    document_type = event.get("documentType", "")
 
-    if not report_id or not tenant_id:
-        raise ValueError("reportId and tenantId are required")
+    if not document_id or not tenant_id:
+        raise ValueError("documentId and tenantId are required")
 
     tenant_id = int(tenant_id)
 
-    item = get_report_or_404(tenant_id, report_id)
+    item = get_document_job_or_404(tenant_id, document_id)
     filters = item.get("filters") or {}
+    parameters = item.get("parameters") or {}
 
-    collected = _collect_from_sources(tenant_id, report_id, report_type, filters)
+    collected = _collect_from_sources(tenant_id, document_id, document_type, filters, parameters)
 
-    artifact_key = upload_artifact(tenant_id, report_id, "collected-data.json", collected)
-    logger.info("Collected data uploaded to %s for report %s", artifact_key, report_id)
+    artifact_key = upload_artifact(tenant_id, document_id, document_type, "collected-data.json", collected)
+    logger.info("Collected data uploaded to %s for document %s", artifact_key, document_id)
 
     return {
-        "reportId": report_id,
+        "documentId": document_id,
         "tenantId": tenant_id,
-        "reportType": report_type,
+        "documentType": document_type,
         "collectedDataKey": artifact_key,
         "tenantName": collected.get("tenant", {}).get("name", f"Tenant-{tenant_id}"),
         "severitySummary": collected.get("severity_summary", {}),
@@ -40,37 +41,33 @@ def handler(event: dict, context) -> dict:
     }
 
 
-def _collect_from_sources(tenant_id: int, report_id: str, report_type: str, filters: dict) -> dict:
-    return _build_minimal_report_context(tenant_id, report_id, report_type, filters)
+def _collect_from_sources(tenant_id: int, document_id: str, document_type: str, filters: dict, parameters: dict) -> dict:
+    return _build_minimal_document_context(tenant_id, document_id, document_type, filters, parameters)
 
 
-def _build_minimal_report_context(tenant_id: int, report_id: str, report_type: str, filters: dict) -> dict:
+def _build_minimal_document_context(tenant_id: int, document_id: str, document_type: str, filters: dict, parameters: dict) -> dict:
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     period = _build_period_string(filters)
 
     tenant_name = f"Tenant-{tenant_id}"
+    title, service, executive_summary, results = _document_copy(document_type)
 
     return {
         "tenant": {
             "id": str(tenant_id),
             "name": tenant_name,
         },
-        "report": {
-            "id": report_id,
-            "title": "Minority Report - XOC",
-            "service": "Servicio de Monitoreo Proactivo XOC",
+        "document": {
+            "id": document_id,
+            "title": title,
+            "service": service,
             "generated_at": generated_at,
             "period": period,
             "prepared_by": "TXDXSECURE",
-            "executive_summary": (
-                "Durante la semana evaluada se mantuvo el monitoreo proactivo sobre superficies publicas, "
-                "plataformas criticas e infraestructura priorizada."
-            ),
-            "results": (
-                "Se obtuvo visibilidad consolidada de exposiciones criticas y altas, se priorizaron actividades de "
-                "mitigacion y se mantuvo evidencia estructurada para seguimiento semanal."
-            ),
+            "executive_summary": executive_summary,
+            "results": results,
         },
+        "parameters": parameters,
         "tools": ["MonEvents", "MonVulE", "MonVulC", "MonApps", "MonNet", "MonInfra"],
         "severity_summary": {
             "critical": 2,
@@ -89,6 +86,29 @@ def _build_minimal_report_context(tenant_id: int, report_id: str, report_type: s
         ],
         "security_news": _build_demo_news(),
     }
+
+
+def _document_copy(document_type: str) -> tuple[str, str, str, str]:
+    if document_type == "small_report":
+        return (
+            "Small Report - XOC",
+            "Servicio de Generacion Documental XOC",
+            "Documento resumido con los hallazgos y acciones mas relevantes del periodo evaluado.",
+            "Se consolidaron hallazgos prioritarios y un resumen operativo de seguimiento.",
+        )
+    if document_type == "informe_soporte":
+        return (
+            "Informe de Soporte - XOC",
+            "Servicio de Soporte Operativo XOC",
+            "Documento orientado a registrar actividades de soporte, atenciones ejecutadas y estado del servicio.",
+            "Se documentaron acciones de soporte, estado de atenciones y puntos de seguimiento para continuidad operativa.",
+        )
+    return (
+        "Minority Report - XOC",
+        "Servicio de Monitoreo Proactivo XOC",
+        "Durante la semana evaluada se mantuvo el monitoreo proactivo sobre superficies publicas, plataformas criticas e infraestructura priorizada.",
+        "Se obtuvo visibilidad consolidada de exposiciones criticas y altas, se priorizaron actividades de mitigacion y se mantuvo evidencia estructurada para seguimiento semanal.",
+    )
 
 
 def _build_period_string(filters: dict) -> str:

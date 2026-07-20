@@ -5,21 +5,22 @@ from src.shared.logging import logger
 
 
 def handler(event: dict, context) -> dict:
-    report_id = event.get("reportId")
+    document_id = event.get("documentId")
     tenant_id = event.get("tenantId")
     collected_data_key = event.get("collectedDataKey")
+    document_type = event.get("documentType", "")
 
-    if not all([report_id, tenant_id, collected_data_key]):
-        raise ValueError("reportId, tenantId, and collectedDataKey are required")
+    if not all([document_id, tenant_id, collected_data_key]):
+        raise ValueError("documentId, tenantId, and collectedDataKey are required")
 
     tenant_id = int(tenant_id)
 
     collected_data = download_artifact(collected_data_key)
 
-    generated_content = _generate_content(collected_data, event.get("reportType", ""))
+    generated_content = _generate_content(collected_data, document_type)
 
-    content_key = upload_artifact(tenant_id, report_id, "generated-content.json", generated_content)
-    logger.info("Generated content uploaded to %s for report %s", content_key, report_id)
+    content_key = upload_artifact(tenant_id, document_id, document_type, "generated-content.json", generated_content)
+    logger.info("Generated content uploaded to %s for document %s", content_key, document_id)
 
     return {
         **event,
@@ -31,13 +32,62 @@ def handler(event: dict, context) -> dict:
     }
 
 
-def _generate_content(collected_data: dict, report_type: str) -> dict:
-    sections = [
+def _generate_content(collected_data: dict, document_type: str) -> dict:
+    document = collected_data.get("document", {})
+    sections = _build_sections(document_type, collected_data, document)
+
+    return {
+        "document_type": document_type,
+        "document": document,
+        "sections": sections,
+        "findings": collected_data.get("findings", []),
+        "domains": collected_data.get("domains", []),
+        "severity_summary": collected_data.get("severity_summary", {}),
+        "actions_worked": collected_data.get("actions_worked", []),
+        "support_entries": collected_data.get("actions_worked", []),
+        "security_news": collected_data.get("security_news", []),
+    }
+
+
+def _build_sections(document_type: str, collected_data: dict, document: dict) -> list[dict]:
+    shared = [
         {
             "id": "executive_summary",
             "title": "Resumen Ejecutivo",
-            "content": collected_data.get("report", {}).get("executive_summary", ""),
+            "content": document.get("executive_summary", ""),
         },
+        {
+            "id": "findings_detail",
+            "title": "Detalle de Hallazgos",
+            "findings": collected_data.get("findings", []),
+        },
+    ]
+    if document_type == "small_report":
+        return [
+            shared[0],
+            {
+                "id": "results",
+                "title": "Resultados",
+                "content": document.get("results", ""),
+            },
+            shared[1],
+        ]
+    if document_type == "informe_soporte":
+        return [
+            shared[0],
+            {
+                "id": "support_actions",
+                "title": "Acciones de Soporte",
+                "actions": collected_data.get("actions_worked", []),
+            },
+            {
+                "id": "status_overview",
+                "title": "Estado General",
+                "content": document.get("results", ""),
+            },
+        ]
+    return [
+        shared[0],
         {
             "id": "severity_analysis",
             "title": "Analisis de Severidades",
@@ -48,11 +98,7 @@ def _generate_content(collected_data: dict, report_type: str) -> dict:
             "title": "Analisis por Dominio",
             "content": _build_domain_text(collected_data.get("domains", [])),
         },
-        {
-            "id": "findings_detail",
-            "title": "Detalle de Hallazgos",
-            "findings": collected_data.get("findings", []),
-        },
+        shared[1],
         {
             "id": "actions_worked",
             "title": "Acciones Trabajadas",
@@ -64,15 +110,6 @@ def _generate_content(collected_data: dict, report_type: str) -> dict:
             "news": collected_data.get("security_news", []),
         },
     ]
-
-    return {
-        "report_type": report_type,
-        "sections": sections,
-        "findings": collected_data.get("findings", []),
-        "domains": collected_data.get("domains", []),
-        "severity_summary": collected_data.get("severity_summary", {}),
-        "actions_worked": collected_data.get("actions_worked", []),
-    }
 
 
 def _build_severity_text(severity_summary: dict) -> str:

@@ -3,19 +3,19 @@ from __future__ import annotations
 from typing import Any
 
 
-REPORT_TYPES = frozenset({
+DOCUMENT_TYPES = frozenset({
     "minority_report",
-    "vulnerability_report",
-    "compliance_report",
-    "executive_summary",
+    "small_report",
+    "informe_soporte",
 })
 
 
-REQUIRED_REPORT_FIELDS = frozenset({"report_type"})
+REQUIRED_DOCUMENT_FIELDS = frozenset({"document_type"})
 
-OPTIONAL_REPORT_FIELDS = frozenset({
+OPTIONAL_DOCUMENT_FIELDS = frozenset({
     "filters",
     "idempotency_key",
+    "parameters",
 })
 
 
@@ -28,19 +28,19 @@ VALID_FILTER_KEYS = frozenset({
 })
 
 
-def validate_report_request(payload: dict) -> dict:
+def validate_document_request(payload: dict) -> dict:
     errors: list[str] = []
 
     if not isinstance(payload, dict):
         return {"valid": False, "errors": ["Request body must be a JSON object"]}
 
-    for field in REQUIRED_REPORT_FIELDS:
+    for field in REQUIRED_DOCUMENT_FIELDS:
         if field not in payload or not payload[field]:
             errors.append(f"{field} is required")
 
-    report_type = payload.get("report_type", "")
-    if report_type and report_type not in REPORT_TYPES:
-        errors.append(f"report_type must be one of: {', '.join(sorted(REPORT_TYPES))}")
+    document_type = payload.get("document_type", "")
+    if document_type and document_type not in DOCUMENT_TYPES:
+        errors.append(f"document_type must be one of: {', '.join(sorted(DOCUMENT_TYPES))}")
 
     filters = payload.get("filters")
     if filters is not None:
@@ -51,7 +51,7 @@ def validate_report_request(payload: dict) -> dict:
                 if key not in VALID_FILTER_KEYS:
                     errors.append(f"Unknown filter key: {key}")
 
-    unknown_keys = set(payload.keys()) - REQUIRED_REPORT_FIELDS - OPTIONAL_REPORT_FIELDS
+    unknown_keys = set(payload.keys()) - REQUIRED_DOCUMENT_FIELDS - OPTIONAL_DOCUMENT_FIELDS
     if unknown_keys:
         for key in sorted(unknown_keys):
             errors.append(f"Unknown field: {key}")
@@ -59,11 +59,11 @@ def validate_report_request(payload: dict) -> dict:
     return {"valid": len(errors) == 0, "errors": errors}
 
 
-def build_report_response(item: dict) -> dict:
+def build_document_response(item: dict) -> dict:
     response = {
-        "reportId": item.get("report_id"),
+        "documentId": item.get("document_id") or item.get("report_id"),
         "status": item.get("status"),
-        "reportType": item.get("report_type"),
+        "documentType": item.get("document_type") or item.get("report_type"),
         "createdAt": item.get("created_at"),
         "updatedAt": item.get("updated_at"),
     }
@@ -84,3 +84,7 @@ def build_report_response(item: dict) -> dict:
         response["downloadUrl"] = item["download_url"]
 
     return response
+
+
+validate_report_request = validate_document_request
+build_report_response = build_document_response

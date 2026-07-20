@@ -12,16 +12,16 @@ def handler(event: dict, context) -> dict:
 
     generated_content = download_artifact(generated_content_key)
 
-    validation = _validate_content(generated_content)
+    validation = _validate_content(generated_content, event.get("documentType", ""))
     if not validation["valid"]:
-        logger.warning("Report content validation failed: %s", validation["errors"])
+        logger.warning("Document content validation failed: %s", validation["errors"])
         raise ValueError(f"Content validation failed: {'; '.join(validation['errors'])}")
 
-    logger.info("Report content validated successfully")
+    logger.info("Document content validated successfully")
     return {**event, "validated": True}
 
 
-def _validate_content(content: dict) -> dict:
+def _validate_content(content: dict, document_type: str) -> dict:
     errors: list[str] = []
 
     sections = content.get("sections", [])
@@ -29,7 +29,10 @@ def _validate_content(content: dict) -> dict:
         errors.append("No sections found in generated content")
 
     section_ids = {s.get("id") for s in sections if isinstance(s, dict)}
-    required = {"executive_summary", "severity_analysis", "findings_detail"}
+    required = {
+        "small_report": {"executive_summary", "results", "findings_detail"},
+        "informe_soporte": {"executive_summary", "support_actions", "status_overview"},
+    }.get(document_type, {"executive_summary", "severity_analysis", "findings_detail"})
     missing = required - section_ids
     if missing:
         errors.append(f"Missing required sections: {', '.join(sorted(missing))}")

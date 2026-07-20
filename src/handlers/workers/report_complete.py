@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from src.reports.store import get_report_or_404, update_report_status
+from src.reports.store import update_document_status
 from src.reports.storage import generate_download_url
 from src.shared.logging import logger
 
 
 def handler(event: dict, context) -> dict:
-    report_id = event.get("reportId")
+    document_id = event.get("documentId")
     tenant_id = event.get("tenantId")
 
-    if not report_id or not tenant_id:
-        raise ValueError("reportId and tenantId are required")
+    if not document_id or not tenant_id:
+        raise ValueError("documentId and tenantId are required")
 
     tenant_id = int(tenant_id)
     status = event.get("status", "COMPLETED")
@@ -21,14 +21,14 @@ def handler(event: dict, context) -> dict:
         error_message = error_info.get("Cause", "Unknown error during report generation")
         update_report_status(
             tenant_id,
-            report_id,
+            document_id,
             "FAILED",
             error_code=error_code,
             error_message=str(error_message)[:2000],
         )
-        logger.warning("Report %s failed: %s", report_id, error_message)
+        logger.warning("Document %s failed: %s", document_id, error_message)
         return {
-            "reportId": report_id,
+            "documentId": document_id,
             "tenantId": tenant_id,
             "status": "FAILED",
         }
@@ -47,13 +47,13 @@ def handler(event: dict, context) -> dict:
     if size_bytes is not None:
         extra["size_bytes"] = int(size_bytes)
 
-    update_report_status(tenant_id, report_id, "COMPLETED", **extra)
+    update_document_status(tenant_id, document_id, "COMPLETED", **extra)
 
     download_url = generate_download_url(s3_key) if s3_key else None
-    logger.info("Report %s completed. Download URL generated.", report_id)
+    logger.info("Document %s completed. Download URL generated.", document_id)
 
     return {
-        "reportId": report_id,
+        "documentId": document_id,
         "tenantId": tenant_id,
         "status": "COMPLETED",
         "downloadUrl": download_url,

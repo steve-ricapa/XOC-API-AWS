@@ -5,7 +5,7 @@ import os
 
 import boto3
 
-from src.reports.store import get_report, update_report_status, table
+from src.reports.store import get_document_job, update_document_status
 from src.shared.logging import logger
 
 stepfunctions = boto3.client("stepfunctions")
@@ -21,48 +21,48 @@ def handler(event: dict, context) -> dict:
             continue
 
         tenant_id = detail.get("tenant_id")
-        report_id = detail.get("report_id")
+        document_id = detail.get("document_id")
 
-        if not tenant_id or not report_id:
-            logger.warning("Missing tenant_id or report_id in event detail")
+        if not tenant_id or not document_id:
+            logger.warning("Missing tenant_id or document_id in event detail")
             continue
 
         tenant_id = int(tenant_id)
 
-        item = get_report(tenant_id, report_id)
+        item = get_document_job(tenant_id, document_id)
         if not item:
-            logger.warning("Report %s not found for tenant %s", report_id, tenant_id)
+            logger.warning("Document %s not found for tenant %s", document_id, tenant_id)
             continue
 
         if item.get("status") in ("PROCESSING", "COMPLETED"):
-            logger.info("Report %s already %s, skipping", report_id, item["status"])
+            logger.info("Document %s already %s, skipping", document_id, item["status"])
             continue
 
-        update_report_status(tenant_id, report_id, "PROCESSING")
+        update_document_status(tenant_id, document_id, "PROCESSING")
 
         state_machine_arn = os.environ.get("REPORT_WORKFLOW_STATE_MACHINE_ARN", "")
         if not state_machine_arn:
             logger.error("REPORT_WORKFLOW_STATE_MACHINE_ARN not configured")
-            update_report_status(tenant_id, report_id, "FAILED", error_code="configuration_error", error_message="State machine ARN not configured")
+            update_document_status(tenant_id, document_id, "FAILED", error_code="configuration_error", error_message="State machine ARN not configured")
             continue
 
         try:
             response = stepfunctions.start_execution(
                 stateMachineArn=state_machine_arn,
-                name=f"report-{report_id}",
+                name=f"document-{document_id}",
                 input=json.dumps({
-                    "reportId": report_id,
+                    "documentId": document_id,
                     "tenantId": tenant_id,
-                    "reportType": detail.get("report_type", ""),
+                    "documentType": detail.get("document_type", ""),
                     "request_hash": detail.get("request_hash", ""),
                 }),
             )
             execution_arn = response.get("executionArn", "")
             if execution_arn:
-                update_report_status(tenant_id, report_id, "PROCESSING", execution_arn=execution_arn)
-            logger.info("Started Step Functions execution %s for report %s", execution_arn, report_id)
+                update_document_status(tenant_id, document_id, "PROCESSING", execution_arn=execution_arn)
+            logger.info("Started Step Functions execution %s for document %s", execution_arn, document_id)
         except Exception as exc:
-            logger.exception("Failed to start Step Functions for report %s", report_id)
-            update_report_status(tenant_id, report_id, "FAILED", error_code="stepfunctions_error", error_message=str(exc))
+            logger.exception("Failed to start Step Functions for document %s", document_id)
+            update_document_status(tenant_id, document_id, "FAILED", error_code="stepfunctions_error", error_message=str(exc))
 
     return {"statusCode": 200}

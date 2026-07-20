@@ -14,19 +14,19 @@ from src.reports.storage import (
     download_artifact,
     download_template,
     template_exists,
-    upload_report,
+    upload_document,
 )
 from src.shared.logging import logger
 
 
 def handler(event: dict, context) -> dict:
-    report_id = event.get("reportId")
+    document_id = event.get("documentId")
     tenant_id = event.get("tenantId")
     generated_content_key = event.get("generatedContentKey")
-    report_type = event.get("reportType", "")
+    document_type = event.get("documentType", "")
 
-    if not all([report_id, tenant_id, generated_content_key]):
-        raise ValueError("reportId, tenantId, and generatedContentKey are required")
+    if not all([document_id, tenant_id, generated_content_key]):
+        raise ValueError("documentId, tenantId, and generatedContentKey are required")
 
     tenant_id = int(tenant_id)
 
@@ -37,9 +37,9 @@ def handler(event: dict, context) -> dict:
         output_path = os.path.join(tmpdir, "generated.docx")
         chart_path = os.path.join(tmpdir, "chart.png")
 
-        has_template = template_exists(report_type)
+        has_template = template_exists(document_type)
         if has_template:
-            download_template(report_type, template_path)
+            download_template(document_type, template_path)
         else:
             _create_minimal_template(template_path)
 
@@ -59,8 +59,8 @@ def handler(event: dict, context) -> dict:
         if not valid:
             raise RuntimeError(f"DOCX validation failed: {msg}")
 
-        result = upload_report(tenant_id, report_id, output_path)
-        logger.info("DOCX uploaded for report %s: s3://%s/%s", report_id, result["s3_bucket"], result["s3_key"])
+        result = upload_document(tenant_id, document_id, document_type, output_path)
+        logger.info("DOCX uploaded for document %s: s3://%s/%s", document_id, result["s3_bucket"], result["s3_key"])
 
     return {
         **event,
@@ -73,16 +73,18 @@ def handler(event: dict, context) -> dict:
 
 
 def _build_render_data(content: dict) -> dict:
+    document = content.get("document", {})
+    document_type = content.get("document_type", "minority_report")
     return {
         "report": {
-            "id": content.get("sections", [{}])[0].get("id", "report"),
-            "title": "Minority Report - XOC",
-            "service": "Servicio de Monitoreo Proactivo XOC",
-            "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-            "period": "Ultima semana evaluada",
-            "prepared_by": "TXDXSECURE",
-            "executive_summary": content.get("sections", [{}])[0].get("content", ""),
-            "results": "Resultados consolidados del analisis semanal.",
+            "id": document.get("id", content.get("sections", [{}])[0].get("id", "document")),
+            "title": document.get("title", _default_title(document_type)),
+            "service": document.get("service", "Servicio de Generacion Documental XOC"),
+            "generated_at": document.get("generated_at", datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")),
+            "period": document.get("period", "Ultima semana evaluada"),
+            "prepared_by": document.get("prepared_by", "TXDXSECURE"),
+            "executive_summary": document.get("executive_summary", content.get("sections", [{}])[0].get("content", "")),
+            "results": document.get("results", "Resultados consolidados del documento."),
         },
         "tenant": {
             "id": "tenant",
@@ -95,6 +97,14 @@ def _build_render_data(content: dict) -> dict:
         "security_news": content.get("security_news", content.get("sections", [{}])[-1].get("news", [])) if content.get("sections") else [],
         "tools": ["MonEvents", "MonVulE", "MonVulC", "MonApps", "MonNet", "MonInfra"],
     }
+
+
+def _default_title(document_type: str) -> str:
+    if document_type == "small_report":
+        return "Small Report - XOC"
+    if document_type == "informe_soporte":
+        return "Informe de Soporte - XOC"
+    return "Minority Report - XOC"
 
 
 def _create_minimal_template(template_path: str) -> str:

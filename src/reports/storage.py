@@ -13,48 +13,63 @@ def _s3() -> boto3.client:
     return boto3.client("s3", region_name=get_settings().app_region)
 
 
-def build_template_key(report_type: str) -> str:
-    return f"report-templates/{report_type}/current.docx"
+def build_template_key(document_type: str) -> str:
+    return f"document-templates/{document_type}/current.docx"
 
 
-def build_report_s3_key(
+def build_legacy_template_key(document_type: str) -> str:
+    return f"report-templates/{document_type}/current.docx"
+
+
+def build_document_s3_key(
     tenant_id: int,
-    report_id: str,
+    document_id: str,
+    document_type: str,
     filename: str = "generated.docx",
 ) -> str:
     stage = get_settings().app_stage
-    return f"{stage}/reports/{tenant_id}/{report_id}/{filename}"
+    return f"{stage}/documents/{document_type}/{tenant_id}/{document_id}/{filename}"
 
 
 def build_artifact_s3_key(
     tenant_id: int,
-    report_id: str,
+    document_id: str,
+    document_type: str,
     artifact_name: str,
 ) -> str:
     stage = get_settings().app_stage
-    return f"{stage}/reports/{tenant_id}/{report_id}/artifacts/{artifact_name}"
+    return f"{stage}/documents/{document_type}/{tenant_id}/{document_id}/artifacts/{artifact_name}"
 
 
-def download_template(report_type: str, local_path: str) -> str:
+def download_template(document_type: str, local_path: str) -> str:
     bucket = get_snapshots_bucket_name()
-    key = build_template_key(report_type)
+    key = resolve_template_key(document_type)
     _s3().download_file(bucket, key, local_path)
     return local_path
 
 
-def template_exists(report_type: str) -> bool:
+def template_exists(document_type: str) -> bool:
     try:
-        bucket = get_snapshots_bucket_name()
-        key = build_template_key(report_type)
-        _s3().head_object(Bucket=bucket, Key=key)
+        resolve_template_key(document_type)
         return True
     except Exception:
         return False
 
 
-def upload_report(tenant_id: int, report_id: str, local_path: str, filename: str = "generated.docx") -> dict:
+def resolve_template_key(document_type: str) -> str:
     bucket = get_snapshots_bucket_name()
-    key = build_report_s3_key(tenant_id, report_id, filename)
+    for key in (build_template_key(document_type), build_legacy_template_key(document_type)):
+        try:
+            _s3().head_object(Bucket=bucket, Key=key)
+            return key
+        except Exception:
+            continue
+    raise FileNotFoundError(f"Template not found for document_type={document_type}")
+
+
+def upload_document(tenant_id: int, document_id: str, document_type: str, local_path: str, filename: str = "generated.docx") -> dict:
+    bucket = get_snapshots_bucket_name()
+    key = build_document_s3_key(tenant_id, document_id, document_type, filename)
     extra_args = {"ContentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
     _s3().upload_file(local_path, bucket, key, ExtraArgs=extra_args)
     response = _s3().head_object(Bucket=bucket, Key=key)
@@ -66,9 +81,9 @@ def upload_report(tenant_id: int, report_id: str, local_path: str, filename: str
     }
 
 
-def upload_artifact(tenant_id: int, report_id: str, artifact_name: str, data: dict) -> str:
+def upload_artifact(tenant_id: int, document_id: str, document_type: str, artifact_name: str, data: dict) -> str:
     bucket = get_snapshots_bucket_name()
-    key = build_artifact_s3_key(tenant_id, report_id, artifact_name)
+    key = build_artifact_s3_key(tenant_id, document_id, document_type, artifact_name)
     _s3().put_object(
         Bucket=bucket,
         Key=key,
@@ -96,3 +111,11 @@ def generate_download_url(s3_key: str, expires_in: int = 3600) -> str:
         ExpiresIn=expires_in,
     )
     return url
+
+
+def build_report_s3_key(tenant_id: int, report_id: str, filename: str = "generated.docx") -> str:
+    return build_document_s3_key(tenant_id, report_id, "minority_report", filename)
+
+
+def upload_report(tenant_id: int, report_id: str, local_path: str, filename: str = "generated.docx") -> dict:
+    return upload_document(tenant_id, report_id, "minority_report", local_path, filename)

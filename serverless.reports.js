@@ -15,7 +15,7 @@ module.exports = buildService({
   functions: (stage) => ({
     reportsApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/reports.handler',
-      description: 'Reports domain API',
+      description: 'Documents domain API',
       include: [
         'src/handlers/domains/reports.py',
         'src/handlers/routes/reports.py',
@@ -25,14 +25,14 @@ module.exports = buildService({
         'requirements.txt',
       ],
       events: [
-        protectedRoute(stage, 'POST', '/reports'),
-        protectedRoute(stage, 'GET', '/reports/{reportId}'),
-        protectedRoute(stage, 'GET', '/reports'),
+        protectedRoute(stage, 'POST', '/documents'),
+        protectedRoute(stage, 'GET', '/documents/{documentId}'),
+        protectedRoute(stage, 'GET', '/documents'),
       ],
     }),
     reportOrchestrator: lambdaConfig(stage, {
       handler: 'src/handlers/processors/report_orchestrator.handler',
-      description: 'Consumes SQS ReportRequested events and starts Step Functions',
+      description: 'Consumes SQS DocumentRequested events and starts Step Functions',
       timeout: 60,
       include: [
         'src/handlers/processors/report_orchestrator.py',
@@ -51,7 +51,7 @@ module.exports = buildService({
     }),
     collectReportData: lambdaConfig(stage, {
       handler: 'src/handlers/workers/report_collect.handler',
-      description: 'Collects report data from sources',
+      description: 'Collects document data from sources',
       timeout: 120,
       memorySize: 1024,
       needsVpc: true,
@@ -66,7 +66,7 @@ module.exports = buildService({
     }),
     generateReportContent: lambdaConfig(stage, {
       handler: 'src/handlers/workers/report_generate_content.handler',
-      description: 'Generates report content from collected data',
+      description: 'Generates document content from collected data',
       timeout: 120,
       memorySize: 1024,
       needsVpc: true,
@@ -79,7 +79,7 @@ module.exports = buildService({
     }),
     validateReport: lambdaConfig(stage, {
       handler: 'src/handlers/workers/report_validate.handler',
-      description: 'Validates generated report content',
+      description: 'Validates generated document content',
       timeout: 60,
       include: [
         'src/handlers/workers/report_validate.py',
@@ -90,7 +90,7 @@ module.exports = buildService({
     }),
     generateDocx: lambdaConfig(stage, {
       handler: 'src/handlers/workers/report_generate_docx.handler',
-      description: 'Generates DOCX from template and content',
+      description: 'Generates document file from template and content',
       timeout: 180,
       memorySize: 1536,
       include: [
@@ -102,7 +102,7 @@ module.exports = buildService({
     }),
     completeReport: lambdaConfig(stage, {
       handler: 'src/handlers/workers/report_complete.handler',
-      description: 'Finalizes report status and generates download URL',
+      description: 'Finalizes document status and generates download URL',
       timeout: 30,
       include: [
         'src/handlers/workers/report_complete.py',

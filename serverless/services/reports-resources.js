@@ -89,7 +89,7 @@ module.exports = function reportsResources(stage) {
           DefinitionString: {
             'Fn::Sub': [
               JSON.stringify({
-                Comment: 'Report generation workflow',
+                Comment: 'Document generation workflow',
                 StartAt: 'CollectReportData',
                 States: {
                   CollectReportData: {
@@ -200,11 +200,11 @@ module.exports = function reportsResources(stage) {
       ReportEventRule: {
         Type: 'AWS::Events::Rule',
         Properties: {
-          Name: `xoc-api-reports-${stage}-report-requested`,
+          Name: `xoc-api-reports-${stage}-document-requested`,
           EventBusName: { Ref: 'ReportsEventBus' },
           EventPattern: {
-            source: ['xoc.report'],
-            'detail-type': ['report.requested'],
+            source: ['xoc.document'],
+            'detail-type': ['document.requested'],
           },
           Targets: [
             {

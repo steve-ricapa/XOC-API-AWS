@@ -10,7 +10,7 @@ from boto3.dynamodb.conditions import Key
 from src.shared.errors import NotFoundError
 
 
-REPORT_STATUSES = frozenset({"PENDING", "PROCESSING", "COMPLETED", "FAILED"})
+DOCUMENT_STATUSES = frozenset({"PENDING", "PROCESSING", "COMPLETED", "FAILED"})
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.environ["REPORTS_TABLE_NAME"])
@@ -21,68 +21,70 @@ def now_iso() -> str:
 
 
 def tenant_pk(tenant_id: int) -> str:
-    return f"REPORT#{tenant_id}"
+    return f"DOCUMENT#{tenant_id}"
 
 
-def report_sk(report_id: str) -> str:
-    return f"REPORT#{report_id}"
+def document_sk(document_id: str) -> str:
+    return f"DOCUMENT#{document_id}"
 
 
-def lookup_pk(report_id: str) -> str:
-    return f"REPORT#{report_id}"
+def lookup_pk(document_id: str) -> str:
+    return f"DOCUMENT#{document_id}"
 
 
 def lookup_sk(tenant_id: int) -> str:
-    return f"REPORT#{tenant_id}"
+    return f"DOCUMENT#{tenant_id}"
 
 
 def status_index_pk(tenant_id: int, status: str) -> str:
-    return f"REPORT#{tenant_id}#STATUS#{status}"
+    return f"DOCUMENT#{tenant_id}#STATUS#{status}"
 
 
-def status_index_sk(created_at: str, report_id: str) -> str:
-    return f"{created_at}#{report_id}"
+def status_index_sk(created_at: str, document_id: str) -> str:
+    return f"{created_at}#{document_id}"
 
 
-def tenant_created_sk(created_at: str, report_id: str) -> str:
-    return f"{created_at}#{report_id}"
+def tenant_created_sk(created_at: str, document_id: str) -> str:
+    return f"{created_at}#{document_id}"
 
 
-def build_secondary_index_fields(tenant_id: int, report_id: str, status: str, created_at: str) -> dict:
+def build_secondary_index_fields(tenant_id: int, document_id: str, status: str, created_at: str) -> dict:
     return {
-        "gsi1pk": lookup_pk(report_id),
+        "gsi1pk": lookup_pk(document_id),
         "gsi1sk": lookup_sk(tenant_id),
         "gsi2pk": status_index_pk(tenant_id, status),
-        "gsi2sk": status_index_sk(created_at, report_id),
+        "gsi2sk": status_index_sk(created_at, document_id),
         "gsi3pk": tenant_pk(tenant_id),
-        "gsi3sk": tenant_created_sk(created_at, report_id),
+        "gsi3sk": tenant_created_sk(created_at, document_id),
     }
 
 
-def report_key(tenant_id: int, report_id: str) -> dict:
-    return {"pk": tenant_pk(tenant_id), "sk": report_sk(report_id)}
+def document_key(tenant_id: int, document_id: str) -> dict:
+    return {"pk": tenant_pk(tenant_id), "sk": document_sk(document_id)}
 
 
-def create_report_item(
+def create_document_job(
     tenant_id: int,
-    report_type: str,
+    document_type: str,
     created_by_user_id: int | None = None,
     filters: dict | None = None,
+    parameters: dict | None = None,
     request_payload: dict | None = None,
     request_hash: str | None = None,
 ) -> tuple[str, dict]:
     now = now_iso()
-    report_id = str(uuid.uuid4())
+    document_id = str(uuid.uuid4())
     status = "PENDING"
     item = {
         "pk": tenant_pk(tenant_id),
-        "sk": report_sk(report_id),
-        "report_id": report_id,
+        "sk": document_sk(document_id),
+        "document_id": document_id,
         "tenant_id": tenant_id,
         "created_by_user_id": created_by_user_id,
-        "report_type": report_type,
+        "document_type": document_type,
         "status": status,
         "filters": filters,
+        "parameters": parameters,
         "request_payload": request_payload,
         "request_hash": request_hash,
         "execution_arn": None,
@@ -97,33 +99,33 @@ def create_report_item(
         "started_at": None,
         "completed_at": None,
     }
-    item.update(build_secondary_index_fields(tenant_id, report_id, status, now))
-    return report_id, item
+    item.update(build_secondary_index_fields(tenant_id, document_id, status, now))
+    return document_id, item
 
 
 def serialize_report(item: dict) -> dict:
     return {k: v for k, v in item.items() if not k.startswith(("pk", "sk", "gsi"))}
 
 
-def get_report(tenant_id: int, report_id: str) -> dict | None:
-    response = table.get_item(Key=report_key(tenant_id, report_id))
+def get_document_job(tenant_id: int, document_id: str) -> dict | None:
+    response = table.get_item(Key=document_key(tenant_id, document_id))
     return response.get("Item")
 
 
-def get_report_or_404(tenant_id: int, report_id: str) -> dict:
-    item = get_report(tenant_id, report_id)
+def get_document_job_or_404(tenant_id: int, document_id: str) -> dict:
+    item = get_document_job(tenant_id, document_id)
     if not item:
-        raise NotFoundError("Report not found")
+        raise NotFoundError("Document not found")
     return item
 
 
-def update_report_status(
+def update_document_status(
     tenant_id: int,
-    report_id: str,
+    document_id: str,
     status: str,
     **extra,
 ) -> dict:
-    item = get_report_or_404(tenant_id, report_id)
+    item = get_document_job_or_404(tenant_id, document_id)
     now = now_iso()
     created_at = item.get("created_at") or now
 
@@ -147,22 +149,22 @@ def update_report_status(
             expr_values[f":{key}"] = value
             expr_names[f"#{key}"] = key
 
-    secondary = build_secondary_index_fields(tenant_id, report_id, status, created_at)
+    secondary = build_secondary_index_fields(tenant_id, document_id, status, created_at)
     for field in ("gsi1pk", "gsi1sk", "gsi2pk", "gsi2sk", "gsi3pk", "gsi3sk"):
         updates.append(f"#{field} = :{field}")
         expr_names[f"#{field}"] = field
         expr_values[f":{field}"] = secondary[field]
 
     table.update_item(
-        Key=report_key(tenant_id, report_id),
+        Key=document_key(tenant_id, document_id),
         UpdateExpression="SET " + ", ".join(updates),
         ExpressionAttributeValues=expr_values,
         ExpressionAttributeNames=expr_names,
     )
-    return get_report_or_404(tenant_id, report_id)
+    return get_document_job_or_404(tenant_id, document_id)
 
 
-def list_tenant_reports(
+def list_tenant_document_jobs(
     tenant_id: int,
     status: str | None = None,
     limit: int = 50,
@@ -202,3 +204,13 @@ def list_tenant_reports(
             if not last_key or len(items) >= limit:
                 break
         return [serialize_report(item) for item in items[:limit]]
+
+
+REPORT_STATUSES = DOCUMENT_STATUSES
+report_sk = document_sk
+report_key = document_key
+create_report_item = create_document_job
+get_report = get_document_job
+get_report_or_404 = get_document_job_or_404
+update_report_status = update_document_status
+list_tenant_reports = list_tenant_document_jobs
