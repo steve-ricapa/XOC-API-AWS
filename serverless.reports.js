@@ -4,7 +4,7 @@ const reportsResources = require('./serverless/services/reports-resources');
 module.exports = buildService({
   service: 'xoc-api-reports',
   attachToSharedHttpApi: true,
-  iam: { reports: true },
+  iam: { reports: true, database: true, vpc: true },
   environment: (stage) => ({
     ...commonEnvironment(stage),
     REPORTS_TABLE_NAME: `xoc-api-reports-${stage}-reports`,
@@ -16,6 +16,7 @@ module.exports = buildService({
     reportsApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/reports.handler',
       description: 'Documents domain API',
+      needsVpc: true,
       include: [
         'src/handlers/domains/reports.py',
         'src/handlers/routes/reports.py',
