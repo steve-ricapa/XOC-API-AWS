@@ -7,7 +7,7 @@ module.exports = buildService({
   pythonRequirements: {
     fileName: 'requirements.crypto.txt',
     dockerizePip: true,
-    dockerImage: 'public.ecr.aws/lambda/python:3.11',
+    dockerImage: 'public.ecr.aws/sam/build-python3.11:latest',
   },
   functions: (stage) => ({
     scansApi: lambdaConfig(stage, {
