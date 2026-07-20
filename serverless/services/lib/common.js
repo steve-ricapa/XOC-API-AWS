@@ -238,6 +238,15 @@ function detectStage() {
 
 function buildService(options) {
   const stage = detectStage();
+  const pythonRequirements = {
+    dockerizePip: false,
+    useDownloadCache: true,
+    useStaticCache: false,
+    pipCmdExtraArgs: ['--only-binary', ':all:'],
+    slim: true,
+    noDeploy: ['boto3', 'botocore', 's3transfer', 'jmespath'],
+    ...(options.pythonRequirements || {}),
+  };
   const provider = {
     name: 'aws',
       runtime: 'python3.11',
@@ -269,14 +278,7 @@ function buildService(options) {
     resources: options.resources ? options.resources(stage) : undefined,
     plugins: ['serverless-python-requirements'],
     custom: {
-      pythonRequirements: {
-        dockerizePip: false,
-        useDownloadCache: true,
-        useStaticCache: false,
-        pipCmdExtraArgs: ['--only-binary', ':all:'],
-        slim: true,
-        noDeploy: ['boto3', 'botocore', 's3transfer', 'jmespath'],
-      },
+      pythonRequirements,
     },
   };
 }

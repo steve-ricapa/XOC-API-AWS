@@ -5,6 +5,9 @@ module.exports = buildService({
   service: 'xoc-api-shared',
   iam: { jwt: [{ Ref: 'JwtSecret' }], agentEncryption: [{ Ref: 'AgentKeyEncryptionKeySecret' }] },
   attachToSharedHttpApi: false,
+  pythonRequirements: {
+    fileName: 'requirements.shared.txt',
+  },
   environment: (stage) => ({
     ...commonEnvironment(stage),
     JWT_SECRET_ARN: { Ref: 'JwtSecret' },

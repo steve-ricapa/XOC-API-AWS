@@ -1,0 +1,2 @@
+aws-lambda-powertools>=3.10.0
+PyJWT>=2.9.0
