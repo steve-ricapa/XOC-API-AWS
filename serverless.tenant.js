@@ -4,6 +4,9 @@ module.exports = buildService({
   service: 'xoc-api-tenant',
   attachToSharedHttpApi: true,
   iam: { database: true, vpc: true, agentEncryption: true },
+  pythonRequirements: {
+    dockerizePip: true,
+  },
   functions: (stage) => ({
     tenantApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/tenant.handler',

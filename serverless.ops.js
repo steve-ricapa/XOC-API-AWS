@@ -4,6 +4,9 @@ module.exports = buildService({
   service: 'xoc-api-ops',
   attachToSharedHttpApi: true,
   iam: { database: true, snapshots: true, vpc: true, agentEncryption: true },
+  pythonRequirements: {
+    dockerizePip: true,
+  },
   functions: (stage) => ({
     scansApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/scans.handler',

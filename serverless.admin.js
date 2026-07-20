@@ -4,6 +4,9 @@ module.exports = buildService({
   service: 'xoc-api-admin',
   attachToSharedHttpApi: true,
   iam: { database: true, vpc: true, agentEncryption: true, dynamo: true },
+  pythonRequirements: {
+    dockerizePip: true,
+  },
   functions: (stage) => ({
     adminApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/admin.handler',
