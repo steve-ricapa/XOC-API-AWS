@@ -4,6 +4,9 @@ module.exports = buildService({
   service: 'xoc-api-auth',
   attachToSharedHttpApi: true,
   iam: { database: true, vpc: true, jwt: true },
+  pythonRequirements: {
+    fileName: 'requirements.auth.txt',
+  },
   functions: (stage) => ({
     authApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/auth.handler',
@@ -15,7 +18,7 @@ module.exports = buildService({
         'src/handlers/routes/health.py',
         'src/shared/**',
         'src/persistence/**',
-        'requirements.txt',
+        'requirements.auth.txt',
       ],
       events: [
         publicRoute('GET', '/health'),

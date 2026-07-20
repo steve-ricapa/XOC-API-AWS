@@ -5,7 +5,9 @@ module.exports = buildService({
   attachToSharedHttpApi: true,
   iam: { database: true, vpc: true, agentEncryption: true },
   pythonRequirements: {
+    fileName: 'requirements.crypto.txt',
     dockerizePip: true,
+    dockerImage: 'public.ecr.aws/lambda/python:3.11',
   },
   functions: (stage) => ({
     tenantApi: lambdaConfig(stage, {
@@ -19,7 +21,7 @@ module.exports = buildService({
         'src/handlers/routes/audit.py',
         'src/shared/**',
         'src/persistence/**',
-        'requirements.txt',
+        'requirements.crypto.txt',
       ],
       events: [
         protectedRoute(stage, 'GET', '/tenant'),

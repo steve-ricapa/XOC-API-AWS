@@ -5,7 +5,9 @@ module.exports = buildService({
   attachToSharedHttpApi: true,
   iam: { database: true, vpc: true, agentEncryption: true, dynamo: true },
   pythonRequirements: {
+    fileName: 'requirements.crypto.txt',
     dockerizePip: true,
+    dockerImage: 'public.ecr.aws/lambda/python:3.11',
   },
   functions: (stage) => ({
     adminApi: lambdaConfig(stage, {
@@ -20,7 +22,7 @@ module.exports = buildService({
         'src/xoc_ops/**',
         'src/shared/**',
         'src/persistence/**',
-        'requirements.txt',
+        'requirements.crypto.txt',
       ],
       events: [
         protectedRoute(stage, 'POST', '/admin/agent-instances'),

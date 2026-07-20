@@ -5,7 +5,9 @@ module.exports = buildService({
   attachToSharedHttpApi: true,
   iam: { database: true, snapshots: true, vpc: true, agentEncryption: true },
   pythonRequirements: {
+    fileName: 'requirements.crypto.txt',
     dockerizePip: true,
+    dockerImage: 'public.ecr.aws/lambda/python:3.11',
   },
   functions: (stage) => ({
     scansApi: lambdaConfig(stage, {
@@ -17,7 +19,7 @@ module.exports = buildService({
         'src/handlers/routes/scans.py',
         'src/shared/**',
         'src/persistence/**',
-        'requirements.txt',
+        'requirements.crypto.txt',
       ],
       events: [
         publicRoute('POST', '/scans/ingest'),
