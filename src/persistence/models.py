@@ -550,6 +550,70 @@ class AgentSession(Base):
         }
 
 
+class LiveVoiceSession(Base):
+    __tablename__ = "live_voice_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_type: Mapped[str] = mapped_column(String(50), nullable=False, default="SOPHIA")
+    agent_instance_id: Mapped[str | None] = mapped_column(ForeignKey("agent_instances.id", ondelete="CASCADE"), nullable=True)
+    session_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_consumed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    metrics: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+
+    messages: Mapped[list["LiveVoiceMessage"]] = relationship(
+        "LiveVoiceMessage",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+
+    def to_dict(self, include_messages: bool = False) -> dict:
+        data = {
+            "id": self.id,
+            "tenant_id": self.tenant_id,
+            "agent_type": self.agent_type,
+            "agent_instance_id": self.agent_instance_id,
+            "session_name": self.session_name,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "ended_at": self.ended_at.isoformat() if self.ended_at else None,
+            "duration_seconds": self.duration_seconds,
+            "tokens_consumed": self.tokens_consumed,
+            "metrics": self.metrics,
+            "metadata": self.metadata_json,
+        }
+        if include_messages:
+            ordered = sorted(self.messages, key=lambda item: item.created_at or datetime.min)
+            data["messages"] = [message.to_dict() for message in ordered]
+        return data
+
+
+class LiveVoiceMessage(Base):
+    __tablename__ = "live_voice_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column("live_voice_session_id", ForeignKey("live_voice_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
+
+    session: Mapped[LiveVoiceSession] = relationship("LiveVoiceSession", back_populates="messages")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "session_id": self.session_id,
+            "role": self.role,
+            "content": self.content,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class IntegrationCapabilityTemplate(Base):
     __tablename__ = "integration_capability_templates"
 

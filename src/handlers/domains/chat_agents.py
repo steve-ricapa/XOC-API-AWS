@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from mangum import Mangum
 
 from src.handlers.routes.chat import router as chat_router
+from src.handlers.routes.live_voice import router as live_voice_router
 from src.handlers.routes.agents import router as agents_router
 from src.shared.config import get_settings
 from src.shared.errors import AppError
@@ -41,6 +42,7 @@ async def handle_unexpected_error(_: Request, exc: Exception) -> JSONResponse:
 
 
 app.include_router(chat_router)
+app.include_router(live_voice_router)
 app.include_router(agents_router)
 
 handler = Mangum(app)
