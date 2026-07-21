@@ -519,6 +519,7 @@ Respuesta esperada:
 | POST   | `/superadmin/tenants`                              | SUPERADMIN   | Crear tenant                             |
 | GET    | `/superadmin/tenants/{tenantId}`                   | ADMIN_XOC / SUPERADMIN | Detalle del tenant con conteos           |
 | PATCH  | `/superadmin/tenants/{tenantId}`                   | ADMIN_XOC / SUPERADMIN | Actualizar tenant                        |
+| DELETE | `/superadmin/tenants/{tenantId}`                   | SUPERADMIN*  | Iniciar borrado async del tenant         |
 | POST   | `/superadmin/tenants/{tenantId}/impersonation-token` | ADMIN_XOC / SUPERADMIN | Emitir token delegado para operar el tenant |
 | GET    | `/superadmin/tenants/{tenantId}/integrations`      | SUPERADMIN   | Integraciones + capabilities del tenant  |
 | GET    | `/superadmin/tenants/{tenantId}/capabilities`      | SUPERADMIN   | Capacidades efectivas del tenant         |
@@ -545,6 +546,13 @@ Respuesta esperada:
 | POST   | `/superadmin/integrations/{integrationId}/credentials` | SUPERADMIN* | Guardar credenciales cifradas           |
 
 \* Requiere header `X-Superadmin-Confirm: true`.
+
+Notas para `DELETE /superadmin/tenants/{tenantId}`:
+
+- También requiere query param `confirm_name=<tenant-name>` con el nombre exacto del tenant.
+- Responde `202 Accepted` y marca el tenant como `DELETING`.
+- Ejecuta cleanup async de SQL, DynamoDB y S3.
+- Bloquea el borrado si existen documents activos (`PENDING`/`PROCESSING`) o tickets en ejecución.
 
 #### Agent Instances
 

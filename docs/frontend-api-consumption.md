@@ -32,7 +32,7 @@ Este documento resume qué endpoint debe consumir cada pantalla y qué recomenda
 | Usuarios | `GET /users` | Tenant scoped |
 | Tenant settings | `GET /tenant`, `PUT /tenant` | Admin para update |
 | Agent API keys | `/tenant/agent-keys/*` | Crear, listar, regenerar, toggle, borrar |
-| Reports | `POST /reports`, `GET /reports`, `GET /reports/{reportId}` | Flujo asíncrono |
+| Documents | `POST /documents`, `GET /documents`, `GET /documents/{documentId}` | Flujo asíncrono |
 
 ### Reglas de consumo recomendadas
 
@@ -79,10 +79,10 @@ Flujo recomendado para `ADMIN_XOC`:
 - Preferir formularios de replace/update sin re-hidratar secretos completos.
 - Si se consume, restringir la pantalla a admins y no persistir esos valores en cache local.
 
-5. Hacer polling explícito para reports.
+5. Hacer polling explícito para documents.
 
-- `POST /reports` responde `202`, no bloquea hasta generar el archivo.
-- Poll recomendado: `GET /reports/{reportId}` cada 3-5 segundos.
+- `POST /documents` responde `202`, no bloquea hasta generar el archivo.
+- Poll recomendado: `GET /documents/{documentId}` cada 3-5 segundos.
 - Cortar polling en `COMPLETED` o `FAILED`.
 
 6. Manejar `401` y `403` distinto.
@@ -163,8 +163,18 @@ Flujo recomendado para `ADMIN_XOC`:
 - `GET /findings/{findingId}`
 - `GET /vulnerabilities/{vulnId}`
 - `GET /integrations`
-- `POST /reports`
-- `GET /reports/{reportId}`
+- `POST /documents`
+- `GET /documents/{documentId}`
+
+### Superadmin: eliminación de tenant
+
+- Endpoint: `DELETE /superadmin/tenants/{tenantId}`
+- Auth: solo `SUPERADMIN`
+- Requiere header `X-Superadmin-Confirm: true`
+- Requiere query `confirm_name=<tenant-name>`
+- Responde `202 Accepted`
+- El backend marca el tenant como `DELETING` y ejecuta cleanup async
+- Si el tenant tiene documents activos (`PENDING`/`PROCESSING`) o tickets en ejecución, el backend bloquea el borrado
 
 ### Estado actual
 
