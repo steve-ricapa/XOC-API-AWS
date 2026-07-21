@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import uuid
-from datetime import datetime, timezone
 
 import boto3
 
@@ -111,6 +109,35 @@ def generate_download_url(s3_key: str, expires_in: int = 3600) -> str:
         ExpiresIn=expires_in,
     )
     return url
+
+
+def delete_s3_prefix(prefix: str) -> int:
+    bucket = get_snapshots_bucket_name()
+    deleted = 0
+    paginator = _s3().get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        contents = page.get("Contents") or []
+        if not contents:
+            continue
+        keys = [{"Key": item["Key"]} for item in contents]
+        for idx in range(0, len(keys), 1000):
+            chunk = keys[idx: idx + 1000]
+            _s3().delete_objects(Bucket=bucket, Delete={"Objects": chunk})
+            deleted += len(chunk)
+    return deleted
+
+
+def delete_documents_for_tenant(tenant_id: int, document_types: list[str]) -> int:
+    stage = get_settings().app_stage
+    deleted = 0
+    for document_type in document_types:
+        deleted += delete_s3_prefix(f"{stage}/documents/{document_type}/{tenant_id}/")
+    return deleted
+
+
+def delete_legacy_reports_for_tenant(tenant_id: int) -> int:
+    stage = get_settings().app_stage
+    return delete_s3_prefix(f"{stage}/reports/{tenant_id}/")
 
 
 def build_report_s3_key(tenant_id: int, report_id: str, filename: str = "generated.docx") -> str:

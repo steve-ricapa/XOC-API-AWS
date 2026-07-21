@@ -1,9 +1,21 @@
-const { buildService, lambdaConfig, protectedRoute } = require('./serverless/services/lib/common');
+const { buildService, lambdaConfig, protectedRoute, commonEnvironment } = require('./serverless/services/lib/common');
+const adminResources = require('./serverless/services/admin-resources');
 
 module.exports = buildService({
   service: 'xoc-api-admin',
   attachToSharedHttpApi: true,
-  iam: { database: true, vpc: true, jwt: true, agentEncryption: true, dynamo: true },
+  iam: { database: true, vpc: true, jwt: true, agentEncryption: true, dynamo: true, reports: true, snapshots: true },
+  environment: (stage) => ({
+    ...commonEnvironment(stage),
+    TENANT_DELETION_QUEUE_URL: `https://sqs.${'${aws:region}'}.amazonaws.com/${'${aws:accountId}'}/xoc-api-admin-${stage}-tenant-deletion`,
+  }),
+  additionalIamStatements: (stage) => ([
+    {
+      Effect: 'Allow',
+      Action: ['sqs:SendMessage'],
+      Resource: [`arn:aws:sqs:${'${aws:region}'}:${'${aws:accountId}'}:xoc-api-admin-${stage}-tenant-deletion`],
+    },
+  ]),
   pythonRequirements: {
     fileName: 'requirements.crypto.txt',
     dockerizePip: true,
@@ -20,6 +32,7 @@ module.exports = buildService({
         'src/handlers/routes/superadmin.py',
         'src/handlers/routes/xoc_ops.py',
         'src/xoc_ops/**',
+        'src/reports/**',
         'src/shared/**',
         'src/persistence/**',
         'requirements.crypto.txt',
@@ -39,6 +52,7 @@ module.exports = buildService({
         protectedRoute(stage, 'POST', '/superadmin/tenants'),
         protectedRoute(stage, 'GET', '/superadmin/tenants/{tenantId}'),
         protectedRoute(stage, 'PATCH', '/superadmin/tenants/{tenantId}'),
+        protectedRoute(stage, 'DELETE', '/superadmin/tenants/{tenantId}'),
         protectedRoute(stage, 'POST', '/superadmin/tenants/{tenantId}/impersonation-token'),
         protectedRoute(stage, 'GET', '/superadmin/tenants/{tenantId}/integrations'),
         protectedRoute(stage, 'GET', '/superadmin/tenants/{tenantId}/capabilities'),
@@ -85,5 +99,28 @@ module.exports = buildService({
         protectedRoute(stage, 'GET', '/xoc-ops/clients/{tenantId}'),
       ],
     }),
+    tenantDeletionWorker: lambdaConfig(stage, {
+      handler: 'src/handlers/workers/tenant_delete.handler',
+      description: 'Deletes tenant data across SQL, DynamoDB, and S3',
+      timeout: 300,
+      memorySize: 1024,
+      needsVpc: true,
+      include: [
+        'src/handlers/workers/tenant_delete.py',
+        'src/shared/**',
+        'src/persistence/**',
+        'src/reports/**',
+        'requirements.crypto.txt',
+      ],
+      events: [
+        {
+          sqs: {
+            arn: { 'Fn::GetAtt': ['TenantDeletionQueue', 'Arn'] },
+            batchSize: 1,
+          },
+        },
+      ],
+    }),
   }),
+  resources: (stage) => adminResources(stage),
 });

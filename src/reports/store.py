@@ -206,6 +206,65 @@ def list_tenant_document_jobs(
         return [serialize_report(item) for item in items[:limit]]
 
 
+def count_tenant_document_jobs(tenant_id: int, status: str | None = None) -> int:
+    if status:
+        total = 0
+        last_key = None
+        while True:
+            kwargs = {
+                "IndexName": "StatusIndex",
+                "KeyConditionExpression": Key("gsi2pk").eq(status_index_pk(tenant_id, status)),
+                "Select": "COUNT",
+            }
+            if last_key:
+                kwargs["ExclusiveStartKey"] = last_key
+            response = table.query(**kwargs)
+            total += response.get("Count", 0)
+            last_key = response.get("LastEvaluatedKey")
+            if not last_key:
+                break
+        return total
+    total = 0
+    last_key = None
+    while True:
+        kwargs = {
+            "KeyConditionExpression": Key("pk").eq(tenant_pk(tenant_id)),
+            "Select": "COUNT",
+        }
+        if last_key:
+            kwargs["ExclusiveStartKey"] = last_key
+        response = table.query(**kwargs)
+        total += response.get("Count", 0)
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            break
+    return total
+
+
+def delete_tenant_document_jobs(tenant_id: int) -> int:
+    items = []
+    last_key = None
+    while True:
+        kwargs = {
+            "KeyConditionExpression": Key("pk").eq(tenant_pk(tenant_id)),
+        }
+        if last_key:
+            kwargs["ExclusiveStartKey"] = last_key
+        response = table.query(**kwargs)
+        items.extend(response.get("Items", []))
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            break
+    deleted = 0
+    if not items:
+        return deleted
+    with table.batch_writer() as batch:
+        for item in items:
+            batch.delete_item(Key={"pk": item["pk"], "sk": item["sk"]})
+            deleted += 1
+    return deleted
+
+
 REPORT_STATUSES = DOCUMENT_STATUSES
 report_sk = document_sk
 report_key = document_key

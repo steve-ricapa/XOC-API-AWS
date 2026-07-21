@@ -238,6 +238,9 @@ function detectStage() {
 
 function buildService(options) {
   const stage = detectStage();
+  const additionalIamStatements = typeof options.additionalIamStatements === 'function'
+    ? options.additionalIamStatements(stage)
+    : (options.additionalIamStatements || []);
   const pythonRequirements = {
     dockerizePip: false,
     useDownloadCache: true,
@@ -262,6 +265,9 @@ function buildService(options) {
       },
     },
   };
+  if (additionalIamStatements.length > 0) {
+    provider.iam.role.statements.push(...additionalIamStatements);
+  }
 
   if (options.attachToSharedHttpApi) {
     provider.httpApi = {

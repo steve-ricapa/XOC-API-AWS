@@ -2,7 +2,9 @@ import os
 import secrets
 import string
 from datetime import datetime, timedelta
+import json
 
+import boto3
 import requests
 from fastapi import APIRouter, Depends, Header, status
 from sqlalchemy import or_, func
@@ -13,6 +15,7 @@ from src.persistence.models import (
     AgentInstance, AgentSession, ActivationKey, AgentApiKey,
     AuditLog, Tenant, Integration, IntegrationCapabilityTemplate,
     IntegrationCapabilityTemplateAssignment, User,
+    Ticket,
 )
 from src.shared.auth import create_access_token
 from src.shared.context import get_user_by_email, log_audit, require_platform_operator, require_superadmin
@@ -22,14 +25,19 @@ from src.shared.integration_types import OFFICIAL_INTEGRATION_TYPES, normalize_i
 from src.shared.encryption import encrypt_agent_key, decrypt_agent_key, encrypt_credentials, decrypt_credentials
 from src.shared.security_keys import generate_access_key, hash_access_key
 from src.shared.tickets_store import count_tenant_tickets, get_ticket_by_id_or_none, list_superadmin_tickets, serialize_ticket, update_ticket_fields
+from src.reports.store import count_tenant_document_jobs
 
 
 router = APIRouter(prefix="/superadmin", tags=["superadmin"])
+deletion_queue = boto3.client("sqs")
 
 
 DEMO_PLAN_STATUS = "DEMO"
 DEMO_FUNCTION_ROUTE_DEFAULT = "/api/agents/SophiaDurableAgent/run"
 VALID_PLAN_STATUSES = {"DEMO", "ACTIVE", "EXPIRED", "INACTIVE"}
+TENANT_DELETING_STATUS = "DELETING"
+TENANT_DELETING_FAILED_STATUS = "DELETING_FAILED"
+RUNNING_TENANT_TICKET_STATUSES = {"RUNNING", "EN_EJECUCION", "PENDIENTE_EJECUCION"}
 
 
 def _get_demo_function_settings() -> dict:
@@ -207,6 +215,37 @@ def _require_confirm(x_superadmin_confirm: bool = Header(None, alias="X-Superadm
     return True
 
 
+def _build_tenant_delete_summary(session: Session, tenant_id: int) -> dict:
+    return {
+        "users_count": int(session.query(func.count(User.id)).filter(User.tenant_id == tenant_id).scalar() or 0),
+        "integrations_count": int(session.query(func.count(Integration.id)).filter(Integration.tenant_id == tenant_id).scalar() or 0),
+        "agent_instances_count": int(session.query(func.count(AgentInstance.id)).filter(AgentInstance.tenant_id == tenant_id).scalar() or 0),
+        "agent_sessions_count": int(session.query(func.count(AgentSession.id)).filter(AgentSession.tenant_id == tenant_id).scalar() or 0),
+        "sql_tickets_count": int(session.query(func.count(Ticket.id)).filter(Ticket.tenant_id == tenant_id).scalar() or 0),
+        "dynamo_tickets_count": int(count_tenant_tickets(tenant_id)),
+        "documents_count": int(count_tenant_document_jobs(tenant_id)),
+        "pending_documents_count": int(count_tenant_document_jobs(tenant_id, status="PENDING")),
+        "processing_documents_count": int(count_tenant_document_jobs(tenant_id, status="PROCESSING")),
+        "running_sql_tickets_count": int(session.query(func.count(Ticket.id)).filter(Ticket.tenant_id == tenant_id, Ticket.status.in_(RUNNING_TENANT_TICKET_STATUSES)).scalar() or 0),
+    }
+
+
+def _enqueue_tenant_deletion(*, tenant_id: int, actor_user_id: int, tenant_name: str, summary: dict) -> None:
+    queue_url = os.environ.get("TENANT_DELETION_QUEUE_URL", "")
+    if not queue_url:
+        raise ValidationError("TENANT_DELETION_QUEUE_URL is not configured")
+    deletion_queue.send_message(
+        QueueUrl=queue_url,
+        MessageBody=json.dumps({
+            "tenant_id": tenant_id,
+            "actor_user_id": actor_user_id,
+            "tenant_name": tenant_name,
+            "summary": summary,
+            "requested_at": datetime.utcnow().isoformat(),
+        }),
+    )
+
+
 def _ensure_demo_agent_instance(tenant_id: int, session: Session):
     demo_settings = _get_demo_function_settings()
     if not demo_settings["base_url"]:
@@ -370,6 +409,53 @@ def update_tenant(
     log_audit(session, actor_user_id=current_user.id, action="UPDATE", entity_type="TENANT", entity_id=tenant.id, payload={"name": tenant.name, "plan_status": tenant.plan_status})
     session.commit()
     return {"message": "Tenant updated successfully", "tenant": tenant.to_dict()}
+
+
+@router.delete("/tenants/{tenant_id}", status_code=status.HTTP_202_ACCEPTED)
+def delete_tenant(
+    tenant_id: int,
+    confirm_name: str,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+    x_superadmin_confirm: bool = Header(None, alias="X-Superadmin-Confirm"),
+) -> dict:
+    require_superadmin(current_user)
+    _require_confirm(x_superadmin_confirm)
+    tenant = session.get(Tenant, tenant_id)
+    if not tenant:
+        raise NotFoundError("Tenant not found")
+    if tenant.name != (confirm_name or "").strip():
+        raise ValidationError("confirm_name must match the tenant name exactly")
+    if tenant.plan_status == TENANT_DELETING_STATUS:
+        return {"message": "Tenant deletion already in progress", "tenantId": tenant_id, "status": TENANT_DELETING_STATUS}
+
+    summary = _build_tenant_delete_summary(session, tenant_id)
+    if summary["pending_documents_count"] > 0 or summary["processing_documents_count"] > 0 or summary["running_sql_tickets_count"] > 0:
+        raise ValidationError("Tenant has active document or ticket jobs and cannot be deleted yet")
+
+    tenant.plan_status = TENANT_DELETING_STATUS
+    log_audit(
+        session,
+        actor_user_id=current_user.id,
+        action="DELETE_REQUESTED",
+        entity_type="TENANT",
+        entity_id=tenant.id,
+        payload={"name": tenant.name, "summary": summary},
+    )
+    session.flush()
+    _enqueue_tenant_deletion(
+        tenant_id=tenant.id,
+        actor_user_id=current_user.id,
+        tenant_name=tenant.name,
+        summary=summary,
+    )
+    session.commit()
+    return {
+        "message": "Tenant deletion started",
+        "tenantId": tenant.id,
+        "status": TENANT_DELETING_STATUS,
+        "summary": summary,
+    }
 
 
 @router.post("/tenants/{tenant_id}/impersonation-token")

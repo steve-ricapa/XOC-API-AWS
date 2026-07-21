@@ -177,6 +177,18 @@ def count_tenant_tickets(tenant_id: int, status: str | None = None) -> int:
     return _query_count(KeyConditionExpression=Key("pk").eq(tenant_pk(tenant_id)))
 
 
+def delete_tenant_tickets(tenant_id: int) -> int:
+    items = _query_all(KeyConditionExpression=Key("pk").eq(tenant_pk(tenant_id)))
+    deleted = 0
+    if not items:
+        return deleted
+    with table.batch_writer() as batch:
+        for item in items:
+            batch.delete_item(Key={"pk": item["pk"], "sk": item["sk"]})
+            deleted += 1
+    return deleted
+
+
 def list_superadmin_tickets(
     *,
     tenant_id: int | None = None,

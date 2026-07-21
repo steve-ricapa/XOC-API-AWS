@@ -21,7 +21,7 @@ def _integration_key(value: str | None) -> str:
 
 def _build_status(*, plan_status: str, critical_incidents: int, degraded_integrations: int, operational_health_score: int, integrations_count: int, agents_count: int) -> str:
     normalized_plan = (plan_status or "").strip().upper()
-    if normalized_plan == "INACTIVE" or (integrations_count == 0 and agents_count == 0):
+    if normalized_plan in {"INACTIVE", "DELETING", "DELETING_FAILED"} or (integrations_count == 0 and agents_count == 0):
         return "inactive"
     if critical_incidents > 0 or operational_health_score < 50:
         return "critical"
@@ -32,7 +32,7 @@ def _build_status(*, plan_status: str, critical_incidents: int, degraded_integra
 
 def _health_score(*, critical_incidents: int, degraded_integrations: int, pending_tickets: int, operations_running: int, plan_status: str) -> int:
     normalized_plan = (plan_status or "").strip().upper()
-    if normalized_plan == "INACTIVE":
+    if normalized_plan in {"INACTIVE", "DELETING", "DELETING_FAILED"}:
         return 15
     score = 100
     score -= min(50, critical_incidents * 20)
