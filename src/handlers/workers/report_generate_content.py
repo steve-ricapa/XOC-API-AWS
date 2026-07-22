@@ -47,15 +47,16 @@ def _generate_content(collected_data: dict, document_type: str) -> dict:
             reference_markdown=_load_minority_reference(),
         )
         payload.setdefault("document_code", document.get("id"))
+        normalized_findings = _build_minority_findings(payload)
         return {
             "document_type": document_type,
             "document": document,
             "minority_payload": payload,
-            "sections": [],
-            "findings": collected_data.get("findings", []),
-            "domains": collected_data.get("domains", []),
+            "sections": _build_minority_sections(payload),
+            "findings": normalized_findings,
+            "domains": payload.get("security_domains", []),
             "severity_summary": collected_data.get("severity_summary", {}),
-            "actions_worked": collected_data.get("actions_worked", []),
+            "actions_worked": payload.get("weekly_actions", []),
             "security_news": payload.get("security_news", []),
         }
 
@@ -160,3 +161,40 @@ def _load_minority_reference() -> str:
     if not reference_path.exists():
         return ""
     return reference_path.read_text(encoding="utf-8")
+
+
+def _build_minority_sections(payload: dict) -> list[dict]:
+    return [
+        {
+            "id": "executive_summary",
+            "title": "Resumen Ejecutivo",
+            "content": payload.get("executive_summary", ""),
+        },
+        {
+            "id": "severity_analysis",
+            "title": "Analisis de Severidades",
+            "content": (payload.get("vulnerability_comparison") or {}).get("summary", ""),
+        },
+        {
+            "id": "findings_detail",
+            "title": "Detalle de Hallazgos",
+            "findings": _build_minority_findings(payload),
+        },
+    ]
+
+
+def _build_minority_findings(payload: dict) -> list[dict]:
+    findings = []
+    for domain in payload.get("security_domains") or []:
+        domain_name = domain.get("name", "")
+        for finding in domain.get("findings") or []:
+            findings.append(
+                {
+                    "id": finding.get("id"),
+                    "title": finding.get("vulnerability"),
+                    "affected_hosts": finding.get("affected_hosts"),
+                    "severity": finding.get("severity"),
+                    "domain": domain_name,
+                }
+            )
+    return findings
