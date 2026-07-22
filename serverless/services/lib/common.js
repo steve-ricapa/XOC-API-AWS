@@ -106,7 +106,7 @@ function iamStatements(stage, capabilities = {}) {
   if (capabilities.dynamo) {
     statements.push({
       Effect: 'Allow',
-      Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:Query', 'dynamodb:Scan'],
+      Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:BatchWriteItem', 'dynamodb:Query', 'dynamodb:Scan'],
       Resource: relaxed
         ? '*'
         : [
@@ -154,7 +154,7 @@ function iamStatements(stage, capabilities = {}) {
   if (capabilities.reports) {
     statements.push({
       Effect: 'Allow',
-      Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:Query'],
+      Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:BatchWriteItem', 'dynamodb:Query'],
       Resource: relaxed ? '*' : [
         `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-reports-${stage}-reports`,
         `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-reports-${stage}-reports/index/*`,
