@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from scripts.seed_demo_tenant_data import seed_operational_tenant_data
+from scripts.seed_demo_tenant_data import seed_tenant
 from src.persistence.db import session_scope
 from src.persistence.models import Tenant
 
@@ -32,7 +32,7 @@ def handler(event, context):
         tenant_id = int(tenant.id)
 
     seed = _current_refresh_seed(window_hours)
-    seed_operational_tenant_data(tenant_id, random_seed=seed)
+    seed_tenant(tenant_id, random_seed=seed)
 
     return {
         "ok": True,
