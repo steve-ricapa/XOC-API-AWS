@@ -173,7 +173,7 @@ function iamStatements(stage, capabilities = {}) {
     statements.push({
       Effect: 'Allow',
       Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
-      Resource: relaxed ? '*' : [`${stageRef(stage, 'snapshotsBucketArn')}/reports/*`, `${stageRef(stage, 'snapshotsBucketArn')}/documents/*`, `${stageRef(stage, 'snapshotsBucketArn')}/document-templates/*`, `${stageRef(stage, 'snapshotsBucketArn')}/report-templates/*`],
+      Resource: relaxed ? '*' : [`${stageRef(stage, 'snapshotsBucketArn')}/${stage}/reports/*`, `${stageRef(stage, 'snapshotsBucketArn')}/${stage}/documents/*`, `${stageRef(stage, 'snapshotsBucketArn')}/document-templates/*`, `${stageRef(stage, 'snapshotsBucketArn')}/report-templates/*`],
     });
     statements.push({
       Effect: 'Allow',
