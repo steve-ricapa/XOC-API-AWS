@@ -214,10 +214,31 @@ def _strip_json_fence(raw: str) -> str:
 
 def _extract_json_object(raw: str) -> str:
     start = raw.find("{")
-    end = raw.rfind("}")
-    if start == -1 or end == -1 or end <= start:
+    if start == -1:
         return raw
-    return raw[start : end + 1]
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(raw)):
+        char = raw[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return raw[start : index + 1]
+    return raw
 
 
 def _repair_common_json_issues(raw: str) -> str:

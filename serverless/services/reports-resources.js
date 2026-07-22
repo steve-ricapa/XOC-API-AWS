@@ -148,6 +148,8 @@ module.exports = function reportsResources(stage) {
                     Type: 'Task',
                     Resource: '${CompleteReportArn}',
                     Parameters: {
+                      'documentId.$': '$.documentId',
+                      'tenantId.$': '$.tenantId',
                       'status': 'FAILED',
                       'error.$': '$.error',
                     },
