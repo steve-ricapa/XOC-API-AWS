@@ -8,6 +8,8 @@ Current patches:
   Creates `live_voice_sessions` and `live_voice_messages`.
 - `pending_ingestions_schema.sql`
   Creates `pending_ingestions` used by `POST /scans/upload-url`.
+- `finding_index_schema.sql`
+  Creates `finding_index` used by dashboard summaries and scan findings queries.
 
 Recommended usage from the RDS-reachable VM documented in `AGENTS.md`:
 
