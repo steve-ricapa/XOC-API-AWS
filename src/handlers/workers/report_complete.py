@@ -19,7 +19,7 @@ def handler(event: dict, context) -> dict:
     if status == "FAILED":
         error_code = error_info.get("Error", "unknown_error")
         error_message = error_info.get("Cause", "Unknown error during report generation")
-        update_report_status(
+        update_document_status(
             tenant_id,
             document_id,
             "FAILED",
