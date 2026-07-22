@@ -200,7 +200,7 @@ def build_vulnerability_summary(session: Session, tenant_id: int, provider: str,
     latest_findings = [finding.to_dict() for finding in _recent_findings(session, latest_scan.id)] if latest_scan else []
     completed = sum(1 for scan in recent_scans if (scan.status or "").lower() == "completed")
     running = sum(1 for scan in recent_scans if (scan.status or "").lower() == "running")
-    unique_hosts = len({finding.host for finding in latest_findings if finding.host}) or int(latest_scan.total_hosts or 0) if latest_scan else 0
+    unique_hosts = len({finding.get("host") for finding in latest_findings if isinstance(finding, dict) and finding.get("host")}) or int(latest_scan.total_hosts or 0) if latest_scan else 0
 
     return {
         "configured": True,
