@@ -1,31 +1,18 @@
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
-from src.persistence.models import TenantRuntimeSettings, User
+from src.persistence.models import User
 from src.shared.auth import create_access_token
 from src.shared.capabilities import collect_automation_capabilities
 from src.shared.context import effective_tenant_id_of, log_audit, require_tenant_read_access
 from src.shared.dependencies import get_current_user
-from src.shared.errors import AppError, UnauthorizedError, ValidationError
+from src.shared.errors import AppError
 
 
 router = APIRouter(prefix="/agents", tags=["agents"])
-
-
-RUNTIME_SETTINGS_MISSING_MESSAGE = "Runtime settings not configured for this tenant"
-
-
-def get_tenant_runtime_settings(session: Session, tenant_id: int) -> TenantRuntimeSettings | None:
-    return session.scalar(
-        select(TenantRuntimeSettings).where(
-            TenantRuntimeSettings.tenant_id == tenant_id,
-            TenantRuntimeSettings.is_active == True,
-        )
-    )
 
 
 @router.post("/auth/token")
@@ -46,10 +33,6 @@ def authenticate_agent_from_user(
     agent_type = (payload or {}).get("agentType", "SOPHIA")
     require_tenant_read_access(current_user)
     tenant_id = effective_tenant_id_of(current_user)
-
-    runtime_settings = get_tenant_runtime_settings(session, tenant_id)
-    if not runtime_settings:
-        raise UnauthorizedError(RUNTIME_SETTINGS_MISSING_MESSAGE)
 
     additional_claims = {
         "scopes": ["agent:invoke"],
