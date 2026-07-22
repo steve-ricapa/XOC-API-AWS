@@ -16,6 +16,7 @@ agentsFunctionRouteVictor: /api/agents/VictorDurableAgent/run
 databaseSecretArn: ${cf:xoc-infra-data-staging.DatabaseSecretArn}
 snapshotsBucketName: ${cf:xoc-infra-storage-staging.SnapshotsBucketName}
 snapshotsBucketArn: ${cf:xoc-infra-storage-staging.SnapshotsBucketArn}
+minorityFoundrySecretArn: ""
 ticketsPointInTimeRecoveryEnabled: false
 publicRegistrationEnabled: "false"
 apiVpc:

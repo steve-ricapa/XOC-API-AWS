@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 from datetime import datetime
+from pathlib import Path
 
 from src.reports.docx_renderer import (
     generate_report_docx,
@@ -10,6 +11,7 @@ from src.reports.docx_renderer import (
     replace_residual_template_text,
     validate_docx_file,
 )
+from src.reports.minority_docx import build_output_filename, generate_minority_report_docx
 from src.reports.storage import (
     download_artifact,
     download_template,
@@ -43,17 +45,23 @@ def handler(event: dict, context) -> dict:
         else:
             _create_minimal_template(template_path)
 
-        data = _build_render_data(content)
+        if document_type == "minority_report":
+            minority_payload = content.get("minority_payload") or {}
+            output_filename = build_output_filename(minority_payload)
+            output_path = os.path.join(tmpdir, output_filename)
+            generate_minority_report_docx(template_path, minority_payload, output_path)
+        else:
+            data = _build_render_data(content)
 
-        try:
-            generate_report_docx(template_path, data, output_path, has_real_template=has_template)
-        except Exception as exc:
-            logger.warning("Template rendering failed: %s. Falling back to direct replacement.", exc)
-            from src.reports.docx_renderer import generate_from_real_template
-            output_path = generate_from_real_template(template_path, data, output_path)
+            try:
+                generate_report_docx(template_path, data, output_path, has_real_template=has_template)
+            except Exception as exc:
+                logger.warning("Template rendering failed: %s. Falling back to direct replacement.", exc)
+                from src.reports.docx_renderer import generate_from_real_template
+                output_path = generate_from_real_template(template_path, data, output_path)
 
-        insert_findings_table(output_path, data, output_path)
-        replace_residual_template_text(output_path, data)
+            insert_findings_table(output_path, data, output_path)
+            replace_residual_template_text(output_path, data)
 
         valid, msg = validate_docx_file(output_path)
         if not valid:

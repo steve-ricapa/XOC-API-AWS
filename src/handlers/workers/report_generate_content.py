@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from src.reports.minority_foundry import generate_minority_payload
 from src.reports.storage import download_artifact, upload_artifact
 from src.shared.logging import logger
 
@@ -33,6 +36,29 @@ def handler(event: dict, context) -> dict:
 
 
 def _generate_content(collected_data: dict, document_type: str) -> dict:
+    if document_type == "minority_report":
+        tenant = collected_data.get("tenant", {})
+        document = collected_data.get("document", {})
+        payload = generate_minority_payload(
+            client_name=str(tenant.get("name") or "Cliente"),
+            period=str(document.get("period") or "Periodo no especificado"),
+            analyst_text=str(collected_data.get("analyst_text") or ""),
+            structured_data=collected_data.get("structured_data") or {},
+            reference_markdown=_load_minority_reference(),
+        )
+        payload.setdefault("document_code", document.get("id"))
+        return {
+            "document_type": document_type,
+            "document": document,
+            "minority_payload": payload,
+            "sections": [],
+            "findings": collected_data.get("findings", []),
+            "domains": collected_data.get("domains", []),
+            "severity_summary": collected_data.get("severity_summary", {}),
+            "actions_worked": collected_data.get("actions_worked", []),
+            "security_news": payload.get("security_news", []),
+        }
+
     document = collected_data.get("document", {})
     sections = _build_sections(document_type, collected_data, document)
 
@@ -127,3 +153,10 @@ def _build_domain_text(domains: list[dict]) -> str:
     for domain in domains:
         parts.append(f"{domain.get('name', '')}: {domain.get('summary', '')}")
     return "\n".join(parts)
+
+
+def _load_minority_reference() -> str:
+    reference_path = Path(__file__).resolve().parents[2] / "reports" / "minority_reference.md"
+    if not reference_path.exists():
+        return ""
+    return reference_path.read_text(encoding="utf-8")

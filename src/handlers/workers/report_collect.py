@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import json
-import os
-import tempfile
 from datetime import datetime, timezone
 
+from sqlalchemy import func, select
+
+from src.persistence.db import session_scope
+from src.persistence.models import AgentApiKey, FindingIndex, Integration, Tenant, Ticket
 from src.reports.store import get_document_job_or_404
 from src.reports.storage import upload_artifact
 from src.shared.logging import logger
@@ -42,7 +43,221 @@ def handler(event: dict, context) -> dict:
 
 
 def _collect_from_sources(tenant_id: int, document_id: str, document_type: str, filters: dict, parameters: dict) -> dict:
+    if document_type == "minority_report":
+        return _build_real_minority_context(tenant_id, document_id, filters, parameters)
     return _build_minimal_document_context(tenant_id, document_id, document_type, filters, parameters)
+
+
+PROVIDER_LABELS = {
+    "wazuh": "Wazuh SIEM",
+    "nessus": "Nessus",
+    "openvas": "OpenVAS",
+    "insightvm": "InsightVM / Rapid7",
+    "zabbix": "Zabbix",
+    "uptime_kuma": "Uptime Kuma",
+}
+
+
+def _build_real_minority_context(tenant_id: int, document_id: str, filters: dict, parameters: dict) -> dict:
+    with session_scope() as session:
+        tenant = session.get(Tenant, tenant_id)
+        if not tenant:
+            raise ValueError(f"Tenant {tenant_id} not found")
+
+        date_from, date_to, period = _resolve_period(filters)
+        findings = session.scalars(
+            select(FindingIndex).where(
+                FindingIndex.tenant_id == tenant_id,
+                FindingIndex.created_at >= date_from,
+                FindingIndex.created_at <= date_to,
+            ).order_by(FindingIndex.created_at.desc()).limit(150)
+        ).all()
+        integrations = session.scalars(select(Integration).where(Integration.tenant_id == tenant_id)).all()
+        agent_keys = session.scalars(
+            select(AgentApiKey).where(AgentApiKey.tenant_id == tenant_id, AgentApiKey.is_active == True)
+        ).all()
+        tickets = session.scalars(
+            select(Ticket).where(Ticket.tenant_id == tenant_id).order_by(Ticket.created_at.desc()).limit(20)
+        ).all()
+
+        severity_summary = _build_real_severity_summary(findings)
+        previous_summary = _build_previous_severity_summary(session, tenant_id, date_from)
+        tools = _build_real_tools(integrations, agent_keys)
+        security_domains = _build_security_domains(findings)
+        weekly_actions = _build_weekly_actions(tickets)
+        pending_findings = _build_pending_findings(findings)
+        analyst_text = _build_analyst_text(parameters)
+
+        return {
+            "tenant": {
+                "id": str(tenant_id),
+                "name": tenant.name,
+            },
+            "document": {
+                "id": document_id,
+                "title": "Minority Report - XOC",
+                "service": "Servicio de Monitoreo Proactivo XOC",
+                "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                "period": period,
+                "prepared_by": "TXDXSECURE",
+                "executive_summary": "",
+                "results": "",
+            },
+            "parameters": parameters,
+            "analyst_text": analyst_text,
+            "structured_data": {
+                "tenant_id": tenant_id,
+                "tenant_name": tenant.name,
+                "period": period,
+                "severity_summary": severity_summary,
+                "previous_severity_summary": previous_summary,
+                "tools": tools,
+                "security_domains": security_domains,
+                "weekly_actions": weekly_actions,
+                "pending_findings": pending_findings,
+                "top_findings": [_finding_to_minority_row(finding) for finding in findings[:20]],
+                "ticket_snapshot": [
+                    {
+                        "subject": ticket.subject,
+                        "status": ticket.status,
+                        "created_at": ticket.created_at.isoformat() if ticket.created_at else None,
+                    }
+                    for ticket in tickets
+                ],
+            },
+            "tools": tools,
+            "severity_summary": severity_summary,
+            "findings": [_finding_to_legacy_row(finding) for finding in findings[:50]],
+            "domains": security_domains,
+            "actions_worked": weekly_actions,
+            "security_news": [],
+        }
+
+
+def _resolve_period(filters: dict) -> tuple[datetime, datetime, str]:
+    now = datetime.now(timezone.utc)
+    date_from_raw = filters.get("date_from")
+    date_to_raw = filters.get("date_to")
+    if date_from_raw and date_to_raw:
+        start = datetime.fromisoformat(str(date_from_raw)).replace(tzinfo=timezone.utc)
+        end = datetime.fromisoformat(str(date_to_raw)).replace(tzinfo=timezone.utc)
+        return start, end, f"Del {start.date().isoformat()} al {end.date().isoformat()}"
+    start = now - timedelta(days=30)
+    return start, now, "Ultimos 30 dias evaluados"
+
+
+from datetime import timedelta
+
+
+def _build_real_severity_summary(findings: list[FindingIndex]) -> dict:
+    summary = {"critical": 0, "high": 0, "medium": 0, "low": 0, "informational": 0}
+    for finding in findings:
+        severity = (finding.severity or "").strip().lower()
+        if "critical" in severity or "crit" in severity:
+            summary["critical"] += 1
+        elif "high" in severity or "alto" in severity:
+            summary["high"] += 1
+        elif "medium" in severity or "medio" in severity:
+            summary["medium"] += 1
+        elif "low" in severity or "bajo" in severity:
+            summary["low"] += 1
+        else:
+            summary["informational"] += 1
+    return summary
+
+
+def _build_previous_severity_summary(session, tenant_id: int, current_start: datetime) -> dict:
+    previous_start = current_start - timedelta(days=30)
+    previous_findings = session.scalars(
+        select(FindingIndex).where(
+            FindingIndex.tenant_id == tenant_id,
+            FindingIndex.created_at >= previous_start,
+            FindingIndex.created_at < current_start,
+        )
+    ).all()
+    return _build_real_severity_summary(previous_findings)
+
+
+def _build_real_tools(integrations: list[Integration], agent_keys: list[AgentApiKey]) -> list[dict]:
+    names = {integration.provider for integration in integrations}
+    names.update(agent_key.integration_type for agent_key in agent_keys)
+    tools = []
+    for provider in sorted(names):
+        tools.append({
+            "name": PROVIDER_LABELS.get(provider, provider.upper()),
+            "description": f"Integracion activa para {PROVIDER_LABELS.get(provider, provider)}.",
+        })
+    return tools
+
+
+def _group_findings_by_provider(findings: list[FindingIndex]) -> dict[str, list[FindingIndex]]:
+    grouped: dict[str, list[FindingIndex]] = {}
+    for finding in findings:
+        grouped.setdefault(finding.scanner_type or "other", []).append(finding)
+    return grouped
+
+
+def _build_security_domains(findings: list[FindingIndex]) -> list[dict]:
+    grouped = _group_findings_by_provider(findings)
+    domains = []
+    for provider, items in grouped.items():
+        domains.append({
+            "name": PROVIDER_LABELS.get(provider, provider.upper()),
+            "summary": f"Se identificaron {len(items)} hallazgos asociados a {PROVIDER_LABELS.get(provider, provider)} en el periodo evaluado.",
+            "findings": [_finding_to_minority_row(item) for item in items[:8]],
+        })
+    return domains
+
+
+def _finding_to_minority_row(finding: FindingIndex) -> dict:
+    return {
+        "id": str(finding.id),
+        "vulnerability": finding.name or finding.cve or finding.event_type or "Hallazgo sin titulo",
+        "affected_hosts": finding.host or "N/D",
+        "severity": finding.severity or "Informativa",
+    }
+
+
+def _finding_to_legacy_row(finding: FindingIndex) -> dict:
+    return {
+        "id": str(finding.id),
+        "domain": PROVIDER_LABELS.get(finding.scanner_type or "", finding.domain or "Dominio"),
+        "title": finding.name or finding.cve or finding.event_type or "Hallazgo",
+        "affected_hosts": finding.host or "N/D",
+        "severity": finding.severity or "Informativa",
+        "description": finding.description or "",
+        "recommendation": finding.solution or "",
+    }
+
+
+def _build_weekly_actions(tickets: list[Ticket]) -> list[str]:
+    actions = []
+    for ticket in tickets[:10]:
+        actions.append(f"{ticket.subject} ({ticket.status})")
+    return actions
+
+
+def _build_pending_findings(findings: list[FindingIndex]) -> list[str]:
+    pending = []
+    for finding in findings[:12]:
+        pending.append(f"{finding.scanner_type}: {(finding.name or finding.cve or finding.event_type or 'Hallazgo')} ({finding.severity})")
+    return pending
+
+
+def _build_analyst_text(parameters: dict) -> str:
+    modules = parameters.get("modules") or {}
+    parts = []
+    if isinstance(modules, dict):
+        for module in modules.values():
+            if not isinstance(module, dict):
+                continue
+            content = str(module.get("content") or "").strip()
+            software = module.get("software") or []
+            if content:
+                parts.append(content)
+            if software:
+                parts.append(f"Software relacionado: {', '.join(str(item) for item in software)}")
+    return "\n\n".join(parts)
 
 
 def _build_minimal_document_context(tenant_id: int, document_id: str, document_type: str, filters: dict, parameters: dict) -> dict:

@@ -5,12 +5,29 @@ module.exports = buildService({
   service: 'xoc-api-reports',
   attachToSharedHttpApi: true,
   iam: { reports: true, database: true, vpc: true },
+  additionalIamStatements: (stage) => (
+    stage === 'prod'
+      ? [{
+          Effect: 'Allow',
+          Action: ['secretsmanager:GetSecretValue'],
+          Resource: [`arn:aws:secretsmanager:${'${aws:region}'}:${'${aws:accountId}'}:secret:xoc/api/${stage}/minority-foundry*`],
+        }]
+      : []
+  ),
+  pythonRequirements: {
+    fileName: 'requirements.reports.txt',
+  },
   environment: (stage) => ({
     ...commonEnvironment(stage),
     REPORTS_TABLE_NAME: `xoc-api-reports-${stage}-reports`,
     REPORT_REQUESTS_QUEUE_URL: `https://sqs.${'${aws:region}'}.amazonaws.com/${'${aws:accountId}'}/xoc-api-reports-${stage}-report-requests`,
     REPORT_WORKFLOW_STATE_MACHINE_ARN: `arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:stateMachine:xoc-api-reports-${stage}-report-workflow`,
     REPORT_EVENT_BUS_NAME: `xoc-api-reports-${stage}-bus`,
+    USE_AZURE_FOUNDRY: stage === 'prod' ? 'true' : 'false',
+    MINORITY_FOUNDRY_SECRET_ARN: stage === 'prod' ? `xoc/api/${stage}/minority-foundry` : '',
+    REPORT_MAX_IMAGE_MB: '10',
+    MINORITY_MAX_OUTPUT_TOKENS: '9000',
+    MINORITY_JSON_SCHEMA: 'true',
   }),
   functions: (stage) => ({
     reportsApi: lambdaConfig(stage, {
@@ -23,7 +40,7 @@ module.exports = buildService({
         'src/reports/**',
         'src/shared/**',
         'src/persistence/**',
-        'requirements.txt',
+        'requirements.reports.txt',
       ],
       events: [
         protectedRoute(stage, 'POST', '/documents'),
@@ -39,7 +56,7 @@ module.exports = buildService({
         'src/handlers/processors/report_orchestrator.py',
         'src/reports/**',
         'src/shared/**',
-        'requirements.txt',
+        'requirements.reports.txt',
       ],
       events: [
         {
@@ -62,7 +79,7 @@ module.exports = buildService({
         'src/shared/**',
         'src/persistence/**',
         'src/integrations/**',
-        'requirements.txt',
+        'requirements.reports.txt',
       ],
     }),
     generateReportContent: lambdaConfig(stage, {
@@ -75,7 +92,7 @@ module.exports = buildService({
         'src/handlers/workers/report_generate_content.py',
         'src/reports/**',
         'src/shared/**',
-        'requirements.txt',
+        'requirements.reports.txt',
       ],
     }),
     validateReport: lambdaConfig(stage, {
@@ -86,7 +103,7 @@ module.exports = buildService({
         'src/handlers/workers/report_validate.py',
         'src/reports/**',
         'src/shared/**',
-        'requirements.txt',
+        'requirements.reports.txt',
       ],
     }),
     generateDocx: lambdaConfig(stage, {
@@ -98,7 +115,7 @@ module.exports = buildService({
         'src/handlers/workers/report_generate_docx.py',
         'src/reports/**',
         'src/shared/**',
-        'requirements.txt',
+        'requirements.reports.txt',
       ],
     }),
     completeReport: lambdaConfig(stage, {
@@ -109,7 +126,7 @@ module.exports = buildService({
         'src/handlers/workers/report_complete.py',
         'src/reports/**',
         'src/shared/**',
-        'requirements.txt',
+        'requirements.reports.txt',
       ],
     }),
   }),
