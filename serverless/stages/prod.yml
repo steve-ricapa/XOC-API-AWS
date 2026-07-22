@@ -2,13 +2,15 @@ region: us-east-1
 logLevel: INFO
 logRetentionInDays: 90
 corsAllowedOrigins:
+  - https://xoc.app
+  - https://www.xoc.app
   - https://xoc-frontend.web.app
   - https://www.xoc-frontend.web.app
   - https://xoc-frontend.firebaseapp.com
   - https://main.d111fod5hov6vt.amplifyapp.com
   - https://www.main.d111fod5hov6vt.amplifyapp.com
   - https://www.xoc-frontend.firebaseapp.com
-corsAllowedOriginsCsv: https://xoc-frontend.web.app,https://www.xoc-frontend.web.app,https://xoc-frontend.firebaseapp.com,https://main.d111fod5hov6vt.amplifyapp.com,https://www.main.d111fod5hov6vt.amplifyapp.com,https://www.xoc-frontend.firebaseapp.com
+corsAllowedOriginsCsv: https://xoc.app,https://www.xoc.app,https://xoc-frontend.web.app,https://www.xoc-frontend.web.app,https://xoc-frontend.firebaseapp.com,https://main.d111fod5hov6vt.amplifyapp.com,https://www.main.d111fod5hov6vt.amplifyapp.com,https://www.xoc-frontend.firebaseapp.com
 jwtSecretKey: ""
 jwtSecretKeySsmPath: ""
 jwtSecretArn: ${cf:xoc-api-shared-prod.JwtSecretArn}
