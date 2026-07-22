@@ -125,6 +125,16 @@ def _cleanup_tenant_demo_data(session: Session, tenant_id: int) -> None:
     delete_tenant_document_jobs(tenant_id)
 
 
+def _cleanup_operational_demo_data(session: Session, tenant_id: int) -> None:
+    voice_session_ids = list(session.scalars(select(LiveVoiceSession.id).where(LiveVoiceSession.tenant_id == tenant_id)))
+    if voice_session_ids:
+        session.execute(delete(LiveVoiceMessage).where(LiveVoiceMessage.session_id.in_(voice_session_ids)))
+    session.execute(delete(LiveVoiceSession).where(LiveVoiceSession.tenant_id == tenant_id))
+    session.flush()
+    delete_tenant_tickets(tenant_id)
+    delete_tenant_document_jobs(tenant_id)
+
+
 def _create_integrations(session: Session, tenant_id: int) -> dict[str, Integration]:
     integrations: dict[str, Integration] = {}
     for provider in ALL_PROVIDERS:
@@ -515,6 +525,20 @@ def seed_tenant(tenant_id: int, random_seed: int = 20260620) -> None:
         print(f"Seed completed for tenant_id={tenant_id}")
         print(f"Integrations created: {len(integrations)}")
         print(f"Agent keys created: {len(agent_keys)}")
+
+
+def seed_operational_tenant_data(tenant_id: int, random_seed: int = 20260620) -> None:
+    rng = random.Random(random_seed)
+    with session_scope() as session:
+        tenant = session.get(Tenant, tenant_id)
+        if not tenant:
+            raise ValueError(f"Tenant {tenant_id} not found")
+        admin_user = _get_or_create_admin_user(session, tenant_id)
+        _cleanup_operational_demo_data(session, tenant_id)
+        _seed_live_voice_sessions(session, tenant_id, rng)
+        _seed_dynamo_tickets(tenant_id, admin_user, rng)
+        _seed_document_jobs(tenant_id, admin_user)
+        print(f"Operational demo seed completed for tenant_id={tenant_id}")
 
 
 def main() -> None:
