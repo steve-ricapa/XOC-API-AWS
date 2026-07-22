@@ -4,10 +4,9 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
-from openai import OpenAI
+import requests
 
 from src.shared.config import get_secret_string
 
@@ -369,36 +368,60 @@ def build_prompt(*, client_name: str, period: str, analyst_text: str, structured
     )
 
 
-def _foundry_openai_client(settings: MinorityFoundrySettings) -> OpenAI:
+def _resolve_base_url(settings: MinorityFoundrySettings) -> str:
     endpoint = (settings.openai_endpoint or settings.project_endpoint).rstrip("/")
     if not endpoint:
         raise RuntimeError("Azure Foundry endpoint not configured for minority report")
     if endpoint.endswith("/openai/v1"):
-        base_url = f"{endpoint}/"
+        return f"{endpoint}/"
     elif "/api/projects/" in endpoint:
         resource_root = endpoint.split("/api/projects/", 1)[0].rstrip("/")
-        base_url = f"{resource_root}/openai/v1/"
+        return f"{resource_root}/openai/v1/"
     else:
-        base_url = f"{endpoint}/openai/v1/"
+        return f"{endpoint}/openai/v1/"
+
+
+def _foundry_request(settings: MinorityFoundrySettings, request: dict[str, Any]) -> dict[str, Any]:
     if not settings.api_key:
         raise RuntimeError("Azure Foundry API key is not configured for minority report")
-    return OpenAI(base_url=base_url, api_key=settings.api_key)
+    base_url = _resolve_base_url(settings)
+    response = requests.post(
+        f"{base_url}responses",
+        headers={
+            "Authorization": f"Bearer {settings.api_key}",
+            "Content-Type": "application/json",
+        },
+        json=request,
+        timeout=120,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 def _extract_response_text(response: Any) -> str:
-    output_text = str(getattr(response, "output_text", "") or "").strip()
+    if isinstance(response, dict):
+        output_text = str(response.get("output_text") or "").strip()
+    else:
+        output_text = str(getattr(response, "output_text", "") or "").strip()
     if output_text:
         return output_text
     pieces: list[str] = []
-    for item in getattr(response, "output", []) or []:
-        for content in getattr(item, "content", []) or []:
-            text = getattr(content, "text", None)
-            if text:
-                pieces.append(str(text))
+    output_items = response.get("output", []) if isinstance(response, dict) else (getattr(response, "output", []) or [])
+    for item in output_items or []:
+        content_items = item.get("content", []) if isinstance(item, dict) else (getattr(item, "content", []) or [])
+        for content in content_items:
             if isinstance(content, dict):
+                if content.get("type") == "output_text":
+                    text_value = content.get("text")
+                    if isinstance(text_value, str):
+                        pieces.append(text_value)
+                    elif isinstance(text_value, dict):
+                        value = text_value.get("value")
+                        if value:
+                            pieces.append(str(value))
                 value = content.get("text") or content.get("value")
-                if value:
-                    pieces.append(str(value))
+                if isinstance(value, str):
+                    pieces.append(value)
     text = "\n".join(piece.strip() for piece in pieces if piece.strip())
     if text:
         return text
@@ -410,7 +433,6 @@ def generate_minority_payload(*, client_name: str, period: str, analyst_text: st
     if not settings.use_azure_foundry:
         raise RuntimeError("Minority report generation requires Azure Foundry and mock fallback is disabled")
 
-    client = _foundry_openai_client(settings)
     prompt = build_prompt(
         client_name=client_name,
         period=period,
@@ -433,10 +455,10 @@ def generate_minority_payload(*, client_name: str, period: str, analyst_text: st
             }
         }
     try:
-        response = client.responses.create(**request)
+        response = _foundry_request(settings, request)
     except Exception:
         if "text" not in request:
             raise
         request.pop("text", None)
-        response = client.responses.create(**request)
+        response = _foundry_request(settings, request)
     return parse_and_validate_json(_extract_response_text(response))
