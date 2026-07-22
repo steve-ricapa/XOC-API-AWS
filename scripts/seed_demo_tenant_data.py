@@ -11,9 +11,12 @@ from sqlalchemy.orm import Session
 from src.persistence.db import session_scope
 from src.persistence.models import (
     AgentApiKey,
+    AgentInstance,
     Alert,
     FindingIndex,
     Integration,
+    LiveVoiceMessage,
+    LiveVoiceSession,
     ScanSummary,
     ScanSummaryNoc,
     System,
@@ -22,13 +25,35 @@ from src.persistence.models import (
     User,
     Vulnerability,
 )
+from src.reports.store import create_document_job, delete_tenant_document_jobs, table as documents_table, update_document_status
 from src.shared.encryption import encrypt_agent_key, encrypt_credentials
 from src.shared.security_keys import generate_access_key, hash_access_key
+from src.shared.tickets_store import (
+    build_new_ticket_item,
+    build_secondary_index_fields as build_ticket_secondary_index_fields,
+    delete_tenant_tickets,
+    table as tickets_table,
+)
 
 
 SOC_PROVIDERS = ["wazuh", "nessus", "openvas", "insightvm"]
 NOC_PROVIDERS = ["zabbix", "uptime_kuma"]
 ALL_PROVIDERS = SOC_PROVIDERS + NOC_PROVIDERS
+DEMO_DOCUMENT_TYPES = ["minority_report", "small_report", "informe_soporte"]
+DEMO_VOICE_TRANSCRIPTS = [
+    [
+        ("USER", "Hola SOPHIA, necesito un resumen del estado actual de seguridad."),
+        ("ASSISTANT", "Actualmente el tenant demo presenta hallazgos criticos controlados y una tendencia estable en superficie de riesgo."),
+    ],
+    [
+        ("USER", "Quiero saber si hay activos degradados en el entorno NOC."),
+        ("ASSISTANT", "Se observan activos degradados simulados en monitoreo, pero la disponibilidad general permanece dentro del umbral esperado."),
+    ],
+    [
+        ("USER", "Genera una explicacion simple para direccion sobre vulnerabilidades prioritarias."),
+        ("ASSISTANT", "Las vulnerabilidades demo priorizadas muestran exposicion controlada y sirven para explicar criticidad, impacto y plan de remediacion."),
+    ],
+]
 
 
 def _now() -> datetime:
@@ -70,9 +95,15 @@ def _cleanup_tenant_demo_data(session: Session, tenant_id: int) -> None:
         session.execute(delete(Alert).where(Alert.tenant_id == tenant_id, Alert.integration_id.in_(integration_ids)))
         session.execute(delete(Vulnerability).where(Vulnerability.tenant_id == tenant_id, Vulnerability.integration_id.in_(integration_ids)))
     session.execute(delete(Ticket).where(Ticket.tenant_id == tenant_id, Ticket.subject.like("Demo %")))
+    voice_session_ids = list(session.scalars(select(LiveVoiceSession.id).where(LiveVoiceSession.tenant_id == tenant_id)))
+    if voice_session_ids:
+        session.execute(delete(LiveVoiceMessage).where(LiveVoiceMessage.session_id.in_(voice_session_ids)))
+    session.execute(delete(LiveVoiceSession).where(LiveVoiceSession.tenant_id == tenant_id))
     session.execute(delete(AgentApiKey).where(AgentApiKey.tenant_id == tenant_id, AgentApiKey.integration_type.in_(ALL_PROVIDERS)))
     session.execute(delete(Integration).where(Integration.tenant_id == tenant_id, Integration.provider.in_(ALL_PROVIDERS)))
     session.flush()
+    delete_tenant_tickets(tenant_id)
+    delete_tenant_document_jobs(tenant_id)
 
 
 def _create_integrations(session: Session, tenant_id: int) -> dict[str, Integration]:
@@ -328,7 +359,116 @@ def _seed_systems_alerts_vulns_tickets(session: Session, tenant: Tenant, admin_u
                 created_at=_now() - timedelta(days=rng.randint(1, 20)),
                 execution_status=rng.choice([None, "QUEUED", "COMPLETED"]),
             )
+            )
+
+
+def _seed_live_voice_sessions(session: Session, tenant_id: int, rng: random.Random) -> None:
+    agent_instance_id = session.scalar(
+        select(AgentInstance.id).where(
+            AgentInstance.tenant_id == tenant_id,
+            AgentInstance.agent_type == "SOPHIA",
+            AgentInstance.status == "ACTIVE",
+        ).order_by(AgentInstance.created_at.desc())
+    )
+    base_time = _now()
+    for idx, transcript in enumerate(DEMO_VOICE_TRANSCRIPTS, start=1):
+        started_at = base_time - timedelta(hours=idx * 7)
+        duration_seconds = 240 + (idx * 75)
+        voice_session = LiveVoiceSession(
+            tenant_id=tenant_id,
+            agent_type="SOPHIA",
+            agent_instance_id=agent_instance_id,
+            session_name=f"Demo Voice Session {idx}",
+            status="ENDED",
+            created_at=started_at,
+            ended_at=started_at + timedelta(seconds=duration_seconds),
+            duration_seconds=duration_seconds,
+            tokens_consumed=900 + (idx * 120),
+            metrics={"seeded": True, "turns": len(transcript)},
+            metadata_json={"seeded": True, "channel": "voice_demo"},
         )
+        session.add(voice_session)
+        session.flush()
+        for msg_idx, (role, content) in enumerate(transcript, start=1):
+            session.add(
+                LiveVoiceMessage(
+                    session_id=voice_session.id,
+                    role=role,
+                    content=content,
+                    created_at=started_at + timedelta(seconds=msg_idx * 45),
+                )
+            )
+
+
+def _seed_dynamo_tickets(tenant_id: int, admin_user: User, rng: random.Random) -> None:
+    ticket_statuses = [
+        "PENDING",
+        "DERIVED",
+        "PREAPROBADO",
+        "APROBADO",
+        "EN_EJECUCION",
+        "RESUELTO",
+    ]
+    for idx, status in enumerate(ticket_statuses, start=1):
+        payload = {
+            "subject": f"Demo ticket {idx}",
+            "description": f"Synthetic operational demo ticket {idx} for tenant showcase.",
+            "status": status,
+        }
+        ticket_id, item = build_new_ticket_item(payload, tenant_id, admin_user.id)
+        created_at = (_now() - timedelta(hours=idx * 5)).isoformat()
+        item["created_at"] = created_at
+        item["updated_at"] = created_at
+        item.update(build_ticket_secondary_index_fields(tenant_id, ticket_id, status, created_at))
+        item["execution_status"] = rng.choice([None, "QUEUED", "COMPLETED"])
+        if status == "PREAPROBADO":
+            item["action_plan"] = {
+                "summary": "Demo remediation plan",
+                "steps": [
+                    {"id": "step-1", "tool": "ticket_get", "description": "Review ticket context", "parameters": {}},
+                    {"id": "step-2", "tool": "ticket_patch", "description": "Apply remediation state", "parameters": {"status": "EN_EJECUCION"}},
+                ],
+            }
+            item["action_plan_version"] = "v1"
+            item["pending_decision"] = {
+                "options": [
+                    {"option_id": "approve-demo", "label": "Approve remediation"},
+                    {"option_id": "reject-demo", "label": "Escalate manually"},
+                ]
+            }
+        tickets_table.put_item(Item=item)
+
+
+def _seed_document_jobs(tenant_id: int, admin_user: User) -> None:
+    seeded = [
+        (DEMO_DOCUMENT_TYPES[0], "PENDING"),
+        (DEMO_DOCUMENT_TYPES[1], "PROCESSING"),
+        (DEMO_DOCUMENT_TYPES[2], "FAILED"),
+    ]
+    for idx, (document_type, status) in enumerate(seeded, start=1):
+        document_id, item = create_document_job(
+            tenant_id=tenant_id,
+            document_type=document_type,
+            created_by_user_id=admin_user.id,
+            filters={"severity": "critical"},
+            parameters={"seeded": True, "window": idx},
+            request_payload={"document_type": document_type},
+            request_hash=f"demo-{tenant_id}-{document_type}-{idx}",
+        )
+        created_at = (_now() - timedelta(hours=idx * 9)).isoformat()
+        item["created_at"] = created_at
+        item["updated_at"] = created_at
+        documents_table.put_item(Item=item)
+        if status == "PROCESSING":
+            update_document_status(tenant_id, document_id, "PROCESSING")
+        elif status == "FAILED":
+            update_document_status(
+                tenant_id,
+                document_id,
+                "FAILED",
+                error_code="demo_seed",
+                error_message="Synthetic demo failure for showcase purposes",
+            )
 
 
 def seed_tenant(tenant_id: int, random_seed: int = 20260620) -> None:
@@ -351,6 +491,9 @@ def seed_tenant(tenant_id: int, random_seed: int = 20260620) -> None:
             _seed_noc_scans(session, tenant_id, provider, agent_keys[provider], rng)
 
         _seed_systems_alerts_vulns_tickets(session, tenant, admin_user, integrations, rng)
+        _seed_live_voice_sessions(session, tenant_id, rng)
+        _seed_dynamo_tickets(tenant_id, admin_user, rng)
+        _seed_document_jobs(tenant_id, admin_user)
 
         print(f"Seed completed for tenant_id={tenant_id}")
         print(f"Integrations created: {len(integrations)}")

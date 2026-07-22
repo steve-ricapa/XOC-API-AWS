@@ -8,6 +8,8 @@ module.exports = buildService({
   environment: (stage) => ({
     ...commonEnvironment(stage),
     TENANT_DELETION_QUEUE_URL: `https://sqs.${'${aws:region}'}.amazonaws.com/${'${aws:accountId}'}/xoc-api-admin-${stage}-tenant-deletion`,
+    DEMO_TENANT_NAME: 'XOC Demo',
+    DEMO_REFRESH_WINDOW_HOURS: '6',
   }),
   additionalIamStatements: (stage) => ([
     {
@@ -117,6 +119,29 @@ module.exports = buildService({
           sqs: {
             arn: { 'Fn::GetAtt': ['TenantDeletionQueue', 'Arn'] },
             batchSize: 1,
+          },
+        },
+      ],
+    }),
+    demoTenantRefreshWorker: lambdaConfig(stage, {
+      handler: 'src/handlers/workers/demo_tenant_refresh.handler',
+      description: 'Refreshes the XOC Demo tenant with synthetic dashboard and operational data',
+      timeout: 300,
+      memorySize: 1024,
+      needsVpc: true,
+      include: [
+        'src/handlers/workers/demo_tenant_refresh.py',
+        'src/shared/**',
+        'src/persistence/**',
+        'src/reports/**',
+        'scripts/**',
+        'requirements.crypto.txt',
+      ],
+      events: [
+        {
+          schedule: {
+            rate: 'cron(0 */6 * * ? *)',
+            enabled: stage === 'prod',
           },
         },
       ],
