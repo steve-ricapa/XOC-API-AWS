@@ -79,6 +79,25 @@ def _agent_name(provider: str) -> str:
     }[provider]
 
 
+def _get_or_create_admin_user(session: Session, tenant_id: int) -> User:
+    admin_user = session.scalar(select(User).where(User.tenant_id == tenant_id).order_by(User.id.asc()))
+    if admin_user:
+        return admin_user
+
+    username = f"xoc_demo_admin_{tenant_id}"
+    email = f"xoc.demo.{tenant_id}@xoc.local"
+    admin_user = User(
+        tenant_id=tenant_id,
+        username=username,
+        email=email,
+        role="ADMIN",
+    )
+    admin_user.set_password("DemoTemp123!")
+    session.add(admin_user)
+    session.flush()
+    return admin_user
+
+
 def _cleanup_tenant_demo_data(session: Session, tenant_id: int) -> None:
     soc_ids = list(session.scalars(select(ScanSummary.id).where(ScanSummary.tenant_id == tenant_id, ScanSummary.scanner_type.in_(SOC_PROVIDERS))))
     noc_ids = list(session.scalars(select(ScanSummaryNoc.id).where(ScanSummaryNoc.tenant_id == tenant_id, ScanSummaryNoc.scanner_type.in_(NOC_PROVIDERS))))
@@ -477,9 +496,7 @@ def seed_tenant(tenant_id: int, random_seed: int = 20260620) -> None:
         tenant = session.get(Tenant, tenant_id)
         if not tenant:
             raise ValueError(f"Tenant {tenant_id} not found")
-        admin_user = session.scalar(select(User).where(User.tenant_id == tenant_id).order_by(User.id.asc()))
-        if not admin_user:
-            raise ValueError(f"Tenant {tenant_id} has no users")
+        admin_user = _get_or_create_admin_user(session, tenant_id)
 
         _cleanup_tenant_demo_data(session, tenant_id)
         integrations = _create_integrations(session, tenant_id)
