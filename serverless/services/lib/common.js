@@ -26,6 +26,9 @@ function commonEnvironment(stage) {
     JWT_SECRET_ARN: stageRef(stage, 'jwtSecretArn'),
     DATABASE_SECRET_ARN: stageRef(stage, 'databaseSecretArn'),
     SNAPSHOTS_BUCKET_NAME: stageRef(stage, 'snapshotsBucketName'),
+    XOC_DOCUMENTS_BUCKET_NAME: stageRef(stage, 'xocDocumentsBucketName'),
+    TXDX_DOCUMENTS_BUCKET_NAME: stageRef(stage, 'txdxDocumentsBucketName'),
+    TXDX_DOCUMENT_TYPES_CSV: stageRef(stage, 'txdxDocumentTypesCsv'),
     CORS_ALLOWED_ORIGINS: stageRef(stage, 'corsAllowedOriginsCsv'),
     AGENTS_FUNCTION_BASE_URL: stageRef(stage, 'agentsFunctionBaseUrl'),
     AGENTS_FUNCTION_ROUTE_SOPHIA: stageRef(stage, 'agentsFunctionRouteSophia'),
@@ -198,12 +201,21 @@ function iamStatements(stage, capabilities = {}) {
     statements.push({
       Effect: 'Allow',
       Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
-      Resource: relaxed ? '*' : [`${stageRef(stage, 'snapshotsBucketArn')}/${stage}/reports/*`, `${stageRef(stage, 'snapshotsBucketArn')}/${stage}/documents/*`, `${stageRef(stage, 'snapshotsBucketArn')}/document-templates/*`, `${stageRef(stage, 'snapshotsBucketArn')}/report-templates/*`],
+      Resource: relaxed ? '*' : [
+        `${stageRef(stage, 'xocDocumentsBucketArn')}/${stage}/reports/*`,
+        `${stageRef(stage, 'xocDocumentsBucketArn')}/${stage}/documents/*`,
+        `${stageRef(stage, 'xocDocumentsBucketArn')}/document-templates/*`,
+        `${stageRef(stage, 'xocDocumentsBucketArn')}/report-templates/*`,
+        `${stageRef(stage, 'txdxDocumentsBucketArn')}/${stage}/reports/*`,
+        `${stageRef(stage, 'txdxDocumentsBucketArn')}/${stage}/documents/*`,
+        `${stageRef(stage, 'txdxDocumentsBucketArn')}/document-templates/*`,
+        `${stageRef(stage, 'txdxDocumentsBucketArn')}/report-templates/*`,
+      ],
     });
     statements.push({
       Effect: 'Allow',
       Action: ['s3:ListBucket'],
-      Resource: relaxed ? '*' : [`${stageRef(stage, 'snapshotsBucketArn')}`],
+      Resource: relaxed ? '*' : [`${stageRef(stage, 'xocDocumentsBucketArn')}`, `${stageRef(stage, 'txdxDocumentsBucketArn')}`],
     });
     statements.push({
       Effect: 'Allow',

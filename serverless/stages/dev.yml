@@ -18,6 +18,11 @@ agentsFunctionRouteVictor: /api/agents/VictorDurableAgent/run
 databaseSecretArn: ${cf:xoc-infra-data-dev.DatabaseSecretArn}
 snapshotsBucketName: ${cf:xoc-infra-storage-dev.SnapshotsBucketName}
 snapshotsBucketArn: ${cf:xoc-infra-storage-dev.SnapshotsBucketArn}
+xocDocumentsBucketName: xoc-dev-documents-811776156524
+xocDocumentsBucketArn: arn:aws:s3:::xoc-dev-documents-811776156524
+txdxDocumentsBucketName: txdx-dev-documents-811776156524
+txdxDocumentsBucketArn: arn:aws:s3:::txdx-dev-documents-811776156524
+txdxDocumentTypesCsv: minority_report
 minorityFoundrySecretArn: ""
 ticketsPointInTimeRecoveryEnabled: false
 publicRegistrationEnabled: "true"

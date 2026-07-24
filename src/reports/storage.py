@@ -4,11 +4,26 @@ import json
 
 import boto3
 
-from src.shared.config import get_settings, get_snapshots_bucket_name
+from src.shared.config import (
+    get_settings,
+    get_txdx_documents_bucket_name,
+    get_xoc_documents_bucket_name,
+)
 
 
 def _s3() -> boto3.client:
     return boto3.client("s3", region_name=get_settings().app_region)
+
+
+def _is_txdx_document_type(document_type: str) -> bool:
+    normalized = (document_type or "").strip().lower()
+    return normalized in set(get_settings().txdx_document_types)
+
+
+def get_documents_bucket_name(document_type: str) -> str:
+    if _is_txdx_document_type(document_type):
+        return get_txdx_documents_bucket_name()
+    return get_xoc_documents_bucket_name()
 
 
 def build_template_key(document_type: str) -> str:
@@ -40,7 +55,7 @@ def build_artifact_s3_key(
 
 
 def download_template(document_type: str, local_path: str) -> str:
-    bucket = get_snapshots_bucket_name()
+    bucket = get_documents_bucket_name(document_type)
     key = resolve_template_key(document_type)
     _s3().download_file(bucket, key, local_path)
     return local_path
@@ -55,7 +70,7 @@ def template_exists(document_type: str) -> bool:
 
 
 def resolve_template_key(document_type: str) -> str:
-    bucket = get_snapshots_bucket_name()
+    bucket = get_documents_bucket_name(document_type)
     for key in (build_template_key(document_type), build_legacy_template_key(document_type)):
         try:
             _s3().head_object(Bucket=bucket, Key=key)
@@ -66,7 +81,7 @@ def resolve_template_key(document_type: str) -> str:
 
 
 def upload_document(tenant_id: int, document_id: str, document_type: str, local_path: str, filename: str = "generated.docx") -> dict:
-    bucket = get_snapshots_bucket_name()
+    bucket = get_documents_bucket_name(document_type)
     key = build_document_s3_key(tenant_id, document_id, document_type, filename)
     extra_args = {"ContentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
     _s3().upload_file(local_path, bucket, key, ExtraArgs=extra_args)
@@ -80,7 +95,7 @@ def upload_document(tenant_id: int, document_id: str, document_type: str, local_
 
 
 def upload_artifact(tenant_id: int, document_id: str, document_type: str, artifact_name: str, data: dict) -> str:
-    bucket = get_snapshots_bucket_name()
+    bucket = get_documents_bucket_name(document_type)
     key = build_artifact_s3_key(tenant_id, document_id, document_type, artifact_name)
     _s3().put_object(
         Bucket=bucket,
@@ -101,8 +116,8 @@ def download_artifact(s3_uri: str) -> dict:
     return json.loads(response["Body"].read().decode("utf-8"))
 
 
-def generate_download_url(s3_key: str, expires_in: int = 3600) -> str:
-    bucket = get_snapshots_bucket_name()
+def generate_download_url(s3_key: str, expires_in: int = 3600, *, bucket_name: str | None = None, document_type: str | None = None) -> str:
+    bucket = bucket_name or get_documents_bucket_name(document_type or "")
     url = _s3().generate_presigned_url(
         ClientMethod="get_object",
         Params={"Bucket": bucket, "Key": s3_key},
@@ -111,8 +126,7 @@ def generate_download_url(s3_key: str, expires_in: int = 3600) -> str:
     return url
 
 
-def delete_s3_prefix(prefix: str) -> int:
-    bucket = get_snapshots_bucket_name()
+def delete_s3_prefix(bucket: str, prefix: str) -> int:
     deleted = 0
     paginator = _s3().get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
@@ -128,16 +142,19 @@ def delete_s3_prefix(prefix: str) -> int:
 
 
 def delete_documents_for_tenant(tenant_id: int, document_types: list[str]) -> int:
-    stage = get_settings().app_stage
     deleted = 0
     for document_type in document_types:
-        deleted += delete_s3_prefix(f"{stage}/documents/{document_type}/{tenant_id}/")
+        stage = get_settings().app_stage
+        deleted += delete_s3_prefix(get_documents_bucket_name(document_type), f"{stage}/documents/{document_type}/{tenant_id}/")
     return deleted
 
 
 def delete_legacy_reports_for_tenant(tenant_id: int) -> int:
     stage = get_settings().app_stage
-    return delete_s3_prefix(f"{stage}/reports/{tenant_id}/")
+    return (
+        delete_s3_prefix(get_xoc_documents_bucket_name(), f"{stage}/reports/{tenant_id}/")
+        + delete_s3_prefix(get_txdx_documents_bucket_name(), f"{stage}/reports/{tenant_id}/")
+    )
 
 
 def build_report_s3_key(tenant_id: int, report_id: str, filename: str = "generated.docx") -> str:
