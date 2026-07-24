@@ -17,6 +17,9 @@ class Settings:
     database_secret_arn: str | None
     database_url_ssm_path: str | None
     snapshots_bucket_name: str | None
+    xoc_documents_bucket_name: str | None
+    txdx_documents_bucket_name: str | None
+    txdx_document_types: tuple[str, ...]
     cors_allowed_origins: list[str]
     event_bus_name: str | None
     agents_function_base_url: str | None
@@ -34,6 +37,10 @@ def _split_csv(value: str | None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _split_csv_tuple(value: str | None) -> tuple[str, ...]:
+    return tuple(item.lower() for item in _split_csv(value))
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     app_stage = os.environ.get("APP_STAGE", "dev")
@@ -45,6 +52,9 @@ def get_settings() -> Settings:
         database_secret_arn=os.environ.get("DATABASE_SECRET_ARN"),
         database_url_ssm_path=os.environ.get("DATABASE_URL_SSM_PATH"),
         snapshots_bucket_name=os.environ.get("SNAPSHOTS_BUCKET_NAME"),
+        xoc_documents_bucket_name=os.environ.get("XOC_DOCUMENTS_BUCKET_NAME"),
+        txdx_documents_bucket_name=os.environ.get("TXDX_DOCUMENTS_BUCKET_NAME"),
+        txdx_document_types=_split_csv_tuple(os.environ.get("TXDX_DOCUMENT_TYPES_CSV")),
         cors_allowed_origins=_split_csv(os.environ.get("CORS_ALLOWED_ORIGINS")),
         event_bus_name=os.environ.get("EVENT_BUS_NAME"),
         agents_function_base_url=os.environ.get("AGENTS_FUNCTION_BASE_URL"),
@@ -122,4 +132,18 @@ def get_snapshots_bucket_name() -> str:
     bucket_name = get_settings().snapshots_bucket_name
     if not bucket_name:
         raise ConfigurationError("Snapshots bucket is not configured")
+    return bucket_name
+
+
+def get_xoc_documents_bucket_name() -> str:
+    bucket_name = get_settings().xoc_documents_bucket_name
+    if not bucket_name:
+        raise ConfigurationError("XOC documents bucket is not configured")
+    return bucket_name
+
+
+def get_txdx_documents_bucket_name() -> str:
+    bucket_name = get_settings().txdx_documents_bucket_name
+    if not bucket_name:
+        raise ConfigurationError("TXDX documents bucket is not configured")
     return bucket_name

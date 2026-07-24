@@ -114,7 +114,11 @@ def get_document_status(document_id: str, current_user: User = Depends(get_curre
     response = build_document_response(serialized)
 
     if item.get("status") == "COMPLETED" and item.get("s3_key"):
-        download_url = generate_download_url(item["s3_key"])
+        download_url = generate_download_url(
+            item["s3_key"],
+            bucket_name=item.get("s3_bucket"),
+            document_type=item.get("document_type"),
+        )
         response["downloadUrl"] = download_url
 
     return response

@@ -1,39 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: XOC development S3 storage for heavy snapshots.
-
-Parameters:
-  BucketName:
-    Type: String
-    Default: ''
-
-Conditions:
-  UseCustomBucketName: !Not [!Equals [!Ref BucketName, '']]
+Description: XOC development S3 storage for generated documents.
 
 Resources:
-  SnapshotsBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !If
-        - UseCustomBucketName
-        - !Ref BucketName
-        - !Sub 'xoc-dev-snapshots-${AWS::AccountId}'
-      VersioningConfiguration:
-        Status: Enabled
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      LifecycleConfiguration:
-        Rules:
-          - Id: AbortIncompleteMultipartUploads
-            Status: Enabled
-            AbortIncompleteMultipartUpload:
-              DaysAfterInitiation: 7
   XocDocumentsBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -78,10 +46,6 @@ Resources:
               DaysAfterInitiation: 7
 
 Outputs:
-  SnapshotsBucketName:
-    Value: !Ref SnapshotsBucket
-  SnapshotsBucketArn:
-    Value: !GetAtt SnapshotsBucket.Arn
   XocDocumentsBucketName:
     Value: !Ref XocDocumentsBucket
   XocDocumentsBucketArn:

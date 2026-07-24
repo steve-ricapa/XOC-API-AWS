@@ -49,7 +49,11 @@ def handler(event: dict, context) -> dict:
 
     update_document_status(tenant_id, document_id, "COMPLETED", **extra)
 
-    download_url = generate_download_url(s3_key) if s3_key else None
+    download_url = generate_download_url(
+        s3_key,
+        bucket_name=s3_bucket,
+        document_type=event.get("documentType"),
+    ) if s3_key else None
     logger.info("Document %s completed. Download URL generated.", document_id)
 
     return {
