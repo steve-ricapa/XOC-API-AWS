@@ -22,7 +22,7 @@ xocDocumentsBucketName: xoc-dev-documents-811776156524
 xocDocumentsBucketArn: arn:aws:s3:::xoc-dev-documents-811776156524
 txdxDocumentsBucketName: txdx-dev-documents-811776156524
 txdxDocumentsBucketArn: arn:aws:s3:::txdx-dev-documents-811776156524
-txdxDocumentTypesCsv: minority_report
+txdxDocumentTypesCsv: small_report,informe_soporte
 minorityFoundrySecretArn: ""
 ticketsPointInTimeRecoveryEnabled: false
 publicRegistrationEnabled: "true"

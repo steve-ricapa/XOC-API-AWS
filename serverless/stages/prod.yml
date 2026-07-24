@@ -27,7 +27,7 @@ xocDocumentsBucketName: xoc-prod-documents-811776156524
 xocDocumentsBucketArn: arn:aws:s3:::xoc-prod-documents-811776156524
 txdxDocumentsBucketName: txdx-prod-documents-811776156524
 txdxDocumentsBucketArn: arn:aws:s3:::txdx-prod-documents-811776156524
-txdxDocumentTypesCsv: minority_report
+txdxDocumentTypesCsv: small_report,informe_soporte
 minorityFoundrySecretArn: arn:aws:secretsmanager:us-east-1:811776156524:secret:xoc/api/prod/minority-foundry
 ticketsPointInTimeRecoveryEnabled: true
 publicRegistrationEnabled: "false"

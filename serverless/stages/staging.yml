@@ -20,7 +20,7 @@ xocDocumentsBucketName: xoc-staging-documents-811776156524
 xocDocumentsBucketArn: arn:aws:s3:::xoc-staging-documents-811776156524
 txdxDocumentsBucketName: txdx-staging-documents-811776156524
 txdxDocumentsBucketArn: arn:aws:s3:::txdx-staging-documents-811776156524
-txdxDocumentTypesCsv: minority_report
+txdxDocumentTypesCsv: small_report,informe_soporte
 minorityFoundrySecretArn: ""
 ticketsPointInTimeRecoveryEnabled: false
 publicRegistrationEnabled: "false"

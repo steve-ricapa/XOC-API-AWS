@@ -25,7 +25,7 @@ from src.persistence.models import (
     User,
     Vulnerability,
 )
-from src.reports.store import create_document_job, delete_tenant_document_jobs, table as documents_table, update_document_status
+from src.reports.store import delete_tenant_document_jobs
 from src.shared.encryption import encrypt_agent_key, encrypt_credentials
 from src.shared.security_keys import generate_access_key, hash_access_key
 from src.shared.tickets_store import (
@@ -39,7 +39,6 @@ from src.shared.tickets_store import (
 SOC_PROVIDERS = ["wazuh", "nessus", "openvas", "insightvm"]
 NOC_PROVIDERS = ["zabbix", "uptime_kuma"]
 ALL_PROVIDERS = SOC_PROVIDERS + NOC_PROVIDERS
-DEMO_DOCUMENT_TYPES = ["minority_report", "small_report", "informe_soporte"]
 DEMO_VOICE_TRANSCRIPTS = [
     [
         ("USER", "Hola SOPHIA, necesito un resumen del estado actual de seguridad."),
@@ -468,38 +467,6 @@ def _seed_dynamo_tickets(tenant_id: int, admin_user: User, rng: random.Random) -
         tickets_table.put_item(Item=item)
 
 
-def _seed_document_jobs(tenant_id: int, admin_user: User) -> None:
-    seeded = [
-        (DEMO_DOCUMENT_TYPES[0], "PENDING"),
-        (DEMO_DOCUMENT_TYPES[1], "PROCESSING"),
-        (DEMO_DOCUMENT_TYPES[2], "FAILED"),
-    ]
-    for idx, (document_type, status) in enumerate(seeded, start=1):
-        document_id, item = create_document_job(
-            tenant_id=tenant_id,
-            document_type=document_type,
-            created_by_user_id=admin_user.id,
-            filters={"severity": "critical"},
-            parameters={"seeded": True, "window": idx},
-            request_payload={"document_type": document_type},
-            request_hash=f"demo-{tenant_id}-{document_type}-{idx}",
-        )
-        created_at = (_now() - timedelta(hours=idx * 9)).isoformat()
-        item["created_at"] = created_at
-        item["updated_at"] = created_at
-        documents_table.put_item(Item=item)
-        if status == "PROCESSING":
-            update_document_status(tenant_id, document_id, "PROCESSING")
-        elif status == "FAILED":
-            update_document_status(
-                tenant_id,
-                document_id,
-                "FAILED",
-                error_code="demo_seed",
-                error_message="Synthetic demo failure for showcase purposes",
-            )
-
-
 def seed_tenant(tenant_id: int, random_seed: int = 20260620) -> None:
     rng = random.Random(random_seed)
     with session_scope() as session:
@@ -520,7 +487,6 @@ def seed_tenant(tenant_id: int, random_seed: int = 20260620) -> None:
         _seed_systems_alerts_vulns_tickets(session, tenant, admin_user, integrations, rng)
         _seed_live_voice_sessions(session, tenant_id, rng)
         _seed_dynamo_tickets(tenant_id, admin_user, rng)
-        _seed_document_jobs(tenant_id, admin_user)
 
         print(f"Seed completed for tenant_id={tenant_id}")
         print(f"Integrations created: {len(integrations)}")
@@ -537,7 +503,6 @@ def seed_operational_tenant_data(tenant_id: int, random_seed: int = 20260620) ->
         _cleanup_operational_demo_data(session, tenant_id)
         _seed_live_voice_sessions(session, tenant_id, rng)
         _seed_dynamo_tickets(tenant_id, admin_user, rng)
-        _seed_document_jobs(tenant_id, admin_user)
         print(f"Operational demo seed completed for tenant_id={tenant_id}")
 
 
