@@ -20,6 +20,8 @@
     "deploy:admin:prod": "serverless deploy --stage prod --config serverless.admin.js",
     "deploy:reports:dev": "serverless deploy --stage dev --config serverless.reports.js",
     "deploy:reports:prod": "serverless deploy --stage prod --config serverless.reports.js",
+    "deploy:automation:dev": "serverless deploy --stage dev --config serverless.automation.js",
+    "deploy:automation:prod": "serverless deploy --stage prod --config serverless.automation.js",
     "package:dev": "serverless package --stage dev",
     "logs:auth:dev": "serverless logs --function authApi --stage dev --config serverless.auth.js",
     "logs:tickets:dev": "serverless logs --function ticketsDynamoApi --stage dev --config serverless.tickets.js",

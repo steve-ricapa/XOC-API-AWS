@@ -24,6 +24,7 @@ class Settings:
     agents_function_route_sophia_history: str | None
     agents_function_route_sophia_delete: str | None
     agents_function_route_victor: str | None
+    cases_table_name: str | None
     enable_api_docs: bool
     public_registration_enabled: bool
 
@@ -52,6 +53,7 @@ def get_settings() -> Settings:
         agents_function_route_sophia_history=os.environ.get("AGENTS_FUNCTION_ROUTE_SOPHIA_HISTORY"),
         agents_function_route_sophia_delete=os.environ.get("AGENTS_FUNCTION_ROUTE_SOPHIA_DELETE"),
         agents_function_route_victor=os.environ.get("AGENTS_FUNCTION_ROUTE_VICTOR"),
+        cases_table_name=os.environ.get("CASES_TABLE_NAME"),
         enable_api_docs=app_stage not in {"prod"},
         public_registration_enabled=os.environ.get("PUBLIC_REGISTRATION_ENABLED", "true").strip().lower() in ("true", "1", "yes"),
     )

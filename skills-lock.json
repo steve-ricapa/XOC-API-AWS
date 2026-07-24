@@ -6,6 +6,12 @@
       "sourceType": "github",
       "skillPath": "skills/microsoft-foundry/SKILL.md",
       "computedHash": "e9654fec004bbe2372deba2bb6097fd1887ff253205a3a5284bdc341c5e46ba9"
+    },
+    "netmiko-ssh-automation": {
+      "source": "affaan-m/everything-claude-code",
+      "sourceType": "github",
+      "skillPath": "skills/netmiko-ssh-automation/SKILL.md",
+      "computedHash": "57c1a46fe6b0023b39ae929b8e6da1ac3d7170a464e4b0817fb271363884c4e2"
     }
   }
 }

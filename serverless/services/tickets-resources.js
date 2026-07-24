@@ -62,8 +62,8 @@ module.exports = function ticketsResources(stage) {
         Type: 'AWS::StepFunctions::StateMachine',
         Properties: {
           StateMachineName: `xoc-api-tickets-${stage}-ticket-workflow`,
-          StateMachineType: 'EXPRESS',
-          DefinitionString: '{"Comment":"Placeholder workflow for ticket events. V1 only acknowledges ticket.created, ticket.updated, and ticket.status_changed until real orchestration is implemented.","StartAt":"HandleEvent","States":{"HandleEvent":{"Type":"Pass","End":true}}}',
+          StateMachineType: 'STANDARD',
+          DefinitionString: '{"Comment":"Event-driven workflow for ticket.created, ticket.updated, and ticket.status_changed events. Passes through to acknowledge events. Full orchestration lives in the automation stack.","StartAt":"AcknowledgeEvent","States":{"AcknowledgeEvent":{"Type":"Pass","End":true}}}',
           RoleArn: { 'Fn::GetAtt': ['TicketWorkflowRole', 'Arn'] },
         },
       },
@@ -82,6 +82,8 @@ module.exports = function ticketsResources(stage) {
                 Statement: [
                   { Effect: 'Allow', Action: ['events:PutEvents'], Resource: [{ 'Fn::GetAtt': ['ApplicationEventBus', 'Arn'] }] },
                   { Effect: 'Allow', Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem'], Resource: [{ 'Fn::GetAtt': ['TicketsTable', 'Arn'] }] },
+                  { Effect: 'Allow', Action: ['states:StartExecution'], Resource: [`arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:stateMachine:xoc-api-automation-${stage}-workflow`] },
+                  { Effect: 'Allow', Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:Query'], Resource: [`arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-automation-${stage}-cases`, `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-automation-${stage}-cases/index/*`] },
                 ],
               },
             },

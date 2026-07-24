@@ -26,3 +26,4 @@ apiVpc:
     - ${cf:xoc-infra-network-dev.LambdaSecurityGroupId}
   subnetIds:
     - ${cf:xoc-infra-network-dev.LambdaPrivateSubnetAId}
+casesTableName: xoc-api-automation-dev-cases

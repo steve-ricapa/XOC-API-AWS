@@ -37,6 +37,8 @@ function commonEnvironment(stage) {
     REPORTS_TABLE_NAME: `xoc-api-reports-${stage}-reports`,
     AGENT_KEY_ENCRYPTION_KEY: "${env:AGENT_KEY_ENCRYPTION_KEY, ''}",
     AGENT_KEY_ENCRYPTION_KEY_ARN: stageRef(stage, 'agentKeyEncryptionKeyArn'),
+    CASES_TABLE_NAME: stageRef(stage, 'casesTableName'),
+    AUTOMATION_WORKFLOW_ARN: `arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:stateMachine:xoc-api-automation-${stage}-workflow`,
     PUBLIC_REGISTRATION_ENABLED: stageRef(stage, 'publicRegistrationEnabled'),
   };
 }
@@ -149,6 +151,29 @@ function iamStatements(stage, capabilities = {}) {
         'ec2:UnassignPrivateIpAddresses',
       ],
       Resource: '*',
+    });
+  }
+  if (capabilities.automation) {
+    statements.push({
+      Effect: 'Allow',
+      Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:Query', 'dynamodb:Scan'],
+      Resource: relaxed ? '*' : [
+        `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-automation-${stage}-cases`,
+        `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-automation-${stage}-cases/index/*`,
+      ],
+    });
+    statements.push({
+      Effect: 'Allow',
+      Action: ['states:StartExecution', 'states:DescribeExecution', 'states:SendTaskSuccess', 'states:SendTaskFailure', 'states:StopExecution'],
+      Resource: relaxed ? '*' : [
+        `arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:stateMachine:xoc-api-automation-${stage}-workflow`,
+        `arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:execution:xoc-api-automation-${stage}-workflow:*`,
+      ],
+    });
+    statements.push({
+      Effect: 'Allow',
+      Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem'],
+      Resource: relaxed ? '*' : [`arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-tickets-${stage}-tickets`],
     });
   }
   if (capabilities.reports) {

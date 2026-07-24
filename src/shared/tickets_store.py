@@ -297,6 +297,7 @@ def update_ticket_fields(tenant_id: int, ticket_id: str, payload: dict) -> dict:
         "on_decision_timeout": "on_decision_timeout",
         "action_plan": "action_plan",
         "action_plan_version": "action_plan_version",
+        "approval_task_token": "approval_task_token",
     }
 
     for key, attr in updatable.items():

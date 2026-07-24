@@ -24,3 +24,4 @@ apiVpc:
     - ${cf:xoc-infra-network-staging.LambdaSecurityGroupId}
   subnetIds:
     - ${cf:xoc-infra-network-staging.LambdaPrivateSubnetAId}
+casesTableName: xoc-api-automation-staging-cases
