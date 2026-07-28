@@ -1,10 +1,16 @@
-const { buildService, lambdaConfig, protectedRoute } = require('./serverless/services/lib/common');
+const { buildService, lambdaConfig, protectedRoute, commonEnvironment } = require('./serverless/services/lib/common');
 const automationResources = require('./serverless/services/automation-resources');
 
 module.exports = buildService({
   service: 'xoc-api-automation',
   attachToSharedHttpApi: true,
   iam: { automation: true, database: true, jwt: true, vpc: true },
+  environment: (stage) => {
+    const env = commonEnvironment(stage);
+    delete env.XOC_DOCUMENTS_BUCKET_NAME;
+    delete env.TXDX_DOCUMENTS_BUCKET_NAME;
+    return env;
+  },
   functions: (stage) => ({
     casesApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/automation.handler',
