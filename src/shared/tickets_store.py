@@ -261,8 +261,6 @@ def build_new_ticket_item(payload: dict, tenant_id: int, user_id: int | None) ->
         "execution_logs": None,
         "execution_summary": None,
         "pending_decision": None,
-        "capability_level": None,
-        "capability_policy_snapshot": None,
         "decision_timeout_minutes": payload.get("decision_timeout_minutes"),
         "on_decision_timeout": payload.get("on_decision_timeout"),
     }
@@ -291,8 +289,6 @@ def update_ticket_fields(tenant_id: int, ticket_id: str, payload: dict) -> dict:
         "execution_logs": "execution_logs",
         "execution_summary": "execution_summary",
         "pending_decision": "pending_decision",
-        "capability_level": "capability_level",
-        "capability_policy_snapshot": "capability_policy_snapshot",
         "decision_timeout_minutes": "decision_timeout_minutes",
         "on_decision_timeout": "on_decision_timeout",
         "action_plan": "action_plan",

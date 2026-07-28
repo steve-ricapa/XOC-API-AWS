@@ -8,7 +8,7 @@ import os
 import boto3
 from fastapi import APIRouter, Depends
 
-from src.reports.schemas import build_document_response, validate_document_request
+from src.reports.schemas import build_document_preview_response, build_document_response, validate_document_request
 from src.reports.store import (
     create_document_job,
     get_document_job_or_404,
@@ -18,12 +18,12 @@ from src.reports.store import (
 )
 from src.persistence.db import get_db_session
 from src.persistence.models import User
-from src.shared.context import effective_tenant_id_of, normalize_role, require_tenant_read_access
+from src.shared.context import effective_tenant_id_of, is_admin_xoc, is_superadmin, normalize_role, require_tenant_read_access
 from src.shared.dependencies import get_current_user, require_access_claims
 from src.shared.errors import ForbiddenError, ValidationError
 from src.shared.logging import logger
 
-from src.reports.storage import generate_download_url
+from src.reports.storage import download_generated_content, generate_download_url
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -63,11 +63,15 @@ def _compute_request_hash(payload: dict) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def _assert_document_permissions(document_type: str, current_user: User) -> None:
+def _assert_document_permissions(document_type: str, variant: str, current_user: User) -> None:
     allowed_roles = DOCUMENT_ROLE_ALLOWLIST.get(document_type, set())
     role = normalize_role(current_user.role)
     if allowed_roles and role not in allowed_roles:
         raise ForbiddenError("User role is not allowed to request this document type")
+    if variant != "client" and document_type != "minority_report":
+        raise ForbiddenError("Document variant is only supported for minority_report")
+    if variant == "admin_xoc" and not (is_admin_xoc(current_user) or is_superadmin(current_user)):
+        raise ForbiddenError("User role is not allowed to request admin_xoc variant")
 
 
 @router.post("", status_code=202)
@@ -76,8 +80,10 @@ def request_document(payload: dict, claims: dict = Depends(require_access_claims
     if not validation["valid"]:
         raise ValidationError("; ".join(validation["errors"]))
 
+    variant = str(payload.get("variant") or "client").strip().lower()
+
     require_tenant_read_access(current_user)
-    _assert_document_permissions(payload["document_type"], current_user)
+    _assert_document_permissions(payload["document_type"], variant, current_user)
     tenant_id = effective_tenant_id_of(current_user)
     user_id = claims.get("userId") or claims.get("sub")
 
@@ -85,6 +91,7 @@ def request_document(payload: dict, claims: dict = Depends(require_access_claims
     document_id, item = create_document_job(
         tenant_id=tenant_id,
         document_type=payload["document_type"],
+        variant=variant,
         created_by_user_id=int(user_id) if user_id else None,
         filters=payload.get("filters"),
         parameters=payload.get("parameters"),
@@ -95,6 +102,7 @@ def request_document(payload: dict, claims: dict = Depends(require_access_claims
 
     _publish_event("document.requested", tenant_id, document_id, {
         "document_type": payload["document_type"],
+        "variant": variant,
         "request_hash": request_hash,
     })
 
@@ -124,9 +132,47 @@ def get_document_status(document_id: str, current_user: User = Depends(get_curre
     return response
 
 
+@router.get("/{document_id}/preview")
+def get_document_preview(document_id: str, current_user: User = Depends(get_current_user)):
+    require_tenant_read_access(current_user)
+    tenant_id = effective_tenant_id_of(current_user)
+    item = get_document_job_or_404(tenant_id, document_id)
+    serialized = serialize_report(item)
+
+    generated_content = None
+    if item.get("status") == "COMPLETED":
+        try:
+            generated_content = download_generated_content(
+                tenant_id=tenant_id,
+                document_id=document_id,
+                document_type=str(item.get("document_type") or ""),
+            )
+        except Exception as exc:
+            logger.warning("Could not load preview artifact for document %s: %s", document_id, exc)
+
+    response = build_document_preview_response(serialized, generated_content)
+    if item.get("status") == "COMPLETED" and item.get("s3_key"):
+        response["downloadUrl"] = generate_download_url(
+            item["s3_key"],
+            bucket_name=item.get("s3_bucket"),
+            document_type=item.get("document_type"),
+        )
+    return response
+
+
 @router.get("")
 def list_documents(current_user: User = Depends(get_current_user), status: str | None = None, limit: int = 50):
     require_tenant_read_access(current_user)
     tenant_id = effective_tenant_id_of(current_user)
-    documents = list_tenant_document_jobs(tenant_id, status=status, limit=min(limit, 200))
+    items = list_tenant_document_jobs(tenant_id, status=status, limit=min(limit, 200))
+    documents = []
+    for item in items:
+        response = build_document_response(item)
+        if item.get("status") == "COMPLETED" and item.get("s3_key"):
+            response["downloadUrl"] = generate_download_url(
+                item["s3_key"],
+                bucket_name=item.get("s3_bucket"),
+                document_type=item.get("document_type"),
+            )
+        documents.append(response)
     return {"documents": documents, "count": len(documents)}

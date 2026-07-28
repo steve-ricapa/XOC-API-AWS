@@ -39,17 +39,22 @@ def _generate_content(collected_data: dict, document_type: str) -> dict:
     if document_type == "minority_report":
         tenant = collected_data.get("tenant", {})
         document = collected_data.get("document", {})
+        variant = str(collected_data.get("variant") or event.get("variant") or "client").strip().lower()
         payload = generate_minority_payload(
             client_name=str(tenant.get("name") or "Cliente"),
             period=str(document.get("period") or "Periodo no especificado"),
             analyst_text=str(collected_data.get("analyst_text") or ""),
             structured_data=collected_data.get("structured_data") or {},
             reference_markdown=_load_minority_reference(),
+            variant=variant,
         )
         payload.setdefault("document_code", document.get("id"))
+        payload["report_variant"] = variant
+        payload["template_variant"] = variant
         normalized_findings = _build_minority_findings(payload)
         return {
             "document_type": document_type,
+            "variant": variant,
             "document": document,
             "minority_payload": payload,
             "sections": _build_minority_sections(payload),

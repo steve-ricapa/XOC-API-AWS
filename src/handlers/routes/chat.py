@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 from src.persistence.db import get_db_session
 from src.persistence.models import AgentSession, Tenant, TenantRuntimeSettings
 from src.shared.auth import create_access_token
-from src.shared.capabilities import collect_automation_capabilities
 from src.shared.config import get_settings
 from src.shared.context import effective_tenant_id_of, require_tenant_read_access
 from src.shared.dependencies import get_current_user
@@ -419,10 +418,6 @@ def proxy_chat(
     sophia_payload = {"message": message, "user_name": user_name}
     if demo_mode:
         sophia_payload["chat_mode"] = "consulta"
-    else:
-        automation_capabilities = collect_automation_capabilities(db_session, tenant_id)
-        if automation_capabilities:
-            sophia_payload["automation_capabilities"] = automation_capabilities
     if thread_id:
         sophia_payload["thread_id"] = thread_id
 

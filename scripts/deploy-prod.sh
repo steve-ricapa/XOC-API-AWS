@@ -88,6 +88,7 @@ ok "Cuenta AWS: $AWS_ACCOUNT | Región: $AWS_REGION"
 STACK_NETWORK="xoc-infra-network-prod"
 STACK_DATA="xoc-infra-data-prod"
 STACK_STORAGE="xoc-infra-storage-prod"
+STACK_DOCUMENTS="xoc-infra-documents-prod"
 SERVICE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DB_SECRET_ID="xoc/api/prod/database"
 SNAPSHOTS_BUCKET_NAME="xoc-prod-snapshots-$AWS_ACCOUNT"
@@ -145,15 +146,27 @@ ok "Database secret id: $DB_SECRET_ID"
 confirm
 
 # ─────────────────────────────────────────────────────────
-# Paso 4: Deploy storage (S3 snapshots)
+# Paso 4: Deploy storage (S3 snapshots + documents)
 # ─────────────────────────────────────────────────────────
-step "4 de 8" "Desplegar bucket S3 para snapshots"
+step "4 de 8" "Desplegar buckets S3 para snapshots y documentos"
 
 aws cloudformation create-stack \
   --stack-name "$STACK_STORAGE" \
   --template-body file://infra/storage-prod.yml \
   --capabilities CAPABILITY_IAM > /dev/null
 wait_for_bucket
+
+aws cloudformation deploy \
+  --stack-name "$STACK_DOCUMENTS" \
+  --template-file infra/documents-prod.yml \
+  --capabilities CAPABILITY_IAM > /dev/null
+
+XOC_DOCUMENTS_BUCKET_NAME="xoc-prod-documents-$AWS_ACCOUNT"
+TXDX_DOCUMENTS_BUCKET_NAME="txdx-prod-documents-$AWS_ACCOUNT"
+aws s3 sync "s3://$SNAPSHOTS_BUCKET_NAME/document-templates/" "s3://$XOC_DOCUMENTS_BUCKET_NAME/document-templates/" >/dev/null 2>&1 || true
+aws s3 sync "s3://$SNAPSHOTS_BUCKET_NAME/report-templates/" "s3://$XOC_DOCUMENTS_BUCKET_NAME/report-templates/" >/dev/null 2>&1 || true
+aws s3 sync "s3://$SNAPSHOTS_BUCKET_NAME/document-templates/" "s3://$TXDX_DOCUMENTS_BUCKET_NAME/document-templates/" >/dev/null 2>&1 || true
+aws s3 sync "s3://$SNAPSHOTS_BUCKET_NAME/report-templates/" "s3://$TXDX_DOCUMENTS_BUCKET_NAME/report-templates/" >/dev/null 2>&1 || true
 confirm
 
 # ─────────────────────────────────────────────────────────

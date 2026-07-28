@@ -521,9 +521,7 @@ Respuesta esperada:
 | PATCH  | `/superadmin/tenants/{tenantId}`                   | ADMIN_XOC / SUPERADMIN | Actualizar tenant                        |
 | DELETE | `/superadmin/tenants/{tenantId}`                   | SUPERADMIN*  | Iniciar borrado async del tenant         |
 | POST   | `/superadmin/tenants/{tenantId}/impersonation-token` | ADMIN_XOC / SUPERADMIN | Emitir token delegado para operar el tenant |
-| GET    | `/superadmin/tenants/{tenantId}/integrations`      | SUPERADMIN   | Integraciones + capabilities del tenant  |
-| GET    | `/superadmin/tenants/{tenantId}/capabilities`      | SUPERADMIN   | Capacidades efectivas del tenant         |
-| GET    | `/superadmin/tenants/{tenantId}/capability-templates` | SUPERADMIN | Templates asignados al tenant           |
+| GET    | `/superadmin/tenants/{tenantId}/integrations`      | SUPERADMIN   | Integraciones del tenant                 |
 
 #### Users
 
@@ -584,20 +582,6 @@ Notas para `DELETE /superadmin/tenants/{tenantId}`:
 | Método | Path                                               | Auth         | Descripción                              |
 |--------|----------------------------------------------------|--------------|------------------------------------------|
 | GET    | `/superadmin/audit-logs`                           | SUPERADMIN   | Logs de auditoría (filtros, paginación)  |
-
-#### Capability Templates
-
-| Método | Path                                                         | Auth         | Descripción                              |
-|--------|--------------------------------------------------------------|--------------|------------------------------------------|
-| GET    | `/superadmin/capability-templates`                           | SUPERADMIN   | Listar templates                         |
-| GET    | `/superadmin/capability-templates/{templateId}`              | SUPERADMIN   | Obtener template                         |
-| POST   | `/superadmin/capability-templates`                           | SUPERADMIN   | Crear template                           |
-| PATCH  | `/superadmin/capability-templates/{templateId}`              | SUPERADMIN   | Actualizar template                      |
-| DELETE | `/superadmin/capability-templates/{templateId}`              | SUPERADMIN   | Eliminar template                        |
-| GET    | `/superadmin/capability-templates/{templateId}/tenants`      | SUPERADMIN   | Tenants asignados al template            |
-| PUT    | `/superadmin/capability-templates/{templateId}/tenants`      | SUPERADMIN   | Reemplazar asignaciones de tenants       |
-
----
 
 ### XOC Ops
 

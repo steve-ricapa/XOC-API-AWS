@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 from src.persistence.db import get_db_session
 from src.persistence.models import User
 from src.shared.auth import create_access_token
-from src.shared.capabilities import collect_automation_capabilities
 from src.shared.context import effective_tenant_id_of, log_audit, require_tenant_read_access
 from src.shared.dependencies import get_current_user
 from src.shared.errors import AppError
@@ -46,7 +45,6 @@ def authenticate_agent_from_user(
         expires_delta=timedelta(hours=1),
     )
 
-    capabilities = collect_automation_capabilities(session, tenant_id)
     user_name = current_user.username or current_user.email
     user_tenant = getattr(current_user, "tenant", None)
     if not user_tenant:
@@ -65,7 +63,6 @@ def authenticate_agent_from_user(
         "user_name": user_name,
         "role": current_user.role,
         "plan_status": plan_status,
-        "capabilities": capabilities,
     }
 
 

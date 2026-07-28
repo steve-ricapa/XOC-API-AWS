@@ -50,11 +50,11 @@ module.exports = function automationResources(stage) {
           DefinitionString: {
             'Fn::Sub': JSON.stringify({
               Comment: 'Ticket automation workflow: assess → search similar cases → generate plan → approval gate → check result → register case.',
-              StartAt: 'AssessTicketCapability',
+              StartAt: 'AssessTicketAutomation',
               States: {
-                AssessTicketCapability: {
+                AssessTicketAutomation: {
                   Type: 'Task',
-                  Resource: { 'Fn::GetAtt': ['AssessTicketCapability', 'Arn'] },
+                  Resource: { 'Fn::GetAtt': ['AssessTicketAutomationLambdaFunction', 'Arn'] },
                   Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', 'phase': 'assessment' },
                   ResultPath: '$.assessment',
                   Next: 'CheckCanResolve',
@@ -67,7 +67,7 @@ module.exports = function automationResources(stage) {
                 },
                 SearchSimilarCases: {
                   Type: 'Task',
-                  Resource: { 'Fn::GetAtt': ['SearchSimilarCases', 'Arn'] },
+                  Resource: { 'Fn::GetAtt': ['SearchSimilarCasesLambdaFunction', 'Arn'] },
                   Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject' },
                   ResultPath: '$.similarCases',
                   Next: 'CheckSimilarCase',
@@ -80,7 +80,7 @@ module.exports = function automationResources(stage) {
                 },
                 AssessTicketPlan: {
                   Type: 'Task',
-                  Resource: { 'Fn::GetAtt': ['AssessTicketCapability', 'Arn'] },
+                  Resource: { 'Fn::GetAtt': ['AssessTicketAutomationLambdaFunction', 'Arn'] },
                   Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', 'phase': 'plan' },
                   ResultPath: '$.plan',
                   Next: 'InitializeAttemptCounter',
@@ -88,7 +88,7 @@ module.exports = function automationResources(stage) {
                 },
                 GenerateCaseFromSimilar: {
                   Type: 'Task',
-                  Resource: { 'Fn::GetAtt': ['GenerateCase', 'Arn'] },
+                  Resource: { 'Fn::GetAtt': ['GenerateCaseLambdaFunction', 'Arn'] },
                   Parameters: { 'ticket_id.$': '$.input.ticketId', 'tenant_id.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'action': 'success', 'total_attempts': 1, 'plan_used.$': '$.similarCases.similarCase.plan_used', 'solution_applied.$': '$.similarCases.similarCase.solution_applied', 'similar_case_id.$': '$.similarCases.similarCase.case_id' },
                   ResultPath: '$.caseResult',
                   Next: 'EndCaseRegistered',
@@ -112,7 +112,7 @@ module.exports = function automationResources(stage) {
                   Type: 'Task',
                   Resource: 'arn:aws:states:::lambda:invoke.waitForTaskToken',
                   Parameters: {
-                    FunctionName: { 'Fn::GetAtt': ['WaitForApproval', 'Arn'] },
+                    FunctionName: { 'Fn::GetAtt': ['WaitForApprovalLambdaFunction', 'Arn'] },
                     Payload: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'taskToken.$': '$$.Task.Token' },
                   },
                   ResultPath: '$.approval',
@@ -126,7 +126,7 @@ module.exports = function automationResources(stage) {
                 },
                 CheckTicketStatus: {
                   Type: 'Task',
-                  Resource: { 'Fn::GetAtt': ['CheckTicketStatus', 'Arn'] },
+                  Resource: { 'Fn::GetAtt': ['CheckTicketStatusLambdaFunction', 'Arn'] },
                   Parameters: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId' },
                   ResultPath: '$.statusCheck',
                   Next: 'IsTicketResolved',
@@ -154,7 +154,7 @@ module.exports = function automationResources(stage) {
                 },
                 RegisterSuccessfulCase: {
                   Type: 'Task',
-                  Resource: { 'Fn::GetAtt': ['GenerateCase', 'Arn'] },
+                  Resource: { 'Fn::GetAtt': ['GenerateCaseLambdaFunction', 'Arn'] },
                   Parameters: { 'ticket_id.$': '$.state.ticketId', 'tenant_id.$': '$.state.tenantId', 'subject.$': '$.state.subject', 'action': 'success', 'total_attempts.$': '$.state.attemptCount', 'solution_applied.$': '$.statusCheck.solutionApplied' },
                   ResultPath: '$.caseResult',
                   Next: 'EndCaseRegistered',
@@ -162,7 +162,7 @@ module.exports = function automationResources(stage) {
                 },
                 RegisterFailedCase: {
                   Type: 'Task',
-                  Resource: { 'Fn::GetAtt': ['GenerateCase', 'Arn'] },
+                  Resource: { 'Fn::GetAtt': ['GenerateCaseLambdaFunction', 'Arn'] },
                   Parameters: { 'ticket_id.$': '$.state.ticketId', 'tenant_id.$': '$.state.tenantId', 'subject.$': '$.state.subject', 'action': 'failed_after_attempts', 'total_attempts.$': '$.state.attemptCount', 'solution_applied.$': '$.state.solutionApplied' },
                   ResultPath: '$.caseResult',
                   Next: 'EndCaseRegistered',
@@ -170,7 +170,7 @@ module.exports = function automationResources(stage) {
                 },
                 RegisterRejectedCase: {
                   Type: 'Task',
-                  Resource: { 'Fn::GetAtt': ['GenerateCase', 'Arn'] },
+                  Resource: { 'Fn::GetAtt': ['GenerateCaseLambdaFunction', 'Arn'] },
                   Parameters: { 'ticket_id.$': '$.state.ticketId', 'tenant_id.$': '$.state.tenantId', 'subject.$': '$.state.subject', 'action': 'rejected', 'total_attempts.$': '$.state.attemptCount' },
                   ResultPath: '$.caseResult',
                   Next: 'EndCaseRegistered',
@@ -205,13 +205,13 @@ module.exports = function automationResources(stage) {
               PolicyDocument: {
                 Version: '2012-10-17',
                 Statement: [
-                  { Effect: 'Allow', Action: ['lambda:InvokeFunction'], Resource: [
-                    { 'Fn::GetAtt': ['AssessTicketCapability', 'Arn'] },
-                    { 'Fn::GetAtt': ['CheckTicketStatus', 'Arn'] },
-                    { 'Fn::GetAtt': ['SearchSimilarCases', 'Arn'] },
-                    { 'Fn::GetAtt': ['GenerateCase', 'Arn'] },
-                    { 'Fn::GetAtt': ['WaitForApproval', 'Arn'] },
-                    { 'Fn::GetAtt': ['ApprovalCallback', 'Arn'] },
+                    { Effect: 'Allow', Action: ['lambda:InvokeFunction'], Resource: [
+                    { 'Fn::GetAtt': ['AssessTicketAutomationLambdaFunction', 'Arn'] },
+                    { 'Fn::GetAtt': ['CheckTicketStatusLambdaFunction', 'Arn'] },
+                    { 'Fn::GetAtt': ['SearchSimilarCasesLambdaFunction', 'Arn'] },
+                    { 'Fn::GetAtt': ['GenerateCaseLambdaFunction', 'Arn'] },
+                    { 'Fn::GetAtt': ['WaitForApprovalLambdaFunction', 'Arn'] },
+                    { 'Fn::GetAtt': ['ApprovalCallbackLambdaFunction', 'Arn'] },
                   ]},
                   { Effect: 'Allow', Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:Query'], Resource: [
                     { 'Fn::GetAtt': ['AutomationCasesTable', 'Arn'] },

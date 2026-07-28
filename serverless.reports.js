@@ -45,6 +45,7 @@ module.exports = buildService({
       events: [
         protectedRoute(stage, 'POST', '/documents'),
         protectedRoute(stage, 'GET', '/documents/{documentId}'),
+        protectedRoute(stage, 'GET', '/documents/{documentId}/preview'),
         protectedRoute(stage, 'GET', '/documents'),
       ],
     }),

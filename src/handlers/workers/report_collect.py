@@ -15,6 +15,7 @@ def handler(event: dict, context) -> dict:
     document_id = event.get("documentId")
     tenant_id = event.get("tenantId")
     document_type = event.get("documentType", "")
+    variant = str(event.get("variant") or "client").strip().lower()
 
     if not document_id or not tenant_id:
         raise ValueError("documentId and tenantId are required")
@@ -25,7 +26,7 @@ def handler(event: dict, context) -> dict:
     filters = item.get("filters") or {}
     parameters = item.get("parameters") or {}
 
-    collected = _collect_from_sources(tenant_id, document_id, document_type, filters, parameters)
+    collected = _collect_from_sources(tenant_id, document_id, document_type, variant, filters, parameters)
 
     artifact_key = upload_artifact(tenant_id, document_id, document_type, "collected-data.json", collected)
     logger.info("Collected data uploaded to %s for document %s", artifact_key, document_id)
@@ -34,6 +35,7 @@ def handler(event: dict, context) -> dict:
         "documentId": document_id,
         "tenantId": tenant_id,
         "documentType": document_type,
+        "variant": variant,
         "collectedDataKey": artifact_key,
         "tenantName": collected.get("tenant", {}).get("name", f"Tenant-{tenant_id}"),
         "severitySummary": collected.get("severity_summary", {}),
@@ -42,10 +44,10 @@ def handler(event: dict, context) -> dict:
     }
 
 
-def _collect_from_sources(tenant_id: int, document_id: str, document_type: str, filters: dict, parameters: dict) -> dict:
+def _collect_from_sources(tenant_id: int, document_id: str, document_type: str, variant: str, filters: dict, parameters: dict) -> dict:
     if document_type == "minority_report":
-        return _build_real_minority_context(tenant_id, document_id, filters, parameters)
-    return _build_minimal_document_context(tenant_id, document_id, document_type, filters, parameters)
+        return _build_real_minority_context(tenant_id, document_id, variant, filters, parameters)
+    return _build_real_document_context(tenant_id, document_id, document_type, filters, parameters)
 
 
 PROVIDER_LABELS = {
@@ -58,7 +60,7 @@ PROVIDER_LABELS = {
 }
 
 
-def _build_real_minority_context(tenant_id: int, document_id: str, filters: dict, parameters: dict) -> dict:
+def _build_real_minority_context(tenant_id: int, document_id: str, variant: str, filters: dict, parameters: dict) -> dict:
     with session_scope() as session:
         tenant = session.get(Tenant, tenant_id)
         if not tenant:
@@ -87,6 +89,12 @@ def _build_real_minority_context(tenant_id: int, document_id: str, filters: dict
         weekly_actions = _build_weekly_actions(tickets)
         pending_findings = _build_pending_findings(findings)
         analyst_text = _build_analyst_text(parameters)
+        admin_context = _normalize_admin_context(parameters)
+        security_news = admin_context.get("securityNews") or []
+        weekly_actions = admin_context.get("weeklyActions") or weekly_actions
+
+        results_obtained = str(admin_context.get("resultsObtained") or "").strip()
+        next_actions = [str(item).strip() for item in (admin_context.get("nextActions") or []) if str(item).strip()]
 
         return {
             "tenant": {
@@ -101,13 +109,15 @@ def _build_real_minority_context(tenant_id: int, document_id: str, filters: dict
                 "period": period,
                 "prepared_by": "TXDXSECURE",
                 "executive_summary": "",
-                "results": "",
+                "results": results_obtained,
             },
             "parameters": parameters,
             "analyst_text": analyst_text,
             "structured_data": {
                 "tenant_id": tenant_id,
                 "tenant_name": tenant.name,
+                "report_variant": variant,
+                "template_variant": variant,
                 "period": period,
                 "severity_summary": severity_summary,
                 "previous_severity_summary": previous_summary,
@@ -115,6 +125,9 @@ def _build_real_minority_context(tenant_id: int, document_id: str, filters: dict
                 "security_domains": security_domains,
                 "weekly_actions": weekly_actions,
                 "pending_findings": pending_findings,
+                "results_obtained": results_obtained,
+                "next_actions": next_actions,
+                "security_news": security_news,
                 "top_findings": [_finding_to_minority_row(finding) for finding in findings[:20]],
                 "ticket_snapshot": [
                     {
@@ -126,9 +139,69 @@ def _build_real_minority_context(tenant_id: int, document_id: str, filters: dict
                 ],
             },
             "tools": tools,
+            "variant": variant,
             "severity_summary": severity_summary,
             "findings": [_finding_to_legacy_row(finding) for finding in findings[:50]],
             "domains": security_domains,
+            "actions_worked": weekly_actions,
+            "security_news": security_news,
+        }
+
+
+def _build_real_document_context(tenant_id: int, document_id: str, document_type: str, filters: dict, parameters: dict) -> dict:
+    with session_scope() as session:
+        tenant = session.get(Tenant, tenant_id)
+        if not tenant:
+            raise ValueError(f"Tenant {tenant_id} not found")
+
+        date_from, date_to, period = _resolve_period(filters)
+        findings = session.scalars(
+            select(FindingIndex).where(
+                FindingIndex.tenant_id == tenant_id,
+                FindingIndex.created_at >= date_from,
+                FindingIndex.created_at <= date_to,
+            ).order_by(FindingIndex.created_at.desc()).limit(80)
+        ).all()
+        integrations = session.scalars(select(Integration).where(Integration.tenant_id == tenant_id)).all()
+        agent_keys = session.scalars(
+            select(AgentApiKey).where(AgentApiKey.tenant_id == tenant_id, AgentApiKey.is_active == True)
+        ).all()
+        tickets = session.scalars(
+            select(Ticket).where(Ticket.tenant_id == tenant_id).order_by(Ticket.created_at.desc()).limit(20)
+        ).all()
+
+        severity_summary = _build_real_severity_summary(findings)
+        tools = _build_real_tools(integrations, agent_keys)
+        domains = _build_security_domains(findings)
+        weekly_actions = _build_weekly_actions(tickets)
+        user_description = str(parameters.get("description") or "").strip()
+        title, service, executive_summary, results = _document_copy(document_type)
+
+        if user_description:
+            executive_summary = user_description
+            if document_type in {"small_report", "informe_soporte"}:
+                results = user_description
+
+        return {
+            "tenant": {
+                "id": str(tenant_id),
+                "name": tenant.name,
+            },
+            "document": {
+                "id": document_id,
+                "title": title,
+                "service": service,
+                "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                "period": period,
+                "prepared_by": "TXDXSECURE",
+                "executive_summary": executive_summary,
+                "results": results,
+            },
+            "parameters": parameters,
+            "tools": tools,
+            "severity_summary": severity_summary,
+            "findings": [_finding_to_legacy_row(finding) for finding in findings[:40]],
+            "domains": domains,
             "actions_worked": weekly_actions,
             "security_news": [],
         }
@@ -257,7 +330,36 @@ def _build_analyst_text(parameters: dict) -> str:
                 parts.append(content)
             if software:
                 parts.append(f"Software relacionado: {', '.join(str(item) for item in software)}")
+    admin_context = _normalize_admin_context(parameters)
+    if admin_context.get("weeklyActions"):
+        parts.append("Acciones trabajadas durante la semana:\n- " + "\n- ".join(str(item) for item in admin_context["weeklyActions"]))
+    if admin_context.get("resultsObtained"):
+        parts.append(f"Resultados obtenidos:\n{admin_context['resultsObtained']}")
+    if admin_context.get("nextActions"):
+        parts.append("Proximas acciones / seguimiento:\n- " + "\n- ".join(str(item) for item in admin_context["nextActions"]))
+    if admin_context.get("securityNews"):
+        parts.append("Noticias de seguridad incluidas por el operador.")
     return "\n\n".join(parts)
+
+
+def _normalize_admin_context(parameters: dict) -> dict:
+    context = parameters.get("adminContext") or {}
+    if not isinstance(context, dict):
+        context = {}
+
+    weekly_actions = context.get("weeklyActions") or parameters.get("weeklyActions") or []
+    next_actions = context.get("nextActions") or parameters.get("nextActions") or []
+    security_news = context.get("securityNews") or parameters.get("securityNews") or []
+    results_obtained = context.get("resultsObtained") or parameters.get("resultsObtained") or ""
+    operational_context = context.get("operationalContext") or parameters.get("operationalContext") or ""
+
+    return {
+        "weeklyActions": [str(item).strip() for item in weekly_actions if str(item).strip()],
+        "nextActions": [str(item).strip() for item in next_actions if str(item).strip()],
+        "securityNews": security_news if isinstance(security_news, list) else [],
+        "resultsObtained": str(results_obtained or "").strip(),
+        "operationalContext": str(operational_context or "").strip(),
+    }
 
 
 def _build_minimal_document_context(tenant_id: int, document_id: str, document_type: str, filters: dict, parameters: dict) -> dict:

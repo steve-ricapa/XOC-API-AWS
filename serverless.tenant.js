@@ -32,6 +32,8 @@ module.exports = buildService({
         protectedRoute(stage, 'DELETE', '/tenant/agent-keys/{keyId}'),
         protectedRoute(stage, 'POST', '/tenant/agent-keys/{keyId}/regenerate'),
         protectedRoute(stage, 'POST', '/tenant/agent-keys/{keyId}/toggle'),
+        protectedRoute(stage, 'GET', '/tenant/preferences'),
+        protectedRoute(stage, 'PUT', '/tenant/preferences'),
         protectedRoute(stage, 'GET', '/tenant/runtime-settings'),
         protectedRoute(stage, 'PUT', '/tenant/runtime-settings'),
         protectedRoute(stage, 'GET', '/users'),

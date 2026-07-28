@@ -322,6 +322,8 @@ def add_word_toc_field(document: Document) -> None:
 
 def build_report_body(document: Document, payload: dict[str, Any]) -> None:
     enable_update_fields_on_open(document)
+    variant = _clean_text(payload.get("report_variant") or payload.get("template_variant") or "client").lower()
+    include_admin_sections = variant == "admin_xoc"
     title = document.add_paragraph()
     title.alignment = WD_ALIGN_PARAGRAPH.LEFT
     title.style = _style_name(document, "Heading 1", "Normal")
@@ -361,33 +363,39 @@ def build_report_body(document: Document, payload: dict[str, Any]) -> None:
         add_body(document, domain.get("summary"))
         add_findings_table(document, domain.get("findings") or [])
 
-    add_heading(document, "4. Reporte de acciones trabajadas durante la semana")
-    add_bullets(document, payload.get("weekly_actions"))
+    if include_admin_sections:
+        add_heading(document, "4. Reporte de acciones trabajadas durante la semana")
+        add_bullets(document, payload.get("weekly_actions"))
 
-    add_heading(document, "5. Resultados obtenidos")
-    add_subheading(document, "5.1 Seguridad Reforzada")
-    add_body(document, payload.get("reinforced_security"))
-    add_subheading(document, "5.2 Hallazgos pendientes")
-    add_bullets(document, payload.get("pending_findings"))
+        add_heading(document, "5. Resultados obtenidos")
+        add_subheading(document, "5.1 Seguridad Reforzada")
+        add_body(document, payload.get("reinforced_security"))
+        add_subheading(document, "5.2 Hallazgos pendientes")
+        add_bullets(document, payload.get("pending_findings"))
 
-    add_heading(document, "6. Noticias de seguridad")
-    for index, news in enumerate(payload.get("security_news") or [], start=1):
-        add_subheading(document, news.get("title") or f"Noticia {index}")
-        add_key_value_table(
-            document,
-            [
-                ("Fecha", news.get("date")),
-                ("Fuente", news.get("source")),
-                ("Enlaces", ", ".join(news.get("links") or [])),
-            ],
-        )
-        add_body(document, news.get("summary"))
-        add_body(document, news.get("recommendation"))
+        add_heading(document, "6. Noticias de seguridad")
+        for index, news in enumerate(payload.get("security_news") or [], start=1):
+            add_subheading(document, news.get("title") or f"Noticia {index}")
+            add_key_value_table(
+                document,
+                [
+                    ("Fecha", news.get("date")),
+                    ("Fuente", news.get("source")),
+                    ("Enlaces", ", ".join(news.get("links") or [])),
+                ],
+            )
+            add_body(document, news.get("summary"))
+            add_body(document, news.get("recommendation"))
 
-    limitations = payload.get("limitations") or []
-    if limitations:
-        add_heading(document, "7. Limitaciones")
-        add_bullets(document, limitations)
+        limitations = payload.get("limitations") or []
+        if limitations:
+            add_heading(document, "7. Limitaciones")
+            add_bullets(document, limitations)
+    else:
+        limitations = payload.get("limitations") or []
+        if limitations:
+            add_heading(document, "4. Limitaciones")
+            add_bullets(document, limitations)
 
 
 def validate_docx(path: Path) -> None:

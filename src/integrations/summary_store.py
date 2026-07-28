@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.persistence.models import AgentApiKey, FindingIndex, Integration, ScanSummary, ScanSummaryNoc
+from src.shared.tenant_preferences import calculate_health_index, get_visible_prevention_providers, get_visible_vulnerability_severities
 
 
 def _pick_integration(session: Session, tenant_id: int, provider: str) -> Integration | None:
@@ -242,13 +243,16 @@ def build_uptime_kuma_summary(session: Session, tenant_id: int) -> dict:
     }
 
 
-def build_dashboard_summary(session: Session, tenant_id: int) -> dict:
+def build_dashboard_summary(session: Session, tenant_id: int, preferences: dict | None = None) -> dict:
     zabbix = build_zabbix_summary(session, tenant_id)
     wazuh = build_wazuh_summary(session, tenant_id)
     nessus = build_vulnerability_summary(session, tenant_id, "nessus")
     openvas = build_vulnerability_summary(session, tenant_id, "openvas")
     insightvm = build_vulnerability_summary(session, tenant_id, "insightvm")
     uptime_kuma = build_uptime_kuma_summary(session, tenant_id)
+    preferences = preferences or {}
+    visible_providers = set(get_visible_prevention_providers(preferences)) or {"wazuh", "zabbix", "uptime_kuma", "nessus", "openvas", "insightvm"}
+    visible_severities = get_visible_vulnerability_severities(preferences) or ["critical", "high", "medium", "low", "informational"]
 
     configured_count = sum(
         1
@@ -262,6 +266,35 @@ def build_dashboard_summary(session: Session, tenant_id: int) -> dict:
     )
     services_down = int((uptime_kuma.get("services") or {}).get("down", 0) or 0)
 
+    vulnerability_counts = {severity: 0 for severity in ("critical", "high", "medium", "low", "informational")}
+    for provider, item in (("nessus", nessus), ("openvas", openvas), ("insightvm", insightvm)):
+        if provider not in visible_providers:
+            continue
+        vulnerabilities = item.get("vulnerabilities") or {}
+        vulnerability_counts["critical"] += int(vulnerabilities.get("critical", 0) or 0)
+        vulnerability_counts["high"] += int(vulnerabilities.get("high", 0) or 0)
+        vulnerability_counts["medium"] += int(vulnerabilities.get("medium", 0) or 0)
+        vulnerability_counts["low"] += int(vulnerabilities.get("low", 0) or 0)
+        vulnerability_counts["informational"] += int(vulnerabilities.get("info", 0) or vulnerabilities.get("informational", 0) or 0)
+
+    visible_vulnerability_total = sum(vulnerability_counts.get(severity, 0) for severity in visible_severities)
+    operational_preventions = 0
+    if "wazuh" in visible_providers:
+        operational_preventions += int((wazuh.get("alerts") or {}).get("total", 0) or 0)
+    if "zabbix" in visible_providers:
+        operational_preventions += int(zabbix.get("alerts", 0) or 0)
+    if "uptime_kuma" in visible_providers:
+        operational_preventions += int((uptime_kuma.get("services") or {}).get("down", 0) or 0)
+
+    total_preventions = operational_preventions + visible_vulnerability_total
+    health_index = calculate_health_index(
+        vulnerability_counts=vulnerability_counts,
+        visible_severities=visible_severities,
+        wazuh_alerts=wazuh.get("alerts") if isinstance(wazuh.get("alerts"), dict) else {},
+        zabbix_alerts=int(zabbix.get("alerts", 0) or 0) if "zabbix" in visible_providers else 0,
+        uptime_down=int((uptime_kuma.get("services") or {}).get("down", 0) or 0) if "uptime_kuma" in visible_providers else 0,
+    )
+
     return {
         "zabbix": zabbix,
         "wazuh": wazuh,
@@ -274,6 +307,12 @@ def build_dashboard_summary(session: Session, tenant_id: int) -> dict:
             "total_alerts": total_alerts,
             "critical_vulnerabilities": critical_vulnerabilities,
             "services_down": services_down,
+            "total_preventions": total_preventions,
+            "preventions_operational": operational_preventions,
+            "preventions_vulnerabilities": visible_vulnerability_total,
+            "health_index": health_index,
+            "visible_vulnerability_severities": visible_severities,
+            "visible_prevention_providers": sorted(visible_providers),
             "generated_at": datetime.utcnow().isoformat(),
         },
     }

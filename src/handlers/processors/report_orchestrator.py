@@ -54,6 +54,7 @@ def handler(event: dict, context) -> dict:
                     "documentId": document_id,
                     "tenantId": tenant_id,
                     "documentType": detail.get("document_type", ""),
+                    "variant": detail.get("variant", item.get("variant", "client")),
                     "request_hash": detail.get("request_hash", ""),
                 }),
             )

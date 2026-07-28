@@ -375,9 +375,15 @@ def parse_and_validate_json(raw: str) -> dict[str, Any]:
     return _normalize_payload(parsed)
 
 
-def build_prompt(*, client_name: str, period: str, analyst_text: str, structured_data: dict[str, Any], reference_markdown: str = "") -> str:
+def build_prompt(*, client_name: str, period: str, analyst_text: str, structured_data: dict[str, Any], reference_markdown: str = "", variant: str = "client") -> str:
+    variant_rules = (
+        "Variant: client. Genera un reporte ejecutivo para cliente. No incluyas secciones operativas internas ni seguimiento administrativo."
+        if variant == "client"
+        else "Variant: admin_xoc. Incluye acciones trabajadas durante la semana, resultados obtenidos, proximas acciones/seguimiento y noticias de seguridad cuando existan en la evidencia."
+    )
     return (
         f"{PROMPT_BASE}\n\n"
+        f"{variant_rules}\n\n"
         f"Cliente objetivo: {client_name or 'No especificado'}\n"
         f"Periodo objetivo: {period or 'No especificado'}\n\n"
         "Texto del analista:\n"
@@ -449,7 +455,7 @@ def _extract_response_text(response: Any) -> str:
     raise RuntimeError("Foundry responded without visible text")
 
 
-def generate_minority_payload(*, client_name: str, period: str, analyst_text: str, structured_data: dict[str, Any], reference_markdown: str = "") -> dict[str, Any]:
+def generate_minority_payload(*, client_name: str, period: str, analyst_text: str, structured_data: dict[str, Any], reference_markdown: str = "", variant: str = "client") -> dict[str, Any]:
     settings = get_minority_foundry_settings()
     if not settings.use_azure_foundry:
         raise RuntimeError("Minority report generation requires Azure Foundry and mock fallback is disabled")
@@ -460,6 +466,7 @@ def generate_minority_payload(*, client_name: str, period: str, analyst_text: st
         analyst_text=analyst_text,
         structured_data=structured_data,
         reference_markdown=reference_markdown,
+        variant=variant,
     )
     request: dict[str, Any] = {
         "model": settings.model_deployment,

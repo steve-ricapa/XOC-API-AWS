@@ -101,6 +101,17 @@ class TenantRuntimeSettings(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
 
+class TenantPreference(Base):
+    __tablename__ = "tenant_preferences"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, unique=True)
+    dashboard_preferences: Mapped[dict | None] = mapped_column(JSON, nullable=False, default=dict)
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
+
+
 class Integration(Base):
     __tablename__ = "integrations"
 
@@ -108,7 +119,6 @@ class Integration(Base):
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     provider: Mapped[str] = mapped_column(String(100), nullable=False)
     type: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    capabilities: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
     config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     keyvault_secret_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
     credentials_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -121,7 +131,6 @@ class Integration(Base):
             "tenant_id": self.tenant_id,
             "provider": self.provider,
             "type": self.type,
-            "capabilities": self.capabilities,
             "config": self.config,
             "keyvault_secret_id": self.keyvault_secret_id,
             "extra_json": self.extra_json,
@@ -150,8 +159,6 @@ class Ticket(Base):
     execution_logs: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
     execution_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     pending_decision: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    capability_level: Mapped[str | None] = mapped_column(String(30), nullable=True)
-    capability_policy_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     decision_timeout_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     on_decision_timeout: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
@@ -175,8 +182,6 @@ class Ticket(Base):
             "execution_logs": self.execution_logs,
             "execution_summary": self.execution_summary,
             "pending_decision": self.pending_decision,
-            "capability_level": self.capability_level,
-            "capability_policy_snapshot": self.capability_policy_snapshot,
             "decision_timeout_minutes": self.decision_timeout_minutes,
             "on_decision_timeout": self.on_decision_timeout,
         }
@@ -614,52 +619,6 @@ class LiveVoiceMessage(Base):
         }
 
 
-class IntegrationCapabilityTemplate(Base):
-    __tablename__ = "integration_capability_templates"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    provider: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
-    capabilities: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_active: Mapped[bool] = mapped_column(nullable=False, default=True)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
-
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "provider": self.provider,
-            "capabilities": self.capabilities,
-            "description": self.description,
-            "is_active": self.is_active,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
-
-class IntegrationCapabilityTemplateAssignment(Base):
-    __tablename__ = "integration_capability_template_assignments"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    template_id: Mapped[int] = mapped_column(ForeignKey("integration_capability_templates.id", ondelete="CASCADE"), nullable=False)
-    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
-
-    __table_args__ = (
-        UniqueConstraint("template_id", "tenant_id", name="uq_template_tenant"),
-    )
-
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "template_id": self.template_id,
-            "tenant_id": self.tenant_id,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
-
 class PendingIngestion(Base):
     __tablename__ = "pending_ingestions"
 
@@ -671,8 +630,22 @@ class PendingIngestion(Base):
     scanner_type: Mapped[str] = mapped_column(String(50), nullable=False)
     idempotency_key: Mapped[str | None] = mapped_column(String(71), nullable=True)
     s3_key: Mapped[str] = mapped_column(String(1024), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    raw_s3_bucket: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    raw_s3_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    processed_s3_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    quarantine_s3_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    schema_version: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    scan_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="accepted")
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    processing_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    processor_request_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
@@ -684,9 +657,23 @@ class PendingIngestion(Base):
             "upload_id": self.upload_id,
             "provider": self.provider,
             "scanner_type": self.scanner_type,
+            "scan_id": self.scan_id,
             "status": self.status,
             "s3_key": self.s3_key,
+            "raw_s3_bucket": self.raw_s3_bucket,
+            "raw_s3_key": self.raw_s3_key,
+            "processed_s3_key": self.processed_s3_key,
+            "quarantine_s3_key": self.quarantine_s3_key,
+            "content_type": self.content_type,
+            "size_bytes": self.size_bytes,
+            "checksum": self.checksum,
+            "schema_version": self.schema_version,
+            "attempt_count": self.attempt_count,
+            "last_error_code": self.last_error_code,
             "error_message": self.error_message,
+            "processing_started_at": self.processing_started_at.isoformat() if self.processing_started_at else None,
+            "processing_completed_at": self.processing_completed_at.isoformat() if self.processing_completed_at else None,
+            "processor_request_id": self.processor_request_id,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

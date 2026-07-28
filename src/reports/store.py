@@ -66,6 +66,7 @@ def document_key(tenant_id: int, document_id: str) -> dict:
 def create_document_job(
     tenant_id: int,
     document_type: str,
+    variant: str = "client",
     created_by_user_id: int | None = None,
     filters: dict | None = None,
     parameters: dict | None = None,
@@ -82,6 +83,7 @@ def create_document_job(
         "tenant_id": tenant_id,
         "created_by_user_id": created_by_user_id,
         "document_type": document_type,
+        "variant": variant,
         "status": status,
         "filters": filters,
         "parameters": parameters,

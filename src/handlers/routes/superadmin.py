@@ -13,8 +13,7 @@ from sqlalchemy.orm import Session
 from src.persistence.db import get_db_session
 from src.persistence.models import (
     AgentInstance, AgentSession, ActivationKey, AgentApiKey,
-    AuditLog, Tenant, Integration, IntegrationCapabilityTemplate,
-    IntegrationCapabilityTemplateAssignment, User,
+    AuditLog, Tenant, Integration, User,
     Ticket,
 )
 from src.shared.auth import create_access_token
@@ -70,28 +69,6 @@ def _parse_bool(value, field_name: str) -> bool:
     if isinstance(value, (int, float)):
         return bool(value)
     raise ValidationError(f"{field_name} must be a boolean")
-
-
-def _validate_capabilities(value):
-    if value is None:
-        return
-    if isinstance(value, (list, dict, str)):
-        return
-    raise ValidationError("capabilities must be a list, dict, string, or null")
-
-
-def _flatten_capabilities(value) -> list:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, list):
-        result = []
-        for item in value:
-            if isinstance(item, str):
-                result.append(item)
-        return result
-    return []
 
 
 def _parse_int_param(value, field_name: str):
@@ -274,30 +251,6 @@ def _ensure_demo_agent_instance(tenant_id: int, session: Session):
 
 def _get_active_agent_instance(tenant_id: int, session: Session):
     return session.query(AgentInstance).filter_by(tenant_id=tenant_id, agent_type="SVAFUNC", status="ACTIVE").first()
-
-
-def _build_integration_capability_payload(
-    integration, templates_by_provider, assignments_by_template, tenant_id,
-    include_templates=True, include_effective=True,
-) -> dict:
-    data = integration.to_dict()
-    provider = integration.provider
-    if include_templates and provider in templates_by_provider:
-        template_list = []
-        for t in templates_by_provider[provider]:
-            tdata = t.to_dict()
-            tdata["scope"] = _template_scope(t.id, assignments_by_template)
-            tdata["applies"] = _template_applies(t, tenant_id, assignments_by_template)
-            template_list.append(tdata)
-        data["templates"] = template_list
-    if include_effective:
-        caps = _flatten_capabilities(integration.capabilities) if integration.capabilities else []
-        if provider in templates_by_provider:
-            for t in templates_by_provider[provider]:
-                if _template_applies(t, tenant_id, assignments_by_template):
-                    caps.extend(_flatten_capabilities(t.capabilities))
-        data["effective_capabilities"] = list(sorted(set(caps)))
-    return data
 
 
 @router.get("/tenants")
@@ -512,68 +465,7 @@ def list_tenant_integrations(
     if not tenant:
         raise NotFoundError("Tenant not found")
     integrations = session.query(Integration).filter(Integration.tenant_id == tenant_id).order_by(Integration.created_at.desc()).all()
-    templates = session.query(IntegrationCapabilityTemplate).all()
-    assignments = session.query(IntegrationCapabilityTemplateAssignment).all()
-    templates_by_provider = {}
-    for t in templates:
-        prov = t.provider
-        if prov not in templates_by_provider:
-            templates_by_provider[prov] = []
-        templates_by_provider[prov].append(t)
-    assignments_by_template = _build_assignments_map(assignments)
-    return {
-        "integrations": [
-            _build_integration_capability_payload(
-                integration, templates_by_provider, assignments_by_template, tenant_id,
-            ) for integration in integrations
-        ],
-    }
-
-
-@router.get("/tenants/{tenant_id}/capabilities")
-def get_tenant_capabilities(
-    tenant_id: int,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db_session),
-) -> dict:
-    require_superadmin(current_user)
-    tenant = session.get(Tenant, tenant_id)
-    if not tenant:
-        raise NotFoundError("Tenant not found")
-    integrations = session.query(Integration).filter(Integration.tenant_id == tenant_id).all()
-    templates = session.query(IntegrationCapabilityTemplate).filter_by(is_active=True).all()
-    assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(tenant_id=tenant_id).all()
-    assignments_by_template = _build_assignments_map(assignments)
-    all_capabilities = set()
-    for integration in integrations:
-        caps = _flatten_capabilities(integration.capabilities) if integration.capabilities else []
-        all_capabilities.update(caps)
-        for t in templates:
-            if _template_applies(t, tenant_id, assignments_by_template) and t.provider == integration.provider:
-                all_capabilities.update(_flatten_capabilities(t.capabilities))
-    return {"capabilities": sorted(all_capabilities)}
-
-
-@router.get("/tenants/{tenant_id}/capability-templates")
-def list_tenant_capability_templates(
-    tenant_id: int,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db_session),
-) -> dict:
-    require_superadmin(current_user)
-    tenant = session.get(Tenant, tenant_id)
-    if not tenant:
-        raise NotFoundError("Tenant not found")
-    templates = session.query(IntegrationCapabilityTemplate).all()
-    assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(tenant_id=tenant_id).all()
-    assigned_template_ids = {a.template_id for a in assignments}
-    result = []
-    for t in templates:
-        tdata = t.to_dict()
-        tdata["applies_to_tenant"] = t.id in assigned_template_ids or t.id not in {a.template_id for a in session.query(IntegrationCapabilityTemplateAssignment).all()}
-        tdata["assigned"] = t.id in assigned_template_ids
-        result.append(tdata)
-    return {"capability_templates": result}
+    return {"integrations": [integration.to_dict() for integration in integrations]}
 
 
 @router.post("/users", status_code=status.HTTP_201_CREATED)
@@ -795,9 +687,6 @@ def update_integration(
         if integration_type is not None:
             integration_type = normalize_integration_type(integration_type) or integration_type
         integration.type = integration_type
-    if "capabilities" in payload:
-        _validate_capabilities(payload["capabilities"])
-        integration.capabilities = payload["capabilities"]
     if "config" in payload:
         config = payload["config"]
         if config is not None and not isinstance(config, dict):
@@ -1285,246 +1174,3 @@ def list_audit_logs(
             entry["actor"] = None
         result.append(entry)
     return {"audit_logs": result, "total": total, "limit": limit_val, "offset": offset_val}
-
-
-@router.get("/capability-templates")
-def list_capability_templates(
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db_session),
-    provider: str = None,
-    active: bool = None,
-    include_tenants: bool = False,
-    limit: int = None,
-    offset: int = None,
-) -> dict:
-    require_superadmin(current_user)
-    query = session.query(IntegrationCapabilityTemplate)
-    if provider:
-        query = query.filter(IntegrationCapabilityTemplate.provider == provider)
-    if active is not None:
-        query = query.filter(IntegrationCapabilityTemplate.is_active == _parse_bool(active, "active"))
-    query = query.order_by(IntegrationCapabilityTemplate.provider.asc())
-    total = query.count()
-    limit_val = _parse_limit(limit)
-    offset_val = _parse_offset(offset)
-    templates = query.offset(offset_val).limit(limit_val).all()
-    assignments = session.query(IntegrationCapabilityTemplateAssignment).all()
-    assignments_by_template = _build_assignments_map(assignments)
-    result = []
-    for t in templates:
-        tdata = t.to_dict()
-        tdata["scope"] = _template_scope(t.id, assignments_by_template)
-        tdata["assigned_tenants_count"] = len(assignments_by_template.get(t.id, set()))
-        if include_tenants:
-            tenant_ids = list(assignments_by_template.get(t.id, set()))
-            tenants = session.query(Tenant).filter(Tenant.id.in_(tenant_ids)).all() if tenant_ids else []
-            tdata["tenants"] = [_serialize_tenant(tn) for tn in tenants]
-        result.append(tdata)
-    return {"capability_templates": result, "total": total, "limit": limit_val, "offset": offset_val}
-
-
-@router.get("/capability-templates/{template_id}")
-def get_capability_template(
-    template_id: int,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db_session),
-) -> dict:
-    require_superadmin(current_user)
-    template = session.get(IntegrationCapabilityTemplate, template_id)
-    if not template:
-        raise NotFoundError("Capability template not found")
-    assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(template_id=template_id).all()
-    assignments_by_template = {template_id: {a.tenant_id for a in assignments}}
-    tdata = template.to_dict()
-    tdata["scope"] = _template_scope(template_id, assignments_by_template)
-    tdata["assigned_tenants_count"] = len(assignments)
-    return tdata
-
-
-@router.post("/capability-templates", status_code=status.HTTP_201_CREATED)
-def create_capability_template(
-    payload: dict,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db_session),
-) -> dict:
-    require_superadmin(current_user)
-    if not payload:
-        raise ValidationError("Request body is required")
-    provider = _normalize_provider(payload.get("provider", ""))
-    if not provider:
-        raise ValidationError("provider is required")
-    existing = session.query(IntegrationCapabilityTemplate).filter(IntegrationCapabilityTemplate.provider == provider).first()
-    if existing:
-        raise ConflictError(f"Capability template for provider '{provider}' already exists")
-    capabilities = payload.get("capabilities")
-    _validate_capabilities(capabilities)
-    description = payload.get("description")
-    if description is not None and not isinstance(description, str):
-        raise ValidationError("description must be a string")
-    is_active = payload.get("is_active", True)
-    if not isinstance(is_active, bool):
-        is_active = True
-    template = IntegrationCapabilityTemplate(
-        provider=provider,
-        capabilities=capabilities,
-        description=description,
-        is_active=is_active,
-    )
-    session.add(template)
-    session.flush()
-    log_audit(session, actor_user_id=current_user.id, action="CREATE", entity_type="CAPABILITY_TEMPLATE", entity_id=template.id, payload={"provider": provider})
-    session.commit()
-    assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(template_id=template.id).all()
-    assignments_by_template = {template.id: {a.tenant_id for a in assignments}}
-    tdata = template.to_dict()
-    tdata["scope"] = _template_scope(template.id, assignments_by_template)
-    tdata["assigned_tenants_count"] = len(assignments)
-    return {"message": "Capability template created successfully", "capability_template": tdata}
-
-
-@router.patch("/capability-templates/{template_id}")
-def update_capability_template(
-    template_id: int,
-    payload: dict,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db_session),
-) -> dict:
-    require_superadmin(current_user)
-    template = session.get(IntegrationCapabilityTemplate, template_id)
-    if not template:
-        raise NotFoundError("Capability template not found")
-    if not payload:
-        raise ValidationError("Request body is required")
-    if "provider" in payload:
-        provider = _normalize_provider(payload["provider"])
-        if not provider:
-            raise ValidationError("provider cannot be empty")
-        existing = session.query(IntegrationCapabilityTemplate).filter(
-            IntegrationCapabilityTemplate.provider == provider, IntegrationCapabilityTemplate.id != template_id
-        ).first()
-        if existing:
-            raise ConflictError(f"Capability template for provider '{provider}' already exists")
-        template.provider = provider
-    if "capabilities" in payload:
-        _validate_capabilities(payload["capabilities"])
-        template.capabilities = payload["capabilities"]
-    if "description" in payload:
-        desc = payload["description"]
-        if desc is not None and not isinstance(desc, str):
-            raise ValidationError("description must be a string")
-        template.description = desc
-    if "is_active" in payload:
-        template.is_active = _parse_bool(payload["is_active"], "is_active")
-    log_audit(session, actor_user_id=current_user.id, action="UPDATE", entity_type="CAPABILITY_TEMPLATE", entity_id=template.id, payload={"provider": template.provider})
-    session.commit()
-    assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(template_id=template_id).all()
-    assignments_by_template = {template_id: {a.tenant_id for a in assignments}}
-    tdata = template.to_dict()
-    tdata["scope"] = _template_scope(template_id, assignments_by_template)
-    tdata["assigned_tenants_count"] = len(assignments)
-    return {"message": "Capability template updated successfully", "capability_template": tdata}
-
-
-@router.delete("/capability-templates/{template_id}")
-def delete_capability_template(
-    template_id: int,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db_session),
-) -> dict:
-    require_superadmin(current_user)
-    template = session.get(IntegrationCapabilityTemplate, template_id)
-    if not template:
-        raise NotFoundError("Capability template not found")
-    log_audit(session, actor_user_id=current_user.id, action="DELETE", entity_type="CAPABILITY_TEMPLATE", entity_id=template.id, payload={"provider": template.provider})
-    session.delete(template)
-    session.commit()
-    return {"message": "Capability template deleted successfully"}
-
-
-@router.get("/capability-templates/{template_id}/tenants")
-def list_capability_template_tenants(
-    template_id: int,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db_session),
-    include_all: bool = False,
-    limit: int = None,
-    offset: int = None,
-) -> dict:
-    require_superadmin(current_user)
-    template = session.get(IntegrationCapabilityTemplate, template_id)
-    if not template:
-        raise NotFoundError("Capability template not found")
-    _include_all = _parse_bool(include_all, "include_all") if not isinstance(include_all, bool) else include_all
-    if _include_all:
-        query = session.query(Tenant).order_by(Tenant.name.asc())
-        total = query.count()
-        limit_val = _parse_limit(limit)
-        offset_val = _parse_offset(offset)
-        tenants = query.offset(offset_val).limit(limit_val).all()
-        assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(template_id=template_id).all()
-        assigned_tenant_ids = {a.tenant_id for a in assignments}
-        result = []
-        for t in tenants:
-            cdata = _serialize_tenant(t)
-            cdata["assigned"] = t.id in assigned_tenant_ids
-            result.append(cdata)
-        return {"tenants": result, "total": total, "limit": limit_val, "offset": offset_val}
-    else:
-        assignments = session.query(IntegrationCapabilityTemplateAssignment).filter_by(template_id=template_id).order_by(
-            IntegrationCapabilityTemplateAssignment.created_at.desc()
-        ).all()
-        total = len(assignments)
-        limit_val = _parse_limit(limit)
-        offset_val = _parse_offset(offset)
-        paged_assignments = assignments[offset_val:offset_val + limit_val]
-        result = []
-        for a in paged_assignments:
-            t = session.get(Tenant, a.tenant_id)
-            if t:
-                cdata = _serialize_tenant(t)
-                cdata["assigned"] = True
-                cdata["assignment_id"] = a.id
-                result.append(cdata)
-        return {"tenants": result, "total": total, "limit": limit_val, "offset": offset_val}
-
-
-@router.put("/capability-templates/{template_id}/tenants")
-def set_capability_template_tenants(
-    template_id: int,
-    payload: dict,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db_session),
-) -> dict:
-    require_superadmin(current_user)
-    template = session.get(IntegrationCapabilityTemplate, template_id)
-    if not template:
-        raise NotFoundError("Capability template not found")
-    if not payload:
-        raise ValidationError("Request body is required")
-    mode = (payload.get("mode") or "replace").strip().lower()
-    if mode not in ("replace", "add", "remove"):
-        raise ValidationError('mode must be one of: replace, add, remove')
-    tenant_ids = _parse_tenant_ids(payload.get("tenants", []))
-    for tid in tenant_ids:
-        tenant = session.get(Tenant, tid)
-        if not tenant:
-            raise ValidationError(f"Tenant with id {tid} not found")
-    if mode == "replace":
-        session.query(IntegrationCapabilityTemplateAssignment).filter_by(template_id=template_id).delete()
-        for tid in tenant_ids:
-            session.add(IntegrationCapabilityTemplateAssignment(template_id=template_id, tenant_id=tid))
-    elif mode == "add":
-        for tid in tenant_ids:
-            existing = session.query(IntegrationCapabilityTemplateAssignment).filter_by(
-                template_id=template_id, tenant_id=tid
-            ).first()
-            if not existing:
-                session.add(IntegrationCapabilityTemplateAssignment(template_id=template_id, tenant_id=tid))
-    elif mode == "remove":
-        session.query(IntegrationCapabilityTemplateAssignment).filter(
-            IntegrationCapabilityTemplateAssignment.template_id == template_id,
-            IntegrationCapabilityTemplateAssignment.tenant_id.in_(tenant_ids),
-        ).delete(synchronize_session=False)
-    log_audit(session, actor_user_id=current_user.id, action="UPDATE_TENANTS", entity_type="CAPABILITY_TEMPLATE", entity_id=template_id, payload={"mode": mode, "tenant_ids": tenant_ids})
-    session.commit()
-    return {"message": "Template tenants updated successfully"}

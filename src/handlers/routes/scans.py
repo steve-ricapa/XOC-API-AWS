@@ -23,6 +23,8 @@ from src.shared.snapshots import fetch_snapshot_payload, generate_download_url, 
 router = APIRouter(prefix="/scans", tags=["scans"])
 findings_router = APIRouter(prefix="/findings", tags=["findings"])
 
+PENDING_STATUS_ACCEPTED = "accepted"
+
 ALLOWED_SCANNER_TYPES = OFFICIAL_INTEGRATION_TYPES
 ALLOWED_SUMMARY_TYPES = ["vulnerability", "security_events", "noc_health", "availability", "network_discovery", "other"]
 ALLOWED_DOMAINS = ["soc", "noc"]
@@ -277,7 +279,10 @@ def request_upload_url(payload: dict, session: Session = Depends(get_db_session)
         scanner_type=scanner_type,
         idempotency_key=idempotency_key,
         s3_key=s3_key,
-        status="pending",
+        raw_s3_bucket=get_settings().snapshots_bucket_name,
+        raw_s3_key=s3_key,
+        content_type="application/json",
+        status=PENDING_STATUS_ACCEPTED,
         expires_at=expires_at,
     )
     session.add(pending)
@@ -338,7 +343,10 @@ def ingest_scan(payload: dict, session: Session = Depends(get_db_session)) -> di
         scanner_type=scanner_type,
         idempotency_key=idempotency_key,
         s3_key=s3_key,
-        status="pending",
+        raw_s3_bucket=get_settings().snapshots_bucket_name,
+        raw_s3_key=s3_key,
+        content_type="application/json",
+        status=PENDING_STATUS_ACCEPTED,
         expires_at=expires_at,
     )
     session.add(pending)
