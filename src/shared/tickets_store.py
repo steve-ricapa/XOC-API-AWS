@@ -10,6 +10,15 @@ from boto3.dynamodb.conditions import Key
 from src.shared.errors import NotFoundError, ValidationError
 
 
+ROLE_HIERARCHY = {"USER": 1, "ADMIN": 2, "ADMIN_XOC": 3, "SUPERADMIN": 3}
+
+
+def is_role_sufficient(user_role: str, required_role: str) -> bool:
+    user_level = ROLE_HIERARCHY.get(user_role.upper(), 0)
+    required_level = ROLE_HIERARCHY.get(required_role.upper(), 0)
+    return user_level >= required_level
+
+
 VALID_STATUSES = {
     "PENDING",
     "EXECUTED",

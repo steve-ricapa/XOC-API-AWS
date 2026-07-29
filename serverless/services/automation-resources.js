@@ -107,7 +107,7 @@ module.exports = function automationResources(stage) {
                   },
                   InitializeAttemptCounter: {
                     Type: 'Pass',
-                    Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', attemptCount: 1, solutionApplied: null, attemptsLog: [] },
+                    Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', attemptCount: 1, solutionApplied: null, attemptsLog: [], 'maxRiskLevel.$': '$.plan.maxRiskLevel' },
                     ResultPath: '$.state',
                     Next: 'CheckAttemptsRemaining',
                   },
@@ -124,7 +124,7 @@ module.exports = function automationResources(stage) {
                     Resource: 'arn:aws:states:::lambda:invoke.waitForTaskToken',
                     Parameters: {
                       FunctionName: '${WaitForApprovalArn}',
-                      Payload: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'taskToken.$': '$$.Task.Token' },
+                      Payload: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'taskToken.$': '$$.Task.Token', 'maxRiskLevel.$': '$.state.maxRiskLevel' },
                     },
                     ResultPath: '$.approval',
                     Next: 'CheckApproval',
@@ -166,6 +166,7 @@ module.exports = function automationResources(stage) {
                       'attemptCount.$': 'States.MathAdd($.state.attemptCount, 1)',
                       'solutionApplied.$': '$.statusCheck.solutionApplied',
                       'attemptsLog.$': '$.state.attemptsLog',
+                      'maxRiskLevel.$': '$.state.maxRiskLevel',
                     },
                     ResultPath: '$.state',
                     Next: 'CheckAttemptsRemaining',

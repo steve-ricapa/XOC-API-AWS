@@ -11,6 +11,23 @@ from src.shared.errors import ValidationError
 
 logger = logging.getLogger(__name__)
 
+RISK_LEVEL_ORDER = {"basic": 1, "controlled": 2, "risky": 3}
+
+
+def _compute_max_risk_level(plan: dict) -> str:
+    steps = plan.get("steps", []) if isinstance(plan, dict) else []
+    if not steps:
+        return "basic"
+    max_level = "basic"
+    max_order = 1
+    for step in steps:
+        level = (step.get("risk_level") or "basic").lower()
+        order = RISK_LEVEL_ORDER.get(level, 1)
+        if order > max_order:
+            max_order = order
+            max_level = level
+    return max_level
+
 
 def _build_service_token(tenant_id: int) -> str:
     claims = {
@@ -52,6 +69,7 @@ def handler(event: dict, context) -> dict:
         return {
             "plan": {"steps": [], "source": "fallback"},
             "planSource": "fallback",
+            "maxRiskLevel": "basic",
             "ticketId": ticket_id,
             "tenantId": tenant_id,
         }
@@ -125,9 +143,11 @@ def handler(event: dict, context) -> dict:
         }
 
     plan = data.get("plan", data)
+    max_risk_level = _compute_max_risk_level(plan)
     return {
         "plan": plan,
         "planSource": "victor_azure",
+        "maxRiskLevel": max_risk_level,
         "ticketId": ticket_id,
         "tenantId": tenant_id,
     }
