@@ -137,11 +137,26 @@ def handler(event: dict, context) -> dict:
     engine = get_engine()
 
     for record in event.get("Records", []):
-        if record.get("eventSource") != "aws:s3":
+        bucket = bucket_name
+        key = ""
+
+        if record.get("eventSource") == "aws:s3":
+            s3_info = record.get("s3", {})
+            bucket = s3_info.get("bucket", {}).get("name", bucket_name)
+            key = s3_info.get("object", {}).get("key", "")
+        elif record.get("eventSource") == "aws:sqs":
+            try:
+                body = json.loads(record.get("body") or "{}")
+            except json.JSONDecodeError:
+                continue
+            inner_records = body.get("Records") if isinstance(body, dict) else None
+            if not inner_records or not isinstance(inner_records, list):
+                continue
+            s3_info = (inner_records[0] or {}).get("s3", {})
+            bucket = s3_info.get("bucket", {}).get("name", bucket_name)
+            key = s3_info.get("object", {}).get("key", "")
+        else:
             continue
-        s3_info = record.get("s3", {})
-        bucket = s3_info.get("bucket", {}).get("name", bucket_name)
-        key = s3_info.get("object", {}).get("key", "")
 
         if not key.startswith("pending/"):
             continue

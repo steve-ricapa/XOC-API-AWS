@@ -23,10 +23,10 @@ agentsFunctionRouteVictor: /api/agents/VictorDurableAgent/run
 databaseSecretArn: ${cf:xoc-infra-data-prod.DatabaseSecretArn}
 snapshotsBucketName: ${cf:xoc-infra-storage-prod.SnapshotsBucketName}
 snapshotsBucketArn: ${cf:xoc-infra-storage-prod.SnapshotsBucketArn}
-xocDocumentsBucketName: ${cf:xoc-infra-documents-prod.XocDocumentsBucketName}
-xocDocumentsBucketArn: ${cf:xoc-infra-documents-prod.XocDocumentsBucketArn}
-txdxDocumentsBucketName: ${cf:xoc-infra-documents-prod.TxdxDocumentsBucketName}
-txdxDocumentsBucketArn: ${cf:xoc-infra-documents-prod.TxdxDocumentsBucketArn}
+xocDocumentsBucketName: xoc-prod-documents-811776156524
+xocDocumentsBucketArn: arn:aws:s3:::xoc-prod-documents-811776156524
+txdxDocumentsBucketName: txdx-prod-documents-811776156524
+txdxDocumentsBucketArn: arn:aws:s3:::txdx-prod-documents-811776156524
 txdxDocumentTypesCsv: small_report,informe_soporte
 minorityFoundrySecretArn: arn:aws:secretsmanager:us-east-1:811776156524:secret:xoc/api/prod/minority-foundry
 ticketsPointInTimeRecoveryEnabled: true
