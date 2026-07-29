@@ -63,7 +63,41 @@ module.exports = function ticketsResources(stage) {
         Properties: {
           StateMachineName: `xoc-api-tickets-${stage}-ticket-workflow`,
           StateMachineType: 'STANDARD',
-          DefinitionString: '{"Comment":"Event-driven workflow for ticket.created, ticket.updated, and ticket.status_changed events. Passes through to acknowledge events. Full orchestration lives in the automation stack.","StartAt":"AcknowledgeEvent","States":{"AcknowledgeEvent":{"Type":"Pass","End":true}}}',
+          DefinitionString: {
+            'Fn::Sub': [
+              JSON.stringify({
+                Comment: 'Routes ticket.created events to the automation workflow for assessment, planning, and execution via Victor.',
+                StartAt: 'RouteToAutomation',
+                States: {
+                  RouteToAutomation: {
+                    Type: 'Task',
+                    Resource: 'arn:aws:states:::lambda:invoke',
+                    Parameters: {
+                      FunctionName: '${StartAutomationArn}',
+                      Payload: {
+                        'ticketId.$': '$.input.ticket_id',
+                        'tenantId.$': '$.input.tenant_id',
+                        'subject.$': '$.input.subject',
+                        'eventType.$': '$.metadata.detail-type',
+                      },
+                    },
+                    End: true,
+                    Retry: [
+                      {
+                        ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException', 'Lambda.TooManyRequestsException'],
+                        IntervalSeconds: 2,
+                        MaxAttempts: 3,
+                        BackoffRate: 2,
+                      },
+                    ],
+                  },
+                },
+              }),
+              {
+                StartAutomationArn: { 'Fn::GetAtt': ['StartAutomationLambdaFunction', 'Arn'] },
+              },
+            ],
+          },
           RoleArn: { 'Fn::GetAtt': ['TicketWorkflowRole', 'Arn'] },
         },
       },
@@ -84,6 +118,7 @@ module.exports = function ticketsResources(stage) {
                   { Effect: 'Allow', Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem'], Resource: [{ 'Fn::GetAtt': ['TicketsTable', 'Arn'] }] },
                   { Effect: 'Allow', Action: ['states:StartExecution'], Resource: [`arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:stateMachine:xoc-api-automation-${stage}-workflow`] },
                   { Effect: 'Allow', Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:Query'], Resource: [`arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-automation-${stage}-cases`, `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-automation-${stage}-cases/index/*`] },
+                  { Effect: 'Allow', Action: ['lambda:InvokeFunction'], Resource: [{ 'Fn::GetAtt': ['StartAutomationLambdaFunction', 'Arn'] }] },
                 ],
               },
             },
@@ -107,10 +142,11 @@ module.exports = function ticketsResources(stage) {
               InputTransformer: {
                 InputPathsMap: {
                   detail: '$.detail',
+                  'detail-type': '$.detail-type',
                   source: '$.source',
                   time: '$.time',
                 },
-                InputTemplate: '{"input": <detail>, "metadata": {"source": <source>, "time": <time>}}',
+                InputTemplate: '{"input": <detail>, "metadata": {"detail-type": <detail-type>, "source": <source>, "time": <time>}}',
               },
             },
           ],
