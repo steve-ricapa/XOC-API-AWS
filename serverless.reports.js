@@ -23,8 +23,11 @@ module.exports = buildService({
     REPORT_REQUESTS_QUEUE_URL: `https://sqs.${'${aws:region}'}.amazonaws.com/${'${aws:accountId}'}/xoc-api-reports-${stage}-report-requests`,
     REPORT_WORKFLOW_STATE_MACHINE_ARN: `arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:stateMachine:xoc-api-reports-${stage}-report-workflow`,
     REPORT_EVENT_BUS_NAME: `xoc-api-reports-${stage}-bus`,
-    USE_AZURE_FOUNDRY: stage === 'prod' ? 'true' : 'false',
-    MINORITY_FOUNDRY_SECRET_ARN: stage === 'prod' ? `xoc/api/${stage}/minority-foundry` : '',
+    USE_AZURE_FOUNDRY: process.env.USE_AZURE_FOUNDRY || 'true',
+    MINORITY_FOUNDRY_SECRET_ARN: process.env.MINORITY_FOUNDRY_SECRET_ARN || (stage === 'prod' ? `xoc/api/${stage}/minority-foundry` : ''),
+    AZURE_FOUNDRY_PROJECT_ENDPOINT: process.env.AZURE_FOUNDRY_PROJECT_ENDPOINT || '',
+    AZURE_FOUNDRY_OPENAI_ENDPOINT: process.env.AZURE_FOUNDRY_OPENAI_ENDPOINT || '',
+    AZURE_FOUNDRY_MODEL_DEPLOYMENT: process.env.AZURE_FOUNDRY_MODEL_DEPLOYMENT || 'gpt-5-mini',
     REPORT_MAX_IMAGE_MB: '10',
     MINORITY_MAX_OUTPUT_TOKENS: '9000',
     MINORITY_JSON_SCHEMA: 'true',
@@ -38,6 +41,7 @@ module.exports = buildService({
         'src/handlers/domains/reports.py',
         'src/handlers/routes/reports.py',
         'src/reports/**',
+        'Plantillas/**',
         'src/shared/**',
         'src/persistence/**',
         'requirements.reports.txt',
@@ -45,6 +49,7 @@ module.exports = buildService({
       events: [
         protectedRoute(stage, 'POST', '/documents'),
         protectedRoute(stage, 'GET', '/documents/{documentId}'),
+        protectedRoute(stage, 'GET', '/documents/{documentId}/download'),
         protectedRoute(stage, 'GET', '/documents'),
       ],
     }),
@@ -55,6 +60,7 @@ module.exports = buildService({
       include: [
         'src/handlers/processors/report_orchestrator.py',
         'src/reports/**',
+        'Plantillas/**',
         'src/shared/**',
         'requirements.reports.txt',
       ],
@@ -76,6 +82,7 @@ module.exports = buildService({
       include: [
         'src/handlers/workers/report_collect.py',
         'src/reports/**',
+        'Plantillas/**',
         'src/shared/**',
         'src/persistence/**',
         'src/integrations/**',
@@ -91,6 +98,7 @@ module.exports = buildService({
       include: [
         'src/handlers/workers/report_generate_content.py',
         'src/reports/**',
+        'Plantillas/**',
         'src/shared/**',
         'requirements.reports.txt',
       ],
@@ -102,6 +110,7 @@ module.exports = buildService({
       include: [
         'src/handlers/workers/report_validate.py',
         'src/reports/**',
+        'Plantillas/**',
         'src/shared/**',
         'requirements.reports.txt',
       ],
@@ -114,6 +123,7 @@ module.exports = buildService({
       include: [
         'src/handlers/workers/report_generate_docx.py',
         'src/reports/**',
+        'Plantillas/**',
         'src/shared/**',
         'requirements.reports.txt',
       ],

@@ -34,7 +34,8 @@
     "dev:tenant": "uvicorn src.handlers.domains.tenant:app --reload --host 0.0.0.0 --port 8002",
     "dev:admin": "uvicorn src.handlers.domains.admin:app --reload --host 0.0.0.0 --port 8003",
     "dev:ops": "uvicorn src.handlers.domains.security_ops:app --reload --host 0.0.0.0 --port 8004",
-    "dev:tickets": "uvicorn src.handlers.domains.tickets_dynamo:app --reload --host 0.0.0.0 --port 8005"
+    "dev:tickets": "uvicorn src.handlers.domains.tickets_dynamo:app --reload --host 0.0.0.0 --port 8005",
+    "dev:reports": "python -m uvicorn src.handlers.domains.reports:app --reload --host 0.0.0.0 --port 8006"
   },
   "devDependencies": {
     "serverless": "^4.18.2"

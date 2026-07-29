@@ -40,7 +40,7 @@ def _validate_content(content: dict, document_type: str) -> dict:
     severity = content.get("severity_summary", {})
     if not isinstance(severity, dict):
         errors.append("severity_summary must be a dict")
-    elif not any(severity.values()):
+    elif document_type != "minority_report" and not any(severity.values()):
         errors.append("severity_summary is empty")
 
     findings = content.get("findings", [])

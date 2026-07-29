@@ -160,6 +160,104 @@ Reglas obligatorias:
 """
 
 
+MINORITY_PLAN_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["report_type", "client_name", "period", "sections", "figures", "tables", "limitations"],
+    "properties": {
+        "report_type": {"type": "string"},
+        "client_name": {"type": "string"},
+        "period": {"type": "string"},
+        "sections": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "title", "include", "reason", "data_sources", "expected_content"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "title": {"type": "string"},
+                    "include": {"type": "boolean"},
+                    "reason": {"type": "string"},
+                    "data_sources": {"type": "array", "items": {"type": "string"}},
+                    "expected_content": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        },
+        "figures": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["label", "description", "place_after_section"],
+                "properties": {
+                    "label": {"type": "string"},
+                    "description": {"type": "string"},
+                    "place_after_section": {"type": "string"},
+                },
+            },
+        },
+        "tables": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "title", "source", "columns", "place_after_section"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "title": {"type": "string"},
+                    "source": {"type": "string"},
+                    "columns": {"type": "array", "items": {"type": "string"}},
+                    "place_after_section": {"type": "string"},
+                },
+            },
+        },
+        "limitations": {"type": "array", "items": {"type": "string"}},
+    },
+}
+
+
+PLANNER_PROMPT_BASE = """Eres un planner senior XOC para Minority Report.
+Tu tarea NO es redactar el reporte final. Tu tarea es planificar la estructura usando la plantilla y la evidencia entregada.
+
+Reglas:
+- Devuelve SOLO JSON valido.
+- No generes DOCX.
+- No redactes parrafos finales.
+- No inventes datos.
+- Manten el plan compacto: maximo 13 secciones, 5 tablas y 5 figuras.
+- Respeta allowed_top_level_sections de template_rules.
+- Si una seccion no tiene evidencia suficiente, marca include=false y explica el motivo.
+- En Seguridad por Dominio planifica tablas con columnas exactas: ID, Vulnerabilidades, Host Afectados, Severidad.
+- Para Severidad usa solo BAJO, MEDIO o ALTO.
+- Planifica Figura 1 y Figura 2 en 2.1 Analisis Comparativo de Vulnerabilidades Semanales.
+- Planifica Figura 3 en 2.2 Histograma de la seguridad.
+
+Variantes:
+- report for client: solo Datos generales, Resumen ejecutivo del dominio y Seguridad por Dominio.
+- report for admin client: agrega Reporte de acciones trabajadas durante la semana, Resultados obtenidos y Noticias de seguridad.
+"""
+
+
+BUILDER_PROMPT_BASE = """Eres un builder senior XOC para Minority Report.
+Tu tarea es generar el JSON final del reporte usando un plan estructural previamente generado y la evidencia entregada.
+
+Reglas:
+- Devuelve SOLO JSON valido.
+- No generes DOCX.
+- Respeta el plan recibido.
+- Usa unicamente la evidencia entregada.
+- No inventes fechas, IPs, activos, hallazgos, severidades, acciones, resultados, herramientas ni noticias.
+- Si falta informacion para una parte del plan, indicalo en limitations.
+- Redacta en tono ejecutivo-tecnico, claro y formal.
+- Respeta report_variant/template_rules: no redactes secciones top-level fuera de allowed_top_level_sections.
+- Aplica section_instructions/admin_reference sin inventar evidencia.
+- En Seguridad por Dominio usa severidad normalizada BAJO, MEDIO o ALTO.
+- Figura 1 y Figura 2 pertenecen a 2.1; Figura 3 pertenece a 2.2.
+- El resultado debe cumplir exactamente el schema final de Minority Report.
+"""
+
+
 @dataclass(frozen=True)
 class MinorityFoundrySettings:
     use_azure_foundry: bool
@@ -449,6 +547,148 @@ def _extract_response_text(response: Any) -> str:
     raise RuntimeError("Foundry responded without visible text")
 
 
+def _normalize_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "report_type": _clean_string(plan.get("report_type")),
+        "client_name": _clean_string(plan.get("client_name")),
+        "period": _clean_string(plan.get("period")),
+        "sections": [
+            {
+                "id": _clean_string(item.get("id")),
+                "title": _clean_string(item.get("title")),
+                "include": bool(item.get("include")),
+                "reason": _clean_string(item.get("reason")),
+                "data_sources": [_clean_string(value) for value in _as_list(item.get("data_sources")) if _clean_string(value)],
+                "expected_content": [_clean_string(value) for value in _as_list(item.get("expected_content")) if _clean_string(value)],
+            }
+            for item in _as_list(plan.get("sections"))
+            if isinstance(item, dict) and _clean_string(item.get("title"))
+        ],
+        "figures": [
+            {
+                "label": _clean_string(item.get("label")),
+                "description": _clean_string(item.get("description")),
+                "place_after_section": _clean_string(item.get("place_after_section")),
+            }
+            for item in _as_list(plan.get("figures"))
+            if isinstance(item, dict) and _clean_string(item.get("label"))
+        ],
+        "tables": [
+            {
+                "id": _clean_string(item.get("id")),
+                "title": _clean_string(item.get("title")),
+                "source": _clean_string(item.get("source")),
+                "columns": [_clean_string(value) for value in _as_list(item.get("columns")) if _clean_string(value)],
+                "place_after_section": _clean_string(item.get("place_after_section")),
+            }
+            for item in _as_list(plan.get("tables"))
+            if isinstance(item, dict) and _clean_string(item.get("title"))
+        ],
+        "limitations": [_clean_string(value) for value in _as_list(plan.get("limitations")) if _clean_string(value)],
+    }
+
+
+def parse_and_validate_plan_json(raw: str) -> dict[str, Any]:
+    clean = _strip_json_fence(raw or "")
+    if not clean:
+        raise RuntimeError("Foundry Planner returned no visible JSON text")
+    parsed = _loads_json_with_repair(clean)
+    return _normalize_plan(parsed)
+
+
+def _planner_structured_snapshot(structured_data: dict[str, Any]) -> dict[str, Any]:
+    metrics = structured_data.get("aggregated_metrics") if isinstance(structured_data.get("aggregated_metrics"), dict) else {}
+    return {
+        "source": structured_data.get("source"),
+        "client_name": structured_data.get("client_name") or structured_data.get("tenant_name"),
+        "period": structured_data.get("period"),
+        "document_code": structured_data.get("document_code"),
+        "report_variant": structured_data.get("report_variant"),
+        "template_variant": structured_data.get("template_variant"),
+        "admin_reference": structured_data.get("admin_reference"),
+        "section_instructions": structured_data.get("section_instructions"),
+        "template_rules": structured_data.get("template_rules"),
+        "tools": structured_data.get("tools"),
+        "severity_summary": structured_data.get("severity_summary"),
+        "previous_severity_summary": structured_data.get("previous_severity_summary"),
+        "aggregated_metrics": {
+            "data_base": metrics.get("data_base"),
+            "vulnerability_comparison": metrics.get("vulnerability_comparison"),
+            "histogram_summary": metrics.get("histogram_summary"),
+            "results_obtained": metrics.get("results_obtained"),
+            "pending_findings_count": len(_as_list(metrics.get("pending_findings"))),
+            "security_domains_count": len(_as_list(metrics.get("security_domains"))),
+            "weekly_actions_count": len(_as_list(metrics.get("weekly_actions"))),
+        },
+        "chart_evidence": structured_data.get("chart_evidence"),
+        "scan_snapshot": structured_data.get("scan_snapshot"),
+    }
+
+
+def build_planner_prompt(*, client_name: str, period: str, analyst_text: str, structured_data: dict[str, Any], reference_markdown: str = "") -> str:
+    structured = _planner_structured_snapshot(structured_data or {})
+    return (
+        f"{PLANNER_PROMPT_BASE}\n\n"
+        f"Cliente objetivo: {client_name or 'No especificado'}\n"
+        f"Periodo objetivo: {period or 'No especificado'}\n\n"
+        "Instruccion del backend/analista:\n"
+        f"{analyst_text.strip() or 'No se proporciono instruccion adicional.'}\n\n"
+        "Snapshot estructurado de BD/evidencia:\n"
+        f"{json.dumps(structured, ensure_ascii=False, indent=2)}\n\n"
+        "Referencia de formato Minority Report. Usala solo para planificar estructura/estilo; no copies datos del cliente ejemplo:\n"
+        f"{reference_markdown[:12000] if reference_markdown else 'No se proporciono referencia adicional.'}"
+    )
+
+
+def build_builder_prompt(
+    *,
+    client_name: str,
+    period: str,
+    analyst_text: str,
+    structured_data: dict[str, Any],
+    plan: dict[str, Any],
+    reference_markdown: str = "",
+) -> str:
+    return (
+        f"{BUILDER_PROMPT_BASE}\n\n"
+        f"Cliente objetivo: {client_name or 'No especificado'}\n"
+        f"Periodo objetivo: {period or 'No especificado'}\n\n"
+        "Plan estructural aprobado por Planner:\n"
+        f"{json.dumps(plan, ensure_ascii=False, indent=2)}\n\n"
+        "Instruccion del backend/analista:\n"
+        f"{analyst_text.strip() or 'No se proporciono instruccion adicional.'}\n\n"
+        "Snapshot estructurado completo de BD/evidencia:\n"
+        f"{json.dumps(structured_data or {}, ensure_ascii=False, indent=2)}\n\n"
+        "Referencia de formato Minority Report. Usala solo como guia de tono/estructura; no copies datos del cliente ejemplo:\n"
+        f"{reference_markdown[:12000] if reference_markdown else 'No se proporciono referencia adicional.'}"
+    )
+
+
+def _azure_json_response(settings: MinorityFoundrySettings, *, prompt: str, schema: dict[str, Any], schema_name: str, max_output_tokens: int) -> str:
+    request: dict[str, Any] = {
+        "model": settings.model_deployment,
+        "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
+        "max_output_tokens": max_output_tokens,
+    }
+    if settings.use_json_schema:
+        request["text"] = {
+            "format": {
+                "type": "json_schema",
+                "name": schema_name,
+                "schema": schema,
+                "strict": True,
+            }
+        }
+    try:
+        response = _foundry_request(settings, request)
+    except Exception:
+        if "text" not in request:
+            raise
+        request.pop("text", None)
+        response = _foundry_request(settings, request)
+    return _extract_response_text(response)
+
+
 def generate_minority_payload(*, client_name: str, period: str, analyst_text: str, structured_data: dict[str, Any], reference_markdown: str = "") -> dict[str, Any]:
     settings = get_minority_foundry_settings()
     if not settings.use_azure_foundry:
@@ -483,3 +723,49 @@ def generate_minority_payload(*, client_name: str, period: str, analyst_text: st
         request.pop("text", None)
         response = _foundry_request(settings, request)
     return parse_and_validate_json(_extract_response_text(response))
+
+
+def generate_minority_payload_planner_builder(
+    *,
+    client_name: str,
+    period: str,
+    analyst_text: str,
+    structured_data: dict[str, Any],
+    reference_markdown: str = "",
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    settings = get_minority_foundry_settings()
+    if not settings.use_azure_foundry:
+        raise RuntimeError("Minority report generation requires Azure Foundry and mock fallback is disabled")
+
+    planner_prompt = build_planner_prompt(
+        client_name=client_name,
+        period=period,
+        analyst_text=analyst_text,
+        structured_data=structured_data,
+        reference_markdown=reference_markdown,
+    )
+    raw_plan = _azure_json_response(
+        settings,
+        prompt=planner_prompt,
+        schema=MINORITY_PLAN_JSON_SCHEMA,
+        schema_name="xoc_minority_report_plan",
+        max_output_tokens=int(os.environ.get("MINORITY_PLANNER_MAX_OUTPUT_TOKENS", "4000")),
+    )
+    plan = parse_and_validate_plan_json(raw_plan)
+
+    builder_prompt = build_builder_prompt(
+        client_name=client_name,
+        period=period,
+        analyst_text=analyst_text,
+        structured_data=structured_data,
+        reference_markdown=reference_markdown,
+        plan=plan,
+    )
+    raw_payload = _azure_json_response(
+        settings,
+        prompt=builder_prompt,
+        schema=MINORITY_JSON_SCHEMA,
+        schema_name="xoc_minority_report_payload",
+        max_output_tokens=settings.max_output_tokens,
+    )
+    return parse_and_validate_json(raw_payload), plan

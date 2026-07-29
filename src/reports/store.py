@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -12,8 +13,74 @@ from src.shared.errors import NotFoundError
 
 DOCUMENT_STATUSES = frozenset({"PENDING", "PROCESSING", "COMPLETED", "FAILED"})
 
-dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(os.environ["REPORTS_TABLE_NAME"])
+
+def _use_local_store() -> bool:
+    configured = (os.environ.get("REPORTS_STORE_MODE") or "").strip().lower()
+    return configured == "local" or not os.environ.get("REPORTS_TABLE_NAME")
+
+
+def _local_store_path() -> Path:
+    configured = os.environ.get("REPORTS_LOCAL_STORE_PATH")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (Path(__file__).resolve().parents[2] / "local-output" / "reports" / "documents-store.json").resolve()
+
+
+class _LocalReportsTable:
+    def _read(self) -> list[dict]:
+        path = _local_store_path()
+        if not path.exists():
+            return []
+        try:
+            data = path.read_text(encoding="utf-8")
+            parsed = __import__("json").loads(data)
+        except Exception:
+            return []
+        return parsed if isinstance(parsed, list) else []
+
+    def _write(self, items: list[dict]) -> None:
+        path = _local_store_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        __import__("json").dump(items, path.open("w", encoding="utf-8"), ensure_ascii=False, indent=2, default=str)
+
+    def put_item(self, Item: dict) -> dict:
+        items = self._read()
+        items = [item for item in items if not (item.get("pk") == Item.get("pk") and item.get("sk") == Item.get("sk"))]
+        items.append(Item)
+        self._write(items)
+        return {}
+
+    def get_item(self, Key: dict) -> dict:
+        for item in self._read():
+            if item.get("pk") == Key.get("pk") and item.get("sk") == Key.get("sk"):
+                return {"Item": item}
+        return {}
+
+    def update_item(self, Key: dict, UpdateExpression: str, ExpressionAttributeValues: dict, ExpressionAttributeNames: dict) -> dict:
+        items = self._read()
+        for index, item in enumerate(items):
+            if item.get("pk") != Key.get("pk") or item.get("sk") != Key.get("sk"):
+                continue
+            reverse_names = {alias: name for alias, name in ExpressionAttributeNames.items()}
+            for update in UpdateExpression.replace("SET ", "", 1).split(","):
+                left, right = [part.strip() for part in update.split("=", 1)]
+                field = reverse_names.get(left, left.lstrip("#"))
+                item[field] = ExpressionAttributeValues[right]
+            items[index] = item
+            self._write(items)
+            return {}
+        raise NotFoundError("Document not found")
+
+    def query(self, **kwargs) -> dict:
+        items = self._read()
+        expression = kwargs.get("KeyConditionExpression")
+        # Local mode only needs tenant list and optional status list. boto3 Key
+        # expressions are opaque, so callers below bypass this method in local.
+        return {"Items": items, "Count": len(items)}
+
+
+dynamodb = None if _use_local_store() else boto3.resource("dynamodb")
+table = _LocalReportsTable() if _use_local_store() else dynamodb.Table(os.environ["REPORTS_TABLE_NAME"])
 
 
 def now_iso() -> str:
@@ -169,6 +236,14 @@ def list_tenant_document_jobs(
     status: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
+    if _use_local_store():
+        items = [
+            item
+            for item in table._read()
+            if item.get("pk") == tenant_pk(tenant_id) and (status is None or item.get("status") == status)
+        ]
+        items.sort(key=lambda item: item.get("created_at", ""), reverse=True)
+        return [serialize_report(item) for item in items[:limit]]
     if status:
         items = []
         last_key = None
@@ -207,6 +282,14 @@ def list_tenant_document_jobs(
 
 
 def count_tenant_document_jobs(tenant_id: int, status: str | None = None) -> int:
+    if _use_local_store():
+        return len(
+            [
+                item
+                for item in table._read()
+                if item.get("pk") == tenant_pk(tenant_id) and (status is None or item.get("status") == status)
+            ]
+        )
     if status:
         total = 0
         last_key = None
@@ -242,6 +325,11 @@ def count_tenant_document_jobs(tenant_id: int, status: str | None = None) -> int
 
 
 def delete_tenant_document_jobs(tenant_id: int) -> int:
+    if _use_local_store():
+        items = table._read()
+        kept = [item for item in items if item.get("pk") != tenant_pk(tenant_id)]
+        table._write(kept)
+        return len(items) - len(kept)
     items = []
     last_key = None
     while True:

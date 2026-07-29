@@ -11,7 +11,7 @@ from src.reports.docx_renderer import (
     replace_residual_template_text,
     validate_docx_file,
 )
-from src.reports.minority_docx import build_output_filename, generate_minority_report_docx
+from src.reports.minority_docx import base_template_path, build_output_filename, generate_minority_report_docx, normalize_report_variant
 from src.reports.storage import (
     download_artifact,
     download_template,
@@ -39,18 +39,25 @@ def handler(event: dict, context) -> dict:
         output_path = os.path.join(tmpdir, "generated.docx")
         chart_path = os.path.join(tmpdir, "chart.png")
 
-        has_template = template_exists(document_type)
-        if has_template:
-            download_template(document_type, template_path)
-        else:
-            _create_minimal_template(template_path)
-
         if document_type == "minority_report":
             minority_payload = content.get("minority_payload") or {}
             output_filename = build_output_filename(minority_payload)
             output_path = os.path.join(tmpdir, output_filename)
+            report_variant = normalize_report_variant(
+                minority_payload.get("report_variant")
+                or minority_payload.get("template_variant")
+                or (minority_payload.get("mock_meta") or {}).get("report_variant")
+            )
+            template_path = str(base_template_path(report_variant))
+            _prepare_minority_chart_images(minority_payload, tmpdir)
             generate_minority_report_docx(template_path, minority_payload, output_path)
         else:
+            has_template = template_exists(document_type)
+            if has_template:
+                download_template(document_type, template_path)
+            else:
+                _create_minimal_template(template_path)
+
             data = _build_render_data(content)
 
             try:
@@ -67,7 +74,13 @@ def handler(event: dict, context) -> dict:
         if not valid:
             raise RuntimeError(f"DOCX validation failed: {msg}")
 
-        result = upload_document(tenant_id, document_id, document_type, output_path)
+        result = upload_document(
+            tenant_id,
+            document_id,
+            document_type,
+            output_path,
+            filename=os.path.basename(output_path),
+        )
         logger.info("DOCX uploaded for document %s: s3://%s/%s", document_id, result["s3_bucket"], result["s3_key"])
 
     return {
@@ -77,7 +90,18 @@ def handler(event: dict, context) -> dict:
         "s3Key": result["s3_key"],
         "s3VersionId": result["s3_version_id"],
         "sizeBytes": result["size_bytes"],
+        "localPath": result.get("local_path"),
     }
+
+
+def _prepare_minority_chart_images(payload: dict, tmpdir: str) -> None:
+    from src.reports.minority_charts import generate_minority_charts
+
+    chart_data = payload.get("chart_data") or {}
+    if not chart_data:
+        return
+    chart_dir = Path(tmpdir) / "charts"
+    payload["chart_images"] = generate_minority_charts(chart_data, chart_dir)
 
 
 def _build_render_data(content: dict) -> dict:

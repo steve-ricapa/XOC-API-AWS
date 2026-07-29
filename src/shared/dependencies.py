@@ -1,3 +1,4 @@
+import os
 from typing import Any
 
 from fastapi import Depends, Request
@@ -5,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
 from src.persistence.models import User
+from src.shared.auth import decode_token
 from src.shared.errors import ForbiddenError, UnauthorizedError
 
 
@@ -18,7 +20,21 @@ def get_request_claims(request: Request) -> dict[str, Any]:
     authorizer = request_context.get("authorizer") or {}
     if isinstance(authorizer.get("lambda"), dict):
         return authorizer["lambda"]
-    return authorizer if isinstance(authorizer, dict) else {}
+    if isinstance(authorizer, dict) and authorizer:
+        return authorizer
+
+    # Uvicorn no recibe el contexto que API Gateway agrega tras el authorizer.
+    # Para ejecutar localmente el mismo flujo protegido contra la BD real, se
+    # puede validar el Bearer token original de forma explícita. Está apagado
+    # por defecto y no reemplaza el authorizer de AWS.
+    local_jwt_auth = (os.environ.get("LOCAL_JWT_AUTH") or "").strip().lower()
+    if local_jwt_auth not in {"1", "true", "yes"}:
+        return {}
+    authorization = request.headers.get("authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        return {}
+    return decode_token(token.strip())
 
 
 def require_access_claims(claims: dict[str, Any] = Depends(get_request_claims)) -> dict[str, Any]:

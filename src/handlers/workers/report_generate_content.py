@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.reports.minority_foundry import generate_minority_payload
+from src.reports.minority_foundry import generate_minority_payload_planner_builder
 from src.reports.storage import download_artifact, upload_artifact
 from src.shared.logging import logger
 
@@ -39,19 +39,64 @@ def _generate_content(collected_data: dict, document_type: str) -> dict:
     if document_type == "minority_report":
         tenant = collected_data.get("tenant", {})
         document = collected_data.get("document", {})
-        payload = generate_minority_payload(
+        payload, plan = generate_minority_payload_planner_builder(
             client_name=str(tenant.get("name") or "Cliente"),
             period=str(document.get("period") or "Periodo no especificado"),
             analyst_text=str(collected_data.get("analyst_text") or ""),
             structured_data=collected_data.get("structured_data") or {},
             reference_markdown=_load_minority_reference(),
         )
-        payload.setdefault("document_code", document.get("id"))
+        structured = collected_data.get("structured_data") or {}
+        metrics = structured.get("aggregated_metrics") or {}
+        payload.setdefault("document_code", collected_data.get("document_code") or structured.get("document_code") or document.get("id"))
+        payload["report_variant"] = collected_data.get("report_variant") or structured.get("report_variant") or "client"
+        payload["template_variant"] = structured.get("template_variant") or (
+            "report for admin client" if payload["report_variant"] == "client_admin" else "report for client"
+        )
+        # La IA redacta texto, pero los valores usados en tablas y figuras se
+        # preservan exactamente como fueron recolectados de la BD del tenant.
+        payload["client_name"] = str(tenant.get("name") or payload.get("client_name") or "Cliente")
+        payload["period"] = str(document.get("period") or payload.get("period") or "Periodo no especificado")
+        payload["prepared_by"] = "TXDXSECURE"
+        payload["tools"] = structured.get("tools") or []
+        payload["data_base"] = metrics.get("data_base") or payload.get("data_base") or ""
+        payload["vulnerability_comparison"] = metrics.get("vulnerability_comparison") or {
+            "summary": "No hay datos comparativos disponibles para el período evaluado.",
+            "severity_rows": [],
+        }
+        payload["histogram_summary"] = metrics.get("histogram_summary") or payload.get("histogram_summary") or ""
+        payload["security_domains"] = structured.get("security_domains") or []
+        payload["pending_findings"] = metrics.get("pending_findings") or structured.get("pending_findings") or []
+        payload["chart_data"] = collected_data.get("chart_data") or structured.get("chart_evidence") or {}
+        # Estas secciones son evidencia ingresada/controlada por backend. No se
+        # dejan a interpretación del modelo para evitar duplicación de texto o
+        # noticias inventadas.
+        module_actions = structured.get("weekly_actions") or []
+        if payload["report_variant"] == "client_admin" and module_actions:
+            payload["weekly_actions"] = module_actions
+            payload["results_obtained"] = (
+                f"Se consolidó la información de {len(module_actions)} módulo(s) de reporte. "
+                "Los resultados se presentan como conclusiones operativas derivadas de las actividades registradas, "
+                "sin repetir el detalle de cada acción."
+            )
+        if payload["report_variant"] == "client_admin":
+            results = metrics.get("results_obtained") or []
+            payload["results_obtained"] = (
+                f"Resultados del período: {' '.join(str(item) for item in results)} "
+                "Estas conclusiones se derivan de hallazgos, tickets y escaneos reales, "
+                "sin repetir el detalle de las acciones registradas en los módulos."
+            )
+        else:
+            payload["weekly_actions"] = structured.get("weekly_actions") or []
+        manual_security_news = structured.get("manual_security_news") or []
+        if payload["report_variant"] == "client_admin" and manual_security_news:
+            payload["security_news"] = manual_security_news
         normalized_findings = _build_minority_findings(payload)
         return {
             "document_type": document_type,
             "document": document,
             "minority_payload": payload,
+            "minority_plan": plan,
             "sections": _build_minority_sections(payload),
             "findings": normalized_findings,
             "domains": payload.get("security_domains", []),

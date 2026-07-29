@@ -42,6 +42,8 @@ def handler(event: dict, context) -> dict:
         "s3_bucket": s3_bucket,
         "s3_key": s3_key,
     }
+    if event.get("localPath"):
+        extra["local_path"] = event.get("localPath")
     if s3_version_id:
         extra["s3_version_id"] = s3_version_id
     if size_bytes is not None:

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+from pathlib import Path
 
 import boto3
 
@@ -9,6 +12,30 @@ from src.shared.config import (
     get_txdx_documents_bucket_name,
     get_xoc_documents_bucket_name,
 )
+
+
+LOCAL_STORAGE_MODE = "local"
+LOCAL_URI_PREFIX = "local://"
+
+
+def _storage_mode() -> str:
+    return (os.environ.get("REPORTS_STORAGE_MODE") or os.environ.get("DOCUMENTS_STORAGE_MODE") or "s3").strip().lower()
+
+
+def is_local_storage_enabled() -> bool:
+    return _storage_mode() == LOCAL_STORAGE_MODE
+
+
+def local_storage_root() -> Path:
+    configured = os.environ.get("REPORTS_LOCAL_OUTPUT_DIR") or os.environ.get("DOCUMENTS_LOCAL_OUTPUT_DIR")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (Path(__file__).resolve().parents[2] / "local-output" / "reports").resolve()
+
+
+def _local_path_for_key(key: str) -> Path:
+    safe_key = key.replace("\\", "/").lstrip("/")
+    return local_storage_root() / safe_key
 
 
 def _s3() -> boto3.client:
@@ -55,6 +82,15 @@ def build_artifact_s3_key(
 
 
 def download_template(document_type: str, local_path: str) -> str:
+    if is_local_storage_enabled():
+        from src.reports.minority_docx import base_template_path, normalize_report_variant
+
+        variant = normalize_report_variant(os.environ.get("MINORITY_REPORT_TEMPLATE_VARIANT"))
+        source = base_template_path(variant) if document_type == "minority_report" else None
+        if source and source.is_file():
+            Path(local_path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, local_path)
+            return local_path
     bucket = get_documents_bucket_name(document_type)
     key = resolve_template_key(document_type)
     _s3().download_file(bucket, key, local_path)
@@ -62,6 +98,13 @@ def download_template(document_type: str, local_path: str) -> str:
 
 
 def template_exists(document_type: str) -> bool:
+    if is_local_storage_enabled() and document_type == "minority_report":
+        from src.reports.minority_docx import base_template_path
+
+        try:
+            return base_template_path("client").is_file()
+        except Exception:
+            return False
     try:
         resolve_template_key(document_type)
         return True
@@ -81,6 +124,18 @@ def resolve_template_key(document_type: str) -> str:
 
 
 def upload_document(tenant_id: int, document_id: str, document_type: str, local_path: str, filename: str = "generated.docx") -> dict:
+    if is_local_storage_enabled():
+        key = build_document_s3_key(tenant_id, document_id, document_type, filename)
+        target = _local_path_for_key(key)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(local_path, target)
+        return {
+            "s3_bucket": "local",
+            "s3_key": f"{LOCAL_URI_PREFIX}{target}",
+            "s3_version_id": "",
+            "size_bytes": target.stat().st_size,
+            "local_path": str(target),
+        }
     bucket = get_documents_bucket_name(document_type)
     key = build_document_s3_key(tenant_id, document_id, document_type, filename)
     extra_args = {"ContentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
@@ -95,6 +150,12 @@ def upload_document(tenant_id: int, document_id: str, document_type: str, local_
 
 
 def upload_artifact(tenant_id: int, document_id: str, document_type: str, artifact_name: str, data: dict) -> str:
+    if is_local_storage_enabled():
+        key = build_artifact_s3_key(tenant_id, document_id, document_type, artifact_name)
+        target = _local_path_for_key(key)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(data, ensure_ascii=False, default=str, indent=2), encoding="utf-8")
+        return f"{LOCAL_URI_PREFIX}{target}"
     bucket = get_documents_bucket_name(document_type)
     key = build_artifact_s3_key(tenant_id, document_id, document_type, artifact_name)
     _s3().put_object(
@@ -107,6 +168,9 @@ def upload_artifact(tenant_id: int, document_id: str, document_type: str, artifa
 
 
 def download_artifact(s3_uri: str) -> dict:
+    if s3_uri.startswith(LOCAL_URI_PREFIX):
+        path = Path(s3_uri.replace(LOCAL_URI_PREFIX, "", 1))
+        return json.loads(path.read_text(encoding="utf-8"))
     if not s3_uri.startswith("s3://"):
         raise ValueError(f"Invalid S3 URI: {s3_uri}")
     parts = s3_uri.replace("s3://", "").split("/", 1)
@@ -117,6 +181,8 @@ def download_artifact(s3_uri: str) -> dict:
 
 
 def generate_download_url(s3_key: str, expires_in: int = 3600, *, bucket_name: str | None = None, document_type: str | None = None) -> str:
+    if is_local_storage_enabled() or (s3_key or "").startswith(LOCAL_URI_PREFIX):
+        return ""
     bucket = bucket_name or get_documents_bucket_name(document_type or "")
     url = _s3().generate_presigned_url(
         ClientMethod="get_object",
