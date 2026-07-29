@@ -5,6 +5,7 @@ module.exports = buildService({
   service: 'xoc-api-automation',
   attachToSharedHttpApi: true,
   iam: { automation: true, database: true, jwt: true, vpc: true },
+  pythonRequirements: { dockerizePip: true },
   environment: (stage) => {
     const env = commonEnvironment(stage);
     delete env.XOC_DOCUMENTS_BUCKET_NAME;
