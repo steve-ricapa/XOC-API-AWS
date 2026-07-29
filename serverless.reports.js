@@ -50,6 +50,7 @@ module.exports = buildService({
         protectedRoute(stage, 'POST', '/documents'),
         protectedRoute(stage, 'GET', '/documents/{documentId}'),
         protectedRoute(stage, 'GET', '/documents/{documentId}/download'),
+        protectedRoute(stage, 'GET', '/documents/{documentId}/preview'),
         protectedRoute(stage, 'GET', '/documents'),
       ],
     }),

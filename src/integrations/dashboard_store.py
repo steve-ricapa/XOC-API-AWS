@@ -22,6 +22,12 @@ from src.integrations.summary_store import (
     build_zabbix_summary,
 )
 from src.persistence.models import AgentApiKey, FindingIndex, ScanSummary, ScanSummaryNoc, Ticket
+from src.shared.errors import NotFoundError
+from src.shared.tenant_preferences import (
+    get_tenant_preferences,
+    get_visible_integration_providers,
+    hide_unconfigured_providers,
+)
 
 _SUPPORTED_PROVIDERS = {"openvas", "insightvm", "nessus", "wazuh", "zabbix", "uptime_kuma"}
 _VULN_PROVIDERS = {"openvas", "insightvm", "nessus"}
@@ -542,14 +548,21 @@ def _build_integration_summary_slots(provider: str, item: dict) -> list[dict]:
     return []
 
 
-def _build_home_integration_status(integrations_block: dict) -> list[dict]:
+def _build_home_integration_status(integrations_block: dict, preferences: dict | None = None) -> list[dict]:
+    preferences = preferences or {}
+    visible_providers = set(get_visible_integration_providers(preferences)) or set(_HOME_PROVIDER_META.keys())
+    hide_unconfigured = hide_unconfigured_providers(preferences)
     result = []
     for provider in ("openvas", "insightvm", "nessus", "wazuh", "zabbix", "uptime_kuma"):
+        if provider not in visible_providers:
+            continue
         item = integrations_block.get(provider) or {}
         meta = _HOME_PROVIDER_META[provider]
         configured = bool(item.get("configured"))
         active = bool(item.get("active"))
         has_data = bool(item.get("has_data"))
+        if hide_unconfigured and not configured:
+            continue
         result.append(
             {
                 "provider": provider,
@@ -568,29 +581,38 @@ def _build_home_integration_status(integrations_block: dict) -> list[dict]:
 
 
 def build_home_dashboard(session: Session, tenant_id: int) -> dict:
-    integrations_block = build_dashboard_summary(session, tenant_id)
-    range_info = _parse_range("30d")
-    start = range_info["start"]
-    end = range_info["end"]
-
-    all_top_cves = []
-    for prov in _VULN_PROVIDERS:
-        all_top_cves.extend(_build_top_cves(session, tenant_id, prov, start, end))
-    all_top_cves.sort(key=lambda x: x["impact_score"], reverse=True)
-    top_threats = all_top_cves[:10]
-
-    tickets_count = session.query(func.count(Ticket.id)).filter(
+    preferences = get_tenant_preferences(session, tenant_id)
+    integrations_block = build_dashboard_summary(session, tenant_id, preferences)
+    ticket_status_rows = session.query(
+        Ticket.status,
+        func.count(Ticket.id),
+    ).filter(
         Ticket.tenant_id == tenant_id,
-        Ticket.status != "resolved",
+    ).group_by(Ticket.status).all()
+
+    ticket_status_counts = {
+        str(status or "UNKNOWN"): int(count or 0)
+        for status, count in ticket_status_rows
+    }
+    total_tickets = sum(ticket_status_counts.values())
+    manual_pending = sum(
+        count for status, count in ticket_status_counts.items()
+        if status not in {"EXECUTED", "RESUELTO"}
+    )
+    automated_completed = session.query(func.count(Ticket.id)).filter(
+        Ticket.tenant_id == tenant_id,
+        (Ticket.status == "EXECUTED") | (Ticket.execution_status == "COMPLETED"),
     ).scalar() or 0
 
     return {
-        "integrations": integrations_block,
-        "integration_status": _build_home_integration_status(integrations_block),
+        "preferences": preferences,
+        "integration_status": _build_home_integration_status(integrations_block, preferences),
         "summary": integrations_block.get("summary", {}),
-        "top_threats": top_threats,
-        "tickets": {
-            "open_count": tickets_count,
+        "ticket_counts": {
+            "total": int(total_tickets),
+            "by_status": ticket_status_counts,
+            "manual_pending": int(manual_pending),
+            "automated_completed": int(automated_completed),
         },
         "generated_at": datetime.utcnow().isoformat(),
     }
@@ -599,6 +621,11 @@ def build_home_dashboard(session: Session, tenant_id: int) -> dict:
 def build_provider_dashboard(session: Session, tenant_id: int, provider: str, preset: str | None = None, from_date: str | None = None, to_date: str | None = None) -> dict:
     if provider not in _SUPPORTED_PROVIDERS:
         return {"error": f"Unsupported provider: {provider}", "supported": list(_SUPPORTED_PROVIDERS)}
+
+    preferences = get_tenant_preferences(session, tenant_id)
+    visible_providers = set(get_visible_integration_providers(preferences)) or set(_SUPPORTED_PROVIDERS)
+    if provider not in visible_providers:
+        raise NotFoundError("Provider dashboard not enabled for this tenant")
 
     range_info = _parse_range(preset, from_date, to_date)
 

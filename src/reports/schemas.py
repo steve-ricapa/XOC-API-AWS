@@ -9,6 +9,11 @@ DOCUMENT_TYPES = frozenset({
     "informe_soporte",
 })
 
+DOCUMENT_VARIANTS = frozenset({
+    "client",
+    "admin_xoc",
+})
+
 
 REQUIRED_DOCUMENT_FIELDS = frozenset({"document_type"})
 
@@ -16,6 +21,7 @@ OPTIONAL_DOCUMENT_FIELDS = frozenset({
     "filters",
     "idempotency_key",
     "parameters",
+    "variant",
 })
 
 
@@ -42,6 +48,10 @@ def validate_document_request(payload: dict) -> dict:
     if document_type and document_type not in DOCUMENT_TYPES:
         errors.append(f"document_type must be one of: {', '.join(sorted(DOCUMENT_TYPES))}")
 
+    variant = str(payload.get("variant") or "client").strip().lower()
+    if variant and variant not in DOCUMENT_VARIANTS:
+        errors.append(f"variant must be one of: {', '.join(sorted(DOCUMENT_VARIANTS))}")
+
     filters = payload.get("filters")
     if filters is not None:
         if not isinstance(filters, dict):
@@ -64,9 +74,16 @@ def build_document_response(item: dict) -> dict:
         "documentId": item.get("document_id") or item.get("report_id"),
         "status": item.get("status"),
         "documentType": item.get("document_type") or item.get("report_type"),
+        "variant": item.get("variant") or "client",
         "createdAt": item.get("created_at"),
         "updatedAt": item.get("updated_at"),
     }
+
+    if item.get("size_bytes") is not None:
+        response["sizeBytes"] = item.get("size_bytes")
+
+    if item.get("created_by_user_id") is not None:
+        response["createdByUserId"] = item.get("created_by_user_id")
 
     if item.get("completed_at"):
         response["completedAt"] = item["completed_at"]
@@ -83,6 +100,38 @@ def build_document_response(item: dict) -> dict:
     if item.get("download_url"):
         response["downloadUrl"] = item["download_url"]
 
+    return response
+
+
+def build_document_preview_response(item: dict, generated_content: dict | None = None) -> dict:
+    response = build_document_response(item)
+
+    if response.get("status") == "FAILED":
+        response["previewStatus"] = "failed"
+        return response
+
+    if response.get("status") != "COMPLETED":
+        response["previewStatus"] = "not_ready"
+        return response
+
+    if not generated_content:
+        response["previewStatus"] = "unavailable"
+        return response
+
+    document = generated_content.get("document") or {}
+    response["previewStatus"] = "ready"
+    response["preview"] = {
+        "title": document.get("title"),
+        "service": document.get("service"),
+        "period": document.get("period"),
+        "preparedBy": document.get("prepared_by"),
+        "sections": generated_content.get("sections") or [],
+        "findings": generated_content.get("findings") or [],
+        "domains": generated_content.get("domains") or [],
+        "severitySummary": generated_content.get("severity_summary") or {},
+        "actionsWorked": generated_content.get("actions_worked") or generated_content.get("support_entries") or [],
+        "securityNews": generated_content.get("security_news") or [],
+    }
     return response
 
 

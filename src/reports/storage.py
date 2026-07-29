@@ -81,6 +81,14 @@ def build_artifact_s3_key(
     return f"{stage}/documents/{document_type}/{tenant_id}/{document_id}/artifacts/{artifact_name}"
 
 
+def build_generated_content_artifact_s3_key(
+    tenant_id: int,
+    document_id: str,
+    document_type: str,
+) -> str:
+    return build_artifact_s3_key(tenant_id, document_id, document_type, "generated-content.json")
+
+
 def download_template(document_type: str, local_path: str) -> str:
     if is_local_storage_enabled():
         from src.reports.minority_docx import base_template_path, normalize_report_variant
@@ -178,6 +186,23 @@ def download_artifact(s3_uri: str) -> dict:
     key = parts[1]
     response = _s3().get_object(Bucket=bucket, Key=key)
     return json.loads(response["Body"].read().decode("utf-8"))
+
+
+def download_json_object(bucket: str, key: str) -> dict:
+    response = _s3().get_object(Bucket=bucket, Key=key)
+    return json.loads(response["Body"].read().decode("utf-8"))
+
+
+def download_generated_content(
+    tenant_id: int,
+    document_id: str,
+    document_type: str,
+    *,
+    bucket_name: str | None = None,
+) -> dict:
+    bucket = bucket_name or get_documents_bucket_name(document_type)
+    key = build_generated_content_artifact_s3_key(tenant_id, document_id, document_type)
+    return download_json_object(bucket, key)
 
 
 def generate_download_url(s3_key: str, expires_in: int = 3600, *, bucket_name: str | None = None, document_type: str | None = None) -> str:

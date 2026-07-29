@@ -1,23 +1,30 @@
-const { buildService, lambdaConfig, protectedRoute } = require('./serverless/services/lib/common');
-const { automationResources } = require('./serverless/services/automation-resources');
+const { buildService, lambdaConfig, protectedRoute, commonEnvironment } = require('./serverless/services/lib/common');
+const automationResources = require('./serverless/services/automation-resources');
 
 module.exports = buildService({
   service: 'xoc-api-automation',
   attachToSharedHttpApi: true,
   iam: { automation: true, database: true, jwt: true, vpc: true },
+  pythonRequirements: { dockerizePip: true },
+  environment: (stage) => {
+    const env = commonEnvironment(stage);
+    delete env.XOC_DOCUMENTS_BUCKET_NAME;
+    delete env.TXDX_DOCUMENTS_BUCKET_NAME;
+    return env;
+  },
   functions: (stage) => ({
     casesApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/automation.handler',
       timeout: 30,
       events: [
-        { http: { path: '/cases', method: 'get', ...protectedRoute(stage, 'GET', '/cases') } },
-        { http: { path: '/cases/{caseId}', method: 'get', ...protectedRoute(stage, 'GET', '/cases/{caseId}') } },
-        { http: { path: '/cases/ticket/{ticketId}', method: 'get', ...protectedRoute(stage, 'GET', '/cases/ticket/{ticketId}') } },
-        { http: { path: '/automation/approval/callback', method: 'post', ...protectedRoute(stage, 'POST', '/automation/approval/callback') } },
+        protectedRoute(stage, 'GET', '/cases'),
+        protectedRoute(stage, 'GET', '/cases/{caseId}'),
+        protectedRoute(stage, 'GET', '/cases/ticket/{ticketId}'),
+        protectedRoute(stage, 'POST', '/automation/approval/callback'),
       ],
     }),
-    assessTicketCapability: lambdaConfig(stage, {
-      handler: 'src/handlers/workers/assess_ticket_capability.handler',
+    assessTicketAutomation: lambdaConfig(stage, {
+      handler: 'src/handlers/workers/assess_ticket_automation.handler',
       timeout: 120,
       memorySize: 512,
     }),

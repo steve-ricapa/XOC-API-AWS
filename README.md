@@ -208,7 +208,6 @@ Stacks de red esperados:
 - `GET /superadmin/tickets`
 - `GET /superadmin/chat/sessions`
 - `GET /superadmin/audit-logs`
-- `GET /superadmin/capability-templates`
 
 ### Agents
 
@@ -252,13 +251,16 @@ Secuencia completa por stage:
 1. red
 2. data
 3. storage
-4. `xoc-api-shared`
-5. `xoc-api-tickets`
-6. `xoc-api-auth`
-7. `xoc-api-chat`
-8. `xoc-api-tenant`
-9. `xoc-api-admin`
-10. `xoc-api-ops`
+4. documents
+5. `xoc-api-shared`
+6. `xoc-api-tickets`
+7. `xoc-api-auth`
+8. `xoc-api-chat`
+9. `xoc-api-tenant`
+10. `xoc-api-admin`
+11. `xoc-api-ops`
+12. `xoc-api-reports`
+13. `xoc-api-automation`
 
 ### Deploy `dev`
 
@@ -266,8 +268,9 @@ Infra base:
 
 ```bash
 aws cloudformation deploy --stack-name xoc-infra-network-dev --template-file infra/network-dev.yml
-aws cloudformation deploy --stack-name xoc-infra-data-dev --template-file infra/data-prod.yml
-aws cloudformation deploy --stack-name xoc-infra-storage-dev --template-file infra/storage-prod.yml
+aws cloudformation deploy --stack-name xoc-infra-data-dev --template-file infra/data-dev.yml
+aws cloudformation deploy --stack-name xoc-infra-storage-dev --template-file infra/storage-dev.yml
+aws cloudformation deploy --stack-name xoc-infra-documents-dev --template-file infra/documents-dev.yml
 ```
 
 Servicios:
@@ -280,6 +283,8 @@ NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverl
 NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverless.tenant.js
 NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverless.admin.js
 NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverless.ops.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverless.reports.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage dev --config serverless.automation.js
 ```
 
 ### Deploy `staging`
@@ -288,8 +293,9 @@ Infra base:
 
 ```bash
 aws cloudformation deploy --stack-name xoc-infra-network-staging --template-file infra/network-staging.yml
-aws cloudformation deploy --stack-name xoc-infra-data-staging --template-file infra/data-prod.yml
-aws cloudformation deploy --stack-name xoc-infra-storage-staging --template-file infra/storage-prod.yml
+aws cloudformation deploy --stack-name xoc-infra-data-staging --template-file infra/data-staging.yml
+aws cloudformation deploy --stack-name xoc-infra-storage-staging --template-file infra/storage-staging.yml
+aws cloudformation deploy --stack-name xoc-infra-documents-staging --template-file infra/documents-staging.yml
 ```
 
 Servicios:
@@ -302,6 +308,8 @@ NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage staging --config ser
 NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage staging --config serverless.tenant.js
 NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage staging --config serverless.admin.js
 NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage staging --config serverless.ops.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage staging --config serverless.reports.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage staging --config serverless.automation.js
 ```
 
 ### Deploy `prod`
@@ -312,6 +320,7 @@ Infra base:
 aws cloudformation deploy --stack-name xoc-infra-network-prod --template-file infra/network-prod.yml
 aws cloudformation deploy --stack-name xoc-infra-data-prod --template-file infra/data-prod.yml
 aws cloudformation deploy --stack-name xoc-infra-storage-prod --template-file infra/storage-prod.yml
+aws cloudformation deploy --stack-name xoc-infra-documents-prod --template-file infra/documents-prod.yml
 ```
 
 Servicios:
@@ -324,13 +333,17 @@ NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage prod --config server
 NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage prod --config serverless.tenant.js
 NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage prod --config serverless.admin.js
 NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage prod --config serverless.ops.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage prod --config serverless.reports.js
+NODE_OPTIONS="--max-old-space-size=4096" sls deploy --stage prod --config serverless.automation.js
 ```
 
 ### Notas de despliegue
 
 - `shared` va primero porque crea el HTTP API y el authorizer compartido.
 - `tickets` va segundo porque crea DynamoDB, EventBridge y Step Functions.
+- `documents` va antes de `reports` porque define los buckets XOC/TXDX para templates, artifacts y DOCX.
 - `auth`, `chat`, `tenant`, `admin` y `ops` asumen VPC en todos los stages.
+- `bootstrap_schema.py` crea tablas desde los modelos SQLAlchemy, incluyendo `tenant_preferences`; si no puedes correr bootstrap completo en un entorno existente, aplica `scripts/tenant_preferences_schema.sql`.
 - Si `prod` usa JWT por SSM, el parámetro definido en `jwtSecretKeySsmPath` debe existir antes del deploy.
 
 La guía detallada y notas operativas están en `MULTI_SERVICE_DEPLOY.md`.

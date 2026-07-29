@@ -10,6 +10,8 @@ Current patches:
   Creates `pending_ingestions` used by `POST /scans/upload-url`.
 - `finding_index_schema.sql`
   Creates `finding_index` used by dashboard summaries and scan findings queries.
+- `tenant_preferences_schema.sql`
+  Creates `tenant_preferences` used by tenant dashboard visibility and health-index preferences.
 
 Recommended usage from the RDS-reachable VM documented in `AGENTS.md`:
 

@@ -20,6 +20,59 @@ from src.shared.config import get_settings, get_snapshots_bucket_name
 from src.shared.snapshots import build_snapshot_s3_key
 
 S3_CLIENT = boto3.client("s3")
+STATUS_ACCEPTED = "accepted"
+STATUS_PROCESSING = "processing"
+STATUS_COMPLETED = "completed"
+STATUS_FAILED_VALIDATION = "failed_validation"
+STATUS_FAILED_RETRYABLE = "failed_retryable"
+
+
+class ValidationIngestionError(Exception):
+    pass
+
+
+def _schema_version(payload: dict) -> str:
+    value = payload.get("schema_version") or payload.get("schemaVersion") or "v1"
+    return str(value).strip()[:30] or "v1"
+
+
+def _claim_pending_ingestion(session, pending: PendingIngestion, request_id: str | None) -> bool:
+    refreshed = session.get(PendingIngestion, pending.id)
+    if not refreshed or refreshed.status not in {STATUS_ACCEPTED, STATUS_FAILED_RETRYABLE}:
+        return False
+    refreshed.status = STATUS_PROCESSING
+    refreshed.attempt_count = int(refreshed.attempt_count or 0) + 1
+    refreshed.processing_started_at = datetime.utcnow()
+    refreshed.processor_request_id = request_id
+    refreshed.last_error_code = None
+    refreshed.error_message = None
+    session.commit()
+    pending.status = refreshed.status
+    pending.attempt_count = refreshed.attempt_count
+    return True
+
+
+def _mark_pending(session, pending: PendingIngestion, *, status: str, error_code: str | None = None, error_message: str | None = None, processed_s3_key: str | None = None, quarantine_s3_key: str | None = None, checksum: str | None = None, size_bytes: int | None = None, scan_id: str | None = None, schema_version: str | None = None) -> None:
+    db_pending = session.get(PendingIngestion, pending.id)
+    if not db_pending:
+        return
+    db_pending.status = status
+    db_pending.last_error_code = error_code
+    db_pending.error_message = error_message[:4000] if error_message else None
+    db_pending.processing_completed_at = datetime.utcnow()
+    if processed_s3_key:
+        db_pending.processed_s3_key = processed_s3_key
+    if quarantine_s3_key:
+        db_pending.quarantine_s3_key = quarantine_s3_key
+    if checksum:
+        db_pending.checksum = checksum
+    if size_bytes is not None:
+        db_pending.size_bytes = size_bytes
+    if scan_id:
+        db_pending.scan_id = scan_id
+    if schema_version:
+        db_pending.schema_version = schema_version
+    session.commit()
 SOC_SCANNER_TYPES = {"openvas", "insightvm", "nessus", "qualys", "tenable", "rapid7", "wazuh"}
 NOC_SCANNER_TYPES = {"zabbix", "uptime_kuma"}
 SCANNER_DEFAULT_SUMMARY_TYPE = {
@@ -84,11 +137,26 @@ def handler(event: dict, context) -> dict:
     engine = get_engine()
 
     for record in event.get("Records", []):
-        if record.get("eventSource") != "aws:s3":
+        bucket = bucket_name
+        key = ""
+
+        if record.get("eventSource") == "aws:s3":
+            s3_info = record.get("s3", {})
+            bucket = s3_info.get("bucket", {}).get("name", bucket_name)
+            key = s3_info.get("object", {}).get("key", "")
+        elif record.get("eventSource") == "aws:sqs":
+            try:
+                body = json.loads(record.get("body") or "{}")
+            except json.JSONDecodeError:
+                continue
+            inner_records = body.get("Records") if isinstance(body, dict) else None
+            if not inner_records or not isinstance(inner_records, list):
+                continue
+            s3_info = (inner_records[0] or {}).get("s3", {})
+            bucket = s3_info.get("bucket", {}).get("name", bucket_name)
+            key = s3_info.get("object", {}).get("key", "")
+        else:
             continue
-        s3_info = record.get("s3", {})
-        bucket = s3_info.get("bucket", {}).get("name", bucket_name)
-        key = s3_info.get("object", {}).get("key", "")
 
         if not key.startswith("pending/"):
             continue
@@ -99,27 +167,35 @@ def handler(event: dict, context) -> dict:
         session = _Session(bind=engine)
         try:
             pending = session.scalar(select(PendingIngestion).where(PendingIngestion.upload_id == upload_id))
-            if not pending or pending.status != "pending":
+            if not pending or pending.status not in {STATUS_ACCEPTED, STATUS_FAILED_RETRYABLE}:
                 session.close()
                 if not pending:
                     S3_CLIENT.delete_object(Bucket=bucket, Key=key)
                 continue
 
-            pending.status = "processing"
-            session.commit()
+            if not _claim_pending_ingestion(session, pending, getattr(context, "aws_request_id", None)):
+                session.close()
+                continue
 
             response = S3_CLIENT.get_object(Bucket=bucket, Key=key)
             raw = response["Body"].read().decode("utf-8")
             payload = json.loads(raw)
+            checksum = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+            size_bytes = len(raw.encode("utf-8"))
+            schema_version = _schema_version(payload)
 
             tenant_id = pending.tenant_id
             scanner_type = pending.scanner_type
             scan_id = (payload.get("scan_id") or payload.get("scanId") or "").strip()
             if not scan_id:
-                raise ValueError("scan_id is required in uploaded payload")
+                raise ValidationIngestionError("scan_id is required in uploaded payload")
 
             scan_summary_data = payload.get("scan_summary") or {}
             findings_data = payload.get("findings") or []
+            if not isinstance(scan_summary_data, dict):
+                raise ValidationIngestionError("scan_summary must be an object")
+            if not isinstance(findings_data, list):
+                raise ValidationIngestionError("findings must be a list")
 
             if pending.api_key_id:
                 agent_key = session.get(AgentApiKey, pending.api_key_id)
@@ -140,6 +216,8 @@ def handler(event: dict, context) -> dict:
                 validated_findings.append(finding_raw)
 
             domain = _resolve_domain(scanner_type)
+            provider = (pending.provider or scanner_type or "").strip().lower()
+            summary_type = SCANNER_DEFAULT_SUMMARY_TYPE.get(scanner_type, "vulnerability")
             summary_model = _summary_model_for_domain(domain)
             existing = session.scalar(select(summary_model).where(summary_model.tenant_id == tenant_id, summary_model.scan_id == scan_id))
             if existing:
@@ -159,7 +237,7 @@ def handler(event: dict, context) -> dict:
                     pass
 
             scan_summary.scanner_type = scanner_type
-            scan_summary.summary_type = SCANNER_DEFAULT_SUMMARY_TYPE.get(scanner_type, "vulnerability")
+            scan_summary.summary_type = summary_type
             scan_summary.status = scan_summary_data.get("status", "completed")
             scan_summary.agent_api_key_id = pending.api_key_id
 
@@ -206,35 +284,56 @@ def handler(event: dict, context) -> dict:
                     )
                     session.flush()
 
-            raw_bytes = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-            checksum = hashlib.sha256(raw_bytes).hexdigest()
-            size_bytes = len(raw_bytes)
-
             prod_key = build_snapshot_s3_key(
                 tenant_id=tenant_id,
-                provider=scanner_type,
-                snapshot_type=SCANNER_DEFAULT_SUMMARY_TYPE.get(scanner_type, "vulnerability"),
+                provider=provider,
+                snapshot_type=summary_type,
                 captured_at=scan_summary.scanned_at,
             )
             _move_s3_object(bucket, key, prod_key)
+
+            integration_id = _resolve_integration_id(session, tenant_id, provider)
 
             existing_artifact = session.scalar(
                 select(SnapshotArtifact).where(
                     SnapshotArtifact.tenant_id == tenant_id,
                     SnapshotArtifact.scan_id == scan_id,
-                    SnapshotArtifact.provider == scanner_type,
+                    SnapshotArtifact.provider == provider,
                 )
             )
             if existing_artifact:
                 artifact = existing_artifact
                 session.query(FindingIndex).filter_by(snapshot_artifact_id=artifact.id).delete()
             else:
-                artifact = SnapshotArtifact(tenant_id=tenant_id)
+                artifact = SnapshotArtifact(
+                    tenant_id=tenant_id,
+                    integration_id=integration_id,
+                    provider=provider,
+                    snapshot_type=summary_type,
+                    domain=domain,
+                    source="snapshot_upload",
+                    status="stored",
+                    scan_id=scan_id,
+                    scan_summary_soc_id=scan_summary.id if domain != "noc" else None,
+                    scan_summary_noc_id=scan_summary.id if domain == "noc" else None,
+                    s3_bucket=bucket,
+                    s3_key=prod_key,
+                    content_type="application/json",
+                    size_bytes=size_bytes,
+                    checksum=checksum,
+                    captured_at=scan_summary.scanned_at,
+                    received_at=datetime.utcnow(),
+                    summary_json={
+                        "scanner_type": scanner_type,
+                        "domain": domain,
+                        "findings_count": len(validated_findings),
+                    },
+                )
                 session.add(artifact)
 
-            artifact.integration_id = _resolve_integration_id(session, tenant_id, scanner_type)
-            artifact.provider = scanner_type
-            artifact.snapshot_type = SCANNER_DEFAULT_SUMMARY_TYPE.get(scanner_type, "vulnerability")
+            artifact.integration_id = integration_id
+            artifact.provider = provider
+            artifact.snapshot_type = summary_type
             artifact.domain = domain
             artifact.source = "snapshot_upload"
             artifact.status = "stored"
@@ -285,22 +384,48 @@ def handler(event: dict, context) -> dict:
                     )
                 )
 
-            pending.status = "completed"
-            pending.s3_key = prod_key
-            session.commit()
+            _mark_pending(
+                session,
+                pending,
+                status=STATUS_COMPLETED,
+                processed_s3_key=prod_key,
+                checksum=checksum,
+                size_bytes=size_bytes,
+                scan_id=scan_id,
+                schema_version=schema_version,
+            )
 
+        except ValidationIngestionError as exc:
+            session.rollback()
+            quarantine_key = f"quarantine/{upload_id}.json"
+            try:
+                _move_s3_object(bucket, key, quarantine_key)
+            except Exception:
+                quarantine_key = None
+            try:
+                _mark_pending(
+                    session,
+                    pending,
+                    status=STATUS_FAILED_VALIDATION,
+                    error_code="validation_error",
+                    error_message=str(exc),
+                    quarantine_s3_key=quarantine_key,
+                )
+            except Exception:
+                session.rollback()
         except Exception as exc:
             session.rollback()
             try:
-                _move_s3_object(bucket, key, f"quarantine/{upload_id}.json")
-            except Exception:
-                pass
-            try:
-                pending.status = "failed"
-                pending.error_message = str(exc)
-                session.commit()
+                _mark_pending(
+                    session,
+                    pending,
+                    status=STATUS_FAILED_RETRYABLE,
+                    error_code=type(exc).__name__,
+                    error_message=str(exc),
+                )
             except Exception:
                 session.rollback()
+            raise
         finally:
             session.close()
 

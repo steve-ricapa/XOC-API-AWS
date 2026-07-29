@@ -1,9 +1,17 @@
 const { buildService, lambdaConfig, protectedRoute, publicRoute, stageRef } = require('./serverless/services/lib/common');
+const opsResources = require('./serverless/services/ops-resources');
 
 module.exports = buildService({
   service: 'xoc-api-ops',
   attachToSharedHttpApi: true,
   iam: { database: true, snapshots: true, vpc: true, agentEncryption: true },
+  additionalIamStatements: (stage) => ([
+    {
+      Effect: 'Allow',
+      Action: ['sqs:ReceiveMessage', 'sqs:DeleteMessage', 'sqs:GetQueueAttributes', 'sqs:ChangeMessageVisibility'],
+      Resource: [`arn:aws:sqs:${'${aws:region}'}:${'${aws:accountId}'}:xoc-api-ops-${stage}-snapshot-ingest*`],
+    },
+  ]),
   pythonRequirements: {
     fileName: 'requirements.crypto.txt',
     dockerizePip: true,
@@ -59,11 +67,9 @@ module.exports = buildService({
       ],
       events: [
         {
-          s3: {
-            bucket: stageRef(stage, 'snapshotsBucketName'),
-            event: 's3:ObjectCreated:*',
-            rules: [{ prefix: 'pending/' }],
-            existing: true,
+          sqs: {
+            arn: { 'Fn::GetAtt': ['SnapshotIngestQueue', 'Arn'] },
+            batchSize: 1,
           },
         },
       ],
@@ -142,4 +148,5 @@ module.exports = buildService({
       ],
     }),
   }),
+  resources: (stage) => opsResources(stage),
 });

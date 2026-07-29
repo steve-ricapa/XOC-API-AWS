@@ -5,13 +5,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
-from src.persistence.models import AgentApiKey, Tenant, TenantRuntimeSettings, User
+from src.persistence.models import AgentApiKey, Tenant, TenantPreference, TenantRuntimeSettings, User
 from src.shared.dependencies import get_current_user
 from src.shared.encryption import encrypt_agent_key
 from src.shared.errors import ForbiddenError, NotFoundError, ValidationError
 from src.shared.integration_types import OFFICIAL_INTEGRATION_TYPES, normalize_integration_type
+from src.shared.tenant_preferences import get_tenant_preferences, get_tenant_preferences_record, merge_tenant_preferences
 from src.shared.security_keys import generate_access_key, hash_access_key
-from src.shared.schemas import TenantsListResponse, TenantResponse, RuntimeSettingsEnvelope, RuntimeSettingsResponse, UpdateTenantRequest, UpdateTenantResponse, UpsertRuntimeSettingsRequest, UpsertRuntimeSettingsResponse
+from src.shared.schemas import TenantsListResponse, TenantPreferencesResponse, TenantResponse, RuntimeSettingsEnvelope, RuntimeSettingsResponse, UpdateTenantPreferencesResponse, UpdateTenantRequest, UpdateTenantResponse, UpsertRuntimeSettingsRequest, UpsertRuntimeSettingsResponse
 from src.shared.context import effective_tenant_id_of, get_tenant, log_audit, require_admin, require_tenant_read_access
 
 
@@ -34,6 +35,16 @@ def _serialize_runtime_settings(runtime_settings: TenantRuntimeSettings | None) 
         is_active=runtime_settings.is_active,
         created_at=runtime_settings.created_at.isoformat() if runtime_settings.created_at else None,
         updated_at=runtime_settings.updated_at.isoformat() if runtime_settings.updated_at else None,
+    )
+
+
+def _serialize_tenant_preferences(tenant_id: int, preferences: dict, record: TenantPreference | None) -> TenantPreferencesResponse:
+    return TenantPreferencesResponse(
+        tenant_id=tenant_id,
+        preferences=preferences,
+        updated_by_user_id=record.updated_by_user_id if record else None,
+        created_at=record.created_at.isoformat() if record and record.created_at else None,
+        updated_at=record.updated_at.isoformat() if record and record.updated_at else None,
     )
 
 
@@ -61,6 +72,54 @@ def update_tenant(payload: UpdateTenantRequest, current_user: User = Depends(get
     log_audit(session, actor_user_id=current_user.id, action="UPDATE", entity_type="TENANT", entity_id=tenant.id, payload={"name": tenant.name})
     session.commit()
     return UpdateTenantResponse(message="Tenant updated successfully", tenant=TenantResponse(**tenant.to_dict()))
+
+
+@router.get("/preferences", response_model=TenantPreferencesResponse)
+def get_preferences(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> TenantPreferencesResponse:
+    require_admin(current_user)
+    tenant_id = effective_tenant_id_of(current_user)
+    record = get_tenant_preferences_record(session, tenant_id)
+    preferences = get_tenant_preferences(session, tenant_id)
+    return _serialize_tenant_preferences(tenant_id, preferences, record)
+
+
+@router.put("/preferences", response_model=UpdateTenantPreferencesResponse)
+def upsert_preferences(payload: dict, current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> UpdateTenantPreferencesResponse:
+    require_admin(current_user)
+    tenant_id = effective_tenant_id_of(current_user)
+    if not isinstance(payload, dict):
+        raise ValidationError("Request body must be a JSON object")
+
+    record = get_tenant_preferences_record(session, tenant_id)
+    existing = record.dashboard_preferences if record else None
+    preferences = merge_tenant_preferences(existing, payload)
+
+    created = False
+    if not record:
+        record = TenantPreference(
+            tenant_id=tenant_id,
+            dashboard_preferences=preferences,
+            updated_by_user_id=current_user.id,
+        )
+        session.add(record)
+        created = True
+
+    record.dashboard_preferences = preferences
+    record.updated_by_user_id = current_user.id
+    session.flush()
+    log_audit(
+        session,
+        actor_user_id=current_user.id,
+        action="CREATE" if created else "UPDATE",
+        entity_type="TENANT_PREFERENCES",
+        entity_id=record.id,
+        payload={"tenant_id": tenant_id, "preferences": preferences},
+    )
+    session.commit()
+    return UpdateTenantPreferencesResponse(
+        message="Tenant preferences saved successfully",
+        tenant_preferences=_serialize_tenant_preferences(tenant_id, preferences, record),
+    )
 
 
 @router.get("/agent-keys")

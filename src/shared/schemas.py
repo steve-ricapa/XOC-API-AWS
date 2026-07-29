@@ -123,6 +123,19 @@ class UpsertRuntimeSettingsResponse(BaseModel):
     runtime_settings: RuntimeSettingsResponse
 
 
+class TenantPreferencesResponse(BaseModel):
+    tenant_id: int
+    preferences: dict[str, Any]
+    updated_by_user_id: int | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class UpdateTenantPreferencesResponse(BaseModel):
+    message: str
+    tenant_preferences: TenantPreferencesResponse
+
+
 class UsersListResponse(BaseModel):
     users: list[UserResponse]
 
@@ -169,8 +182,6 @@ class TicketResponse(BaseModel):
     execution_logs: dict[str, Any] | list[Any] | None = None
     execution_summary: str | None = None
     pending_decision: dict[str, Any] | None = None
-    capability_level: str | None = None
-    capability_policy_snapshot: dict[str, Any] | None = None
     decision_timeout_minutes: int | None = None
     on_decision_timeout: str | None = None
     creator: UserResponse | None = None
@@ -199,8 +210,6 @@ class UpdateTicketRequest(BaseModel):
     execution_status: str | None = None
     execution_logs: dict[str, Any] | list[Any] | None = None
     execution_summary: str | None = None
-    capability_level: str | None = None
-    capability_policy_snapshot: dict[str, Any] | None = None
     decision_timeout_minutes: int | None = None
     on_decision_timeout: str | None = None
     action_plan: dict[str, Any] | None = None

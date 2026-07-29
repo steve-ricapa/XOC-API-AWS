@@ -13,7 +13,7 @@ import boto3
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
-from src.reports.schemas import build_document_response, validate_document_request
+from src.reports.schemas import build_document_preview_response, build_document_response, validate_document_request
 from src.reports.store import (
     create_document_job,
     get_document_job_or_404,
@@ -29,7 +29,7 @@ from src.shared.dependencies import get_current_user, require_access_claims
 from src.shared.errors import ForbiddenError, ValidationError
 from src.shared.logging import logger
 
-from src.reports.storage import generate_download_url
+from src.reports.storage import download_generated_content, generate_download_url
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -414,6 +414,38 @@ def download_document(document_id: str, current_user: User = Depends(get_current
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         filename=path.name,
     )
+
+
+@router.get("/{document_id}/preview")
+def get_document_preview(document_id: str, current_user: User = Depends(get_current_user)):
+    require_tenant_read_access(current_user)
+    tenant_id = effective_tenant_id_of(current_user)
+    item = get_document_job_or_404(tenant_id, document_id)
+    serialized = serialize_report(item)
+
+    generated_content = None
+    if item.get("status") == "COMPLETED":
+        try:
+            generated_content = download_generated_content(
+                tenant_id=tenant_id,
+                document_id=document_id,
+                document_type=str(item.get("document_type") or ""),
+            )
+        except Exception as exc:
+            logger.warning("Could not load preview artifact for document %s: %s", document_id, exc)
+
+    response = build_document_preview_response(serialized, generated_content)
+    if item.get("status") == "COMPLETED" and item.get("s3_key"):
+        response["downloadUrl"] = (
+            f"/documents/{document_id}/download"
+            if item.get("local_path")
+            else generate_download_url(
+                item["s3_key"],
+                bucket_name=item.get("s3_bucket"),
+                document_type=item.get("document_type"),
+            )
+        )
+    return response
 
 
 @router.get("")
