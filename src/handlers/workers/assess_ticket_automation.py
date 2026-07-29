@@ -58,8 +58,9 @@ def handler(event: dict, context) -> dict:
 
     full_url = f"{base_url}{victor_route}"
     token = _build_service_token(int(tenant_id))
-    timeout_seconds = int(os.environ.get("VICTOR_TIMEOUT_SECONDS", "60"))
+    timeout_seconds = int(os.environ.get("VICTOR_TIMEOUT_SECONDS", "300"))
 
+    plan_from_event = event.get("plan")
     payload = {
         "message": f"[{phase}] Ticket: {subject}. {description}",
         "subject": subject,
@@ -68,6 +69,8 @@ def handler(event: dict, context) -> dict:
         "ticket_id": ticket_id,
         "tenant_id": int(tenant_id),
     }
+    if plan_from_event is not None:
+        payload["plan"] = plan_from_event
 
     try:
         response = requests.post(
@@ -112,6 +115,13 @@ def handler(event: dict, context) -> dict:
             "tenantId": tenant_id,
             "subject": subject,
             "description": description,
+        }
+
+    if phase == "execute":
+        return {
+            "executionResult": data,
+            "ticketId": ticket_id,
+            "tenantId": tenant_id,
         }
 
     plan = data.get("plan", data)

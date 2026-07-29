@@ -4,7 +4,7 @@ import logging
 import boto3
 
 from src.shared.errors import ValidationError
-from src.shared.tickets_store import get_tenant_ticket_or_404, update_ticket_fields
+from src.shared.tickets_store import get_tenant_ticket_or_404
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +35,6 @@ def handler(event: dict, context) -> dict:
         except Exception as exc:
             logger.error("Failed to send task success for ticket %s: %s", ticket_id, exc)
             raise
-
-    if tenant_id:
-        update_ticket_fields(int(tenant_id), ticket_id, {
-            "approval_task_token": None,
-        })
 
     return {
         "message": "Approval callback processed",

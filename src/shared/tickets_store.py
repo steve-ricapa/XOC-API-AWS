@@ -252,17 +252,13 @@ def build_new_ticket_item(payload: dict, tenant_id: int, user_id: int | None) ->
         "updated_at": now,
         "executed_at": None,
         "action_plan": None,
-        "action_plan_version": "v0",
         "approved_by_user_id": None,
         "approved_at": None,
         "rejected_by_user_id": None,
         "rejected_at": None,
         "execution_status": None,
-        "execution_logs": None,
         "execution_summary": None,
         "pending_decision": None,
-        "decision_timeout_minutes": payload.get("decision_timeout_minutes"),
-        "on_decision_timeout": payload.get("on_decision_timeout"),
     }
     item.update(build_secondary_index_fields(tenant_id, ticket_id, status, now))
     return ticket_id, item
@@ -286,14 +282,9 @@ def update_ticket_fields(tenant_id: int, ticket_id: str, payload: dict) -> dict:
         "description": "description",
         "status": "status",
         "execution_status": "execution_status",
-        "execution_logs": "execution_logs",
         "execution_summary": "execution_summary",
         "pending_decision": "pending_decision",
-        "decision_timeout_minutes": "decision_timeout_minutes",
-        "on_decision_timeout": "on_decision_timeout",
         "action_plan": "action_plan",
-        "action_plan_version": "action_plan_version",
-        "approval_task_token": "approval_task_token",
     }
 
     for key, attr in updatable.items():
