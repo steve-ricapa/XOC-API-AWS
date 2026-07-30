@@ -58,4 +58,4 @@ def handler(event: dict, context) -> dict:
         return {"status": "started", "executionArn": response["executionArn"]}
     except Exception as e:
         logger.error("Failed to start automation workflow for ticket %s: %s", ticket_id, e)
-        return {"status": "error", "reason": str(e)}
+        return {"status": "error", "reason": "Failed to start automation workflow"}

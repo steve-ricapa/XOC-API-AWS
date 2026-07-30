@@ -9,11 +9,11 @@ from src.shared.config import get_settings
 from src.shared.dependencies import require_access_claims
 from src.shared.errors import AppError, ForbiddenError, ValidationError
 from src.shared.logging import logger
+from src.shared.risk_config import is_role_sufficient
 from src.shared.tickets_store import (
     build_new_ticket_item,
     build_secondary_index_fields,
     get_tenant_ticket_or_404,
-    is_role_sufficient,
     list_tenant_tickets,
     now_iso,
     serialize_ticket,

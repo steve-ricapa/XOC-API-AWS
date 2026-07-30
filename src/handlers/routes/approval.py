@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends
 from src.handlers.workers.approval_callback import handler as approval_callback_handler
 from src.shared.dependencies import require_access_claims
 from src.shared.errors import ForbiddenError, ValidationError
-from src.shared.tickets_store import get_ticket_by_id_or_none, is_role_sufficient
+from src.shared.risk_config import is_role_sufficient
+from src.shared.tickets_store import get_ticket_by_id_or_none
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/automation", tags=["automation"])

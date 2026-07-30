@@ -2,21 +2,16 @@ import json
 import logging
 
 from src.shared.errors import ValidationError
+from src.shared.risk_config import required_role_for_risk, DEFAULT_RISK_LEVEL
 from src.shared.tickets_store import get_tenant_ticket_or_none, update_ticket_fields
 
 logger = logging.getLogger(__name__)
-
-RISK_LEVEL_TO_ROLE = {
-    "basic": "USER",
-    "controlled": "ADMIN",
-    "risky": "ADMIN",
-}
 
 
 def handler(event: dict, context) -> dict:
     ticket_id = event.get("ticketId")
     tenant_id = event.get("tenantId")
-    max_risk_level = (event.get("maxRiskLevel") or "basic").lower()
+    max_risk_level = (event.get("maxRiskLevel") or DEFAULT_RISK_LEVEL).lower()
 
     if not ticket_id or not tenant_id:
         raise ValidationError("ticketId and tenantId are required")
@@ -28,7 +23,7 @@ def handler(event: dict, context) -> dict:
         logger.warning("No task_token found in event for ticket %s", ticket_id)
         task_token = "pending"
 
-    required_role = RISK_LEVEL_TO_ROLE.get(max_risk_level, "USER")
+    required_role = required_role_for_risk(max_risk_level)
 
     item = get_tenant_ticket_or_none(tenant_id, ticket_id)
     if item:

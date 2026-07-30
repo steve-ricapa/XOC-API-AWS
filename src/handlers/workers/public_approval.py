@@ -3,6 +3,7 @@ import logging
 
 import boto3
 
+from src.shared.risk_config import is_publicly_approvable
 from src.shared.tickets_store import get_ticket_by_id_or_none
 
 logger = logging.getLogger(__name__)
@@ -26,8 +27,8 @@ def handler(event: dict, context) -> dict:
     ticket = get_ticket_by_id_or_none(ticket_id)
     if ticket:
         pending_decision = ticket.get("pending_decision") or {}
-        required_role = pending_decision.get("required_approver_role", "USER")
-        if required_role.upper() != "USER":
+        max_risk_level = (pending_decision.get("max_risk_level") or "basic").lower()
+        if not is_publicly_approvable(max_risk_level):
             return {"statusCode": 403, "body": json.dumps({"error": "Public approval not allowed for this risk level"})}
 
     if task_token:
@@ -38,8 +39,8 @@ def handler(event: dict, context) -> dict:
             )
             logger.info("Task success sent for ticket %s (approved=%s)", ticket_id, approved)
         except Exception as e:
-            logger.error("Failed to send task success: %s", e)
-            return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
+            logger.error("Failed to send task success for ticket %s: %s", ticket_id, e)
+            return {"statusCode": 500, "body": json.dumps({"error": "Internal error processing approval"})}
 
     return {
         "statusCode": 200,
