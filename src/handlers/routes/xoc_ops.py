@@ -6,7 +6,7 @@ from src.persistence.models import User
 from src.shared.context import require_platform_operator
 from src.shared.dependencies import get_current_user
 from src.shared.errors import NotFoundError
-from src.xoc_ops.summary_store import get_xoc_client_by_tenant_id, get_xoc_clients_kpis, list_xoc_clients
+from src.xoc_ops.summary_store import get_xoc_client_by_tenant_id, get_xoc_clients_kpis, get_xoc_clients_overview, list_xoc_clients
 
 
 router = APIRouter(prefix="/xoc-ops", tags=["xoc-ops"])
@@ -22,6 +22,12 @@ def list_clients(current_user: User = Depends(get_current_user), session: Sessio
 def get_kpis(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
     require_platform_operator(current_user)
     return get_xoc_clients_kpis(session)
+
+
+@router.get("/overview")
+def get_overview(current_user: User = Depends(get_current_user), session: Session = Depends(get_db_session)) -> dict:
+    require_platform_operator(current_user)
+    return get_xoc_clients_overview(session)
 
 
 @router.get("/clients/{tenant_id}")

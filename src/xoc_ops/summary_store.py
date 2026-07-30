@@ -5,7 +5,9 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from src.integrations.summary_store import build_dashboard_summary
 from src.persistence.models import AgentApiKey, AgentInstance, Alert, Integration, ScanSummary, ScanSummaryNoc, Tenant, Ticket, Vulnerability
+from src.shared.tenant_preferences import get_tenant_preferences
 
 
 RUNNING_TICKET_STATUSES = {"RUNNING", "EN_EJECUCION", "PENDIENTE_EJECUCION"}
@@ -40,6 +42,16 @@ def _health_score(*, critical_incidents: int, degraded_integrations: int, pendin
     score -= min(15, pending_tickets * 2)
     score -= min(10, operations_running * 2)
     return max(0, min(100, score))
+
+
+def _dashboard_health_score(session: Session, tenant_id: int) -> int:
+    preferences = get_tenant_preferences(session, tenant_id)
+    summary = (build_dashboard_summary(session, tenant_id, preferences) or {}).get("summary") or {}
+    health = summary.get("health_index")
+    try:
+        return int(health)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _build_last_relevant_event(
@@ -162,13 +174,7 @@ def list_xoc_clients(session: Session) -> list[dict]:
         pending = int(pending_tickets.get(tenant_id, 0))
         running = int(operations_running.get(tenant_id, 0))
         degraded = int(degraded_integrations.get(tenant_id, 0))
-        score = _health_score(
-            critical_incidents=critical_incidents,
-            degraded_integrations=degraded,
-            pending_tickets=pending,
-            operations_running=running,
-            plan_status=tenant.plan_status,
-        )
+        score = _dashboard_health_score(session, tenant_id)
         status = _build_status(
             plan_status=tenant.plan_status,
             critical_incidents=critical_incidents,
@@ -201,6 +207,23 @@ def list_xoc_clients(session: Session) -> list[dict]:
             }
         )
     return results
+
+
+def get_xoc_clients_overview(session: Session) -> dict:
+    clients = list_xoc_clients(session)
+    return {
+        "clients": clients,
+        "kpis": {
+            "totalClients": len(clients),
+            "activeClients": len([client for client in clients if client["status"] != "inactive"]),
+            "clientsWithCriticalIncidents": len([client for client in clients if int(client["criticalIncidents"]) > 0 or client["status"] == "critical"]),
+            "operationsRunning": sum(int(client["operationsRunning"]) for client in clients),
+            "degradedIntegrations": sum(int(client["degradedIntegrations"]) for client in clients),
+            "pendingTickets": sum(int(client["pendingTickets"]) for client in clients),
+            "slaAtRisk": len([client for client in clients if bool(client["slaAtRisk"])]),
+        },
+        "generated_at": datetime.utcnow().isoformat(),
+    }
 
 
 def get_xoc_clients_kpis(session: Session) -> dict:
