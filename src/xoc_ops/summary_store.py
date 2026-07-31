@@ -25,9 +25,9 @@ def _build_status(*, plan_status: str, critical_incidents: int, degraded_integra
     normalized_plan = (plan_status or "").strip().upper()
     if normalized_plan in {"INACTIVE", "DELETING", "DELETING_FAILED"} or (integrations_count == 0 and agents_count == 0):
         return "inactive"
-    if critical_incidents > 0 or operational_health_score < 50:
+    if operational_health_score < 30:
         return "critical"
-    if degraded_integrations > 0 or operational_health_score < 80:
+    if operational_health_score <= 80:
         return "warning"
     return "healthy"
 

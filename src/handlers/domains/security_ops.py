@@ -5,6 +5,7 @@ from mangum import Mangum
 
 from src.handlers.routes.alerts import router as alerts_router
 from src.handlers.routes.analytics import router as analytics_router
+from src.handlers.routes.preventions_issues import router as preventions_issues_router
 from src.handlers.routes.systems import router as systems_router
 from src.handlers.routes.vulnerabilities import router as vulnerabilities_router
 from src.shared.config import get_settings
@@ -45,6 +46,7 @@ async def handle_unexpected_error(_: Request, exc: Exception) -> JSONResponse:
 
 app.include_router(alerts_router)
 app.include_router(analytics_router)
+app.include_router(preventions_issues_router)
 app.include_router(systems_router)
 app.include_router(vulnerabilities_router)
 

@@ -29,18 +29,74 @@ from src.shared.tenant_preferences import (
     hide_unconfigured_providers,
 )
 
-_SUPPORTED_PROVIDERS = {"openvas", "insightvm", "nessus", "wazuh", "zabbix", "uptime_kuma"}
-_VULN_PROVIDERS = {"openvas", "insightvm", "nessus"}
+_SUPPORTED_PROVIDERS = {"openvas", "insightvm", "nessus", "tenable", "wazuh", "zabbix", "uptime_kuma"}
+_VULN_PROVIDERS = {"openvas", "insightvm", "nessus", "tenable"}
 _NOC_PROVIDERS = {"zabbix", "uptime_kuma"}
 
 _HOME_PROVIDER_META = {
     "openvas": {"label": "OpenVAS Scans", "navigation_slug": "openvas"},
     "insightvm": {"label": "InsightVM / Rapid7", "navigation_slug": "insightvm"},
     "nessus": {"label": "Nessus Scans", "navigation_slug": "nessus"},
+    "tenable": {"label": "Tenable Scans", "navigation_slug": "tenable"},
     "wazuh": {"label": "Wazuh SIEM", "navigation_slug": "wazuh"},
     "zabbix": {"label": "Zabbix Monitor", "navigation_slug": "zabbix"},
     "uptime_kuma": {"label": "Uptime Kuma", "navigation_slug": "uptime"},
 }
+
+_PROVIDER_DOMAINS = {
+    "openvas": "vulnerability",
+    "insightvm": "vulnerability",
+    "nessus": "vulnerability",
+    "tenable": "vulnerability",
+    "wazuh": "soc",
+    "zabbix": "noc",
+    "uptime_kuma": "noc",
+}
+
+_PREFERENCE_PROVIDER_ALIASES = {
+    "tenable": "nessus",
+}
+
+_PROVIDER_ALIASES = {
+    "uptime": "uptime_kuma",
+    "rapid7": "insightvm",
+}
+
+
+def _canonical_provider(provider: str) -> str:
+    normalized = str(provider or "").strip().lower()
+    return _PROVIDER_ALIASES.get(normalized, normalized)
+
+
+def _provider_meta(provider: str) -> dict:
+    meta = _HOME_PROVIDER_META.get(provider, {"label": provider.replace("_", " ").title(), "navigation_slug": provider})
+    return {
+        "provider": provider,
+        "label": meta["label"],
+        "navigation_slug": meta["navigation_slug"],
+        "domain": _PROVIDER_DOMAINS.get(provider, "other"),
+    }
+
+
+def _provider_visibility_key(provider: str) -> str:
+    return _PREFERENCE_PROVIDER_ALIASES.get(provider, provider)
+
+
+def _empty_provider_dashboard(provider: str, message: str) -> dict:
+    meta = _provider_meta(provider)
+    return {
+        **meta,
+        "configured": False,
+        "active": False,
+        "has_data": False,
+        "message": message,
+        "range": None,
+        "summary": {},
+        "kpis": {},
+        "charts": {},
+        "tables": {},
+        "agentInfo": None,
+    }
 
 
 def _parse_range(preset: str | None = None, from_date: str | None = None, to_date: str | None = None, default_days: int = 30, max_days: int = 90) -> dict:
@@ -186,6 +242,118 @@ def _build_top_cves(session: Session, tenant_id: int, provider: str, range_start
     return top[:10]
 
 
+def _build_host_exposure(session: Session, tenant_id: int, provider: str, range_start: datetime, range_end: datetime, limit: int = 10) -> list[dict]:
+    summaries = session.scalars(
+        select(ScanSummary).where(
+            ScanSummary.tenant_id == tenant_id,
+            ScanSummary.scanner_type == provider,
+            ScanSummary.scanned_at >= range_start,
+            ScanSummary.scanned_at <= range_end,
+        )
+    ).all()
+    if not summaries:
+        return []
+
+    summary_ids = [s.id for s in summaries]
+    rows = session.query(
+        FindingIndex.host,
+        FindingIndex.severity,
+        func.count(FindingIndex.id).label("finding_count"),
+        func.max(FindingIndex.cvss).label("max_cvss"),
+        func.max(ScanSummary.scanned_at).label("last_seen"),
+    ).join(
+        ScanSummary, FindingIndex.scan_summary_soc_id == ScanSummary.id
+    ).filter(
+        FindingIndex.scan_summary_soc_id.in_(summary_ids),
+        FindingIndex.host.is_not(None),
+        FindingIndex.host != "",
+    ).group_by(
+        FindingIndex.host,
+        FindingIndex.severity,
+    ).all()
+
+    by_host: dict[str, dict] = {}
+    for row in rows:
+        host = str(row.host)
+        item = by_host.setdefault(host, {
+            "host": host,
+            "critical": 0,
+            "high": 0,
+            "medium": 0,
+            "low": 0,
+            "info": 0,
+            "total_findings": 0,
+            "max_cvss": 0.0,
+            "last_seen": None,
+        })
+        severity = str(row.severity or "info").strip().lower()
+        severity_key = severity if severity in {"critical", "high", "medium", "low", "info"} else "info"
+        count = int(row.finding_count or 0)
+        item[severity_key] += count
+        item["total_findings"] += count
+        item["max_cvss"] = max(float(item["max_cvss"] or 0.0), float(row.max_cvss or 0.0))
+        last_seen = row.last_seen.isoformat() if row.last_seen else None
+        if last_seen and (item["last_seen"] is None or last_seen > item["last_seen"]):
+            item["last_seen"] = last_seen
+
+    result = list(by_host.values())
+    result.sort(
+        key=lambda item: (
+            -int(item["critical"]),
+            -int(item["high"]),
+            -float(item["max_cvss"]),
+            -int(item["total_findings"]),
+            item["host"],
+        )
+    )
+    return result[:limit]
+
+
+def _build_recent_noc_findings_for_provider(session: Session, tenant_id: int, provider: str, range_start: datetime, range_end: datetime, limit: int = 20) -> list[dict]:
+    summaries = session.scalars(
+        select(ScanSummaryNoc).where(
+            ScanSummaryNoc.tenant_id == tenant_id,
+            ScanSummaryNoc.scanner_type == provider,
+            ScanSummaryNoc.scanned_at >= range_start,
+            ScanSummaryNoc.scanned_at <= range_end,
+        ).order_by(ScanSummaryNoc.scanned_at.desc()).limit(10)
+    ).all()
+    if not summaries:
+        return []
+
+    summary_ids = [s.id for s in summaries]
+    rows = session.query(FindingIndex, ScanSummaryNoc).join(
+        ScanSummaryNoc, FindingIndex.scan_summary_noc_id == ScanSummaryNoc.id
+    ).filter(
+        FindingIndex.scan_summary_noc_id.in_(summary_ids),
+    ).order_by(
+        case(
+            (FindingIndex.severity.ilike("%critical%"), 1),
+            (FindingIndex.severity.ilike("%high%"), 2),
+            (FindingIndex.severity.ilike("%medium%"), 3),
+            (FindingIndex.severity.ilike("%low%"), 4),
+            else_=5,
+        ),
+        ScanSummaryNoc.scanned_at.desc(),
+    ).limit(limit).all()
+    return [
+        {
+            "id": finding.id,
+            "cve": finding.event_type or finding.cve,
+            "name": finding.name,
+            "host": finding.host,
+            "severity": finding.severity,
+            "cvss": finding.cvss,
+            "domain": finding.domain,
+            "scan_id": finding.scan_id,
+            "scan_summary_soc_id": finding.scan_summary_soc_id,
+            "scan_summary_noc_id": finding.scan_summary_noc_id,
+            "detectedAt": summary.scanned_at.isoformat() if summary.scanned_at else None,
+        }
+        for finding, summary in rows
+    ]
+
+
 def _build_top_alerts(session: Session, tenant_id: int, provider: str, range_start: datetime, range_end: datetime) -> list[dict]:
     summaries = session.scalars(
         select(ScanSummary).where(
@@ -217,6 +385,120 @@ def _build_top_alerts(session: Session, tenant_id: int, provider: str, range_sta
         }
         for row in rows
     ]
+
+
+def _build_scan_cut_trend(session: Session, tenant_id: int, provider: str, range_start: datetime, range_end: datetime, limit: int = 20) -> list[dict]:
+    scans = list(
+        session.scalars(
+            select(ScanSummary).where(
+                ScanSummary.tenant_id == tenant_id,
+                ScanSummary.scanner_type == provider,
+                ScanSummary.scanned_at >= range_start,
+                ScanSummary.scanned_at <= range_end,
+            ).order_by(ScanSummary.scanned_at.asc()).limit(limit)
+        )
+    )
+    return [
+        {
+            "scan_summary_id": scan.id,
+            "scan_id": scan.scan_id,
+            "scan_name": scan.scan_name,
+            "display_label": scan.scan_name or (scan.scanned_at.isoformat() if scan.scanned_at else f"Cut {scan.id}"),
+            "status": scan.status,
+            "scanned_at": scan.scanned_at.isoformat() if scan.scanned_at else None,
+            "critical": int(scan.critical_count or 0),
+            "high": int(scan.high_count or 0),
+            "medium": int(scan.medium_count or 0),
+            "low": int(scan.low_count or 0),
+            "info": int(scan.info_count or 0),
+            "total": int((scan.critical_count or 0) + (scan.high_count or 0) + (scan.medium_count or 0) + (scan.low_count or 0) + (scan.info_count or 0)),
+        }
+        for scan in scans
+    ]
+
+
+def _build_latest_soc_snapshot(session: Session, latest_scan: ScanSummary | None) -> dict | None:
+    if not latest_scan:
+        return None
+
+    findings = list(
+        session.scalars(
+            select(FindingIndex)
+            .where(FindingIndex.scan_summary_soc_id == latest_scan.id)
+            .order_by(FindingIndex.created_at.desc())
+        )
+    )
+
+    top_rules_counter: dict[str, int] = {}
+    top_agents_counter: dict[str, int] = {}
+    for finding in findings:
+        rule_name = str(finding.name or "").strip()
+        host_name = str(finding.host or "").strip()
+        if rule_name:
+            top_rules_counter[rule_name] = top_rules_counter.get(rule_name, 0) + 1
+        if host_name:
+            top_agents_counter[host_name] = top_agents_counter.get(host_name, 0) + 1
+
+    top_rules = [
+        {"name": name, "count": count}
+        for name, count in sorted(top_rules_counter.items(), key=lambda item: (-item[1], item[0]))[:5]
+    ]
+    top_agents = [
+        {"name": name, "count": count}
+        for name, count in sorted(top_agents_counter.items(), key=lambda item: (-item[1], item[0]))[:5]
+    ]
+
+    meta = latest_scan.meta_info if isinstance(latest_scan.meta_info, dict) else {}
+    return {
+        "scan_summary_id": latest_scan.id,
+        "scan_id": latest_scan.scan_id,
+        "scan_name": latest_scan.scan_name,
+        "status": latest_scan.status,
+        "scanned_at": latest_scan.scanned_at.isoformat() if latest_scan.scanned_at else None,
+        "severity_totals": {
+            "critical": int(latest_scan.critical_count or 0),
+            "high": int(latest_scan.high_count or 0),
+            "medium": int(latest_scan.medium_count or 0),
+            "low": int(latest_scan.low_count or 0),
+            "info": int(latest_scan.info_count or 0),
+            "total": int((latest_scan.critical_count or 0) + (latest_scan.high_count or 0) + (latest_scan.medium_count or 0) + (latest_scan.low_count or 0) + (latest_scan.info_count or 0)),
+        },
+        "total_hosts": int(latest_scan.total_hosts or 0),
+        "cvss_max": float(latest_scan.cvss_max or 0),
+        "top_rules": top_rules,
+        "top_agents": top_agents,
+        "manager_status": meta.get("manager_status"),
+    }
+
+
+def _build_scan_rule_and_agent_highlights(session: Session, scan_summary_id: int, limit: int = 5) -> tuple[list[dict], list[dict]]:
+    findings = list(
+        session.scalars(
+            select(FindingIndex)
+            .where(FindingIndex.scan_summary_soc_id == scan_summary_id)
+            .order_by(FindingIndex.created_at.desc())
+        )
+    )
+
+    top_rules_counter: dict[str, int] = {}
+    top_agents_counter: dict[str, int] = {}
+    for finding in findings:
+        rule_name = str(finding.name or "").strip()
+        host_name = str(finding.host or "").strip()
+        if rule_name:
+            top_rules_counter[rule_name] = top_rules_counter.get(rule_name, 0) + 1
+        if host_name:
+            top_agents_counter[host_name] = top_agents_counter.get(host_name, 0) + 1
+
+    top_rules = [
+        {"name": name, "count": count}
+        for name, count in sorted(top_rules_counter.items(), key=lambda item: (-item[1], item[0]))[:limit]
+    ]
+    top_agents = [
+        {"name": name, "count": count}
+        for name, count in sorted(top_agents_counter.items(), key=lambda item: (-item[1], item[0]))[:limit]
+    ]
+    return top_rules, top_agents
 
 
 def _build_recent_findings_for_provider(session: Session, tenant_id: int, provider: str, range_start: datetime, range_end: datetime, limit: int = 20) -> list[dict]:
@@ -257,6 +539,8 @@ def _build_recent_findings_for_provider(session: Session, tenant_id: int, provid
             "scan_id": finding.scan_id,
             "scan_summary_soc_id": finding.scan_summary_soc_id,
             "scan_summary_noc_id": finding.scan_summary_noc_id,
+            "scan_summary_id": finding.scan_summary_soc_id,
+            "detected_at": summary.scanned_at.isoformat() if summary.scanned_at else None,
             "detectedAt": summary.scanned_at.isoformat() if summary.scanned_at else None,
         }
         for finding, summary in rows
@@ -265,8 +549,11 @@ def _build_recent_findings_for_provider(session: Session, tenant_id: int, provid
 
 def _build_provider_scans(session: Session, tenant_id: int, provider: str, range_start: datetime, range_end: datetime, limit: int = 10) -> list[dict]:
     scans = _recent_soc_scans(session, tenant_id, provider, limit=limit)
-    return [
-        {
+    result = []
+    for scan in scans:
+        meta = scan.meta_info if isinstance(scan.meta_info, dict) else {}
+        top_rules, top_agents = _build_scan_rule_and_agent_highlights(session, scan.id)
+        result.append({
             "id": scan.id,
             "scan_id": scan.scan_id,
             "scan_name": scan.scan_name,
@@ -277,11 +564,15 @@ def _build_provider_scans(session: Session, tenant_id: int, provider: str, range
             "medium_count": scan.medium_count,
             "low_count": scan.low_count,
             "info_count": scan.info_count,
+            "total_events": int((scan.critical_count or 0) + (scan.high_count or 0) + (scan.medium_count or 0) + (scan.low_count or 0) + (scan.info_count or 0)),
             "total_hosts": scan.total_hosts,
             "cvss_max": scan.cvss_max,
-        }
-        for scan in scans
-    ]
+            "send_reason": meta.get("send_reason"),
+            "snapshot_mode": meta.get("snapshot_mode"),
+            "top_rules": top_rules,
+            "top_agents": top_agents,
+        })
+    return result
 
 
 def _build_noc_scans(session: Session, tenant_id: int, provider: str, limit: int = 10) -> list[dict]:
@@ -322,21 +613,28 @@ def _build_agent_info(session: Session, tenant_id: int, provider: str, domain: s
 def _build_vuln_provider_dashboard(session: Session, tenant_id: int, provider: str, range_info: dict) -> dict:
     start = range_info["start"]
     end = range_info["end"]
-    status = _base_status(session, tenant_id, provider, provider)
-    latest_scan = _latest_soc_scan(session, tenant_id, provider)
-    recent_scans = _recent_soc_scans(session, tenant_id, provider, limit=30)
+    scanner = provider
+    meta = _provider_meta(provider)
+    status = _base_status(session, tenant_id, provider, scanner)
+    if not status["configured"]:
+        return _empty_provider_dashboard(provider, f"{meta['label']} integration not configured for this company")
+
+    latest_scan = _latest_soc_scan(session, tenant_id, scanner)
+    recent_scans = _recent_soc_scans(session, tenant_id, scanner, limit=30)
     latest_counts = _scan_counts(latest_scan) if latest_scan else {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
     completed = sum(1 for s in recent_scans if (s.status or "").lower() == "completed")
     running = sum(1 for s in recent_scans if (s.status or "").lower() == "running")
     unique_hosts = int(latest_scan.total_hosts or 0) if latest_scan else 0
-    trend = _build_vuln_trend(session, tenant_id, provider, start, end)
-    top_cves = _build_top_cves(session, tenant_id, provider, start, end)
-    recent_findings = _build_recent_findings_for_provider(session, tenant_id, provider, start, end)
-    scan_rows = _build_provider_scans(session, tenant_id, provider, start, end)
+    trend = _build_vuln_trend(session, tenant_id, scanner, start, end)
+    top_cves = _build_top_cves(session, tenant_id, scanner, start, end)
+    host_exposure = _build_host_exposure(session, tenant_id, scanner, start, end)
+    recent_findings = _build_recent_findings_for_provider(session, tenant_id, scanner, start, end)
+    scan_rows = _build_provider_scans(session, tenant_id, scanner, start, end)
     agent_info = _build_agent_info(session, tenant_id, provider, "soc")
+    total_findings = sum(int(latest_counts.get(key, 0) or 0) for key in ("critical", "high", "medium", "low", "info"))
 
     return {
-        "provider": provider,
+        **meta,
         "configured": status["configured"],
         "active": status["active"],
         "has_data": latest_scan is not None,
@@ -344,6 +642,9 @@ def _build_vuln_provider_dashboard(session: Session, tenant_id: int, provider: s
         "range": {"preset": range_info["preset"], "from": range_info["from"], "to": range_info["to"]},
         "summary": latest_counts,
         "kpis": {
+            "total_findings": total_findings,
+            "critical": int(latest_counts.get("critical", 0) or 0),
+            "high": int(latest_counts.get("high", 0) or 0),
             "hosts_scanned": unique_hosts,
             "scans_completed": completed,
             "scans_running": running,
@@ -353,6 +654,7 @@ def _build_vuln_provider_dashboard(session: Session, tenant_id: int, provider: s
         "charts": {
             "trend": trend,
             "top_cves": top_cves,
+            "host_exposure": host_exposure,
         },
         "tables": {
             "recent_findings": recent_findings,
@@ -368,22 +670,27 @@ def _build_wazuh_dashboard(session: Session, tenant_id: int, range_info: dict) -
     status = _base_status(session, tenant_id, "wazuh", "wazuh")
     latest_scan = _latest_soc_scan(session, tenant_id, "wazuh")
     if not status["configured"]:
-        return {"provider": "wazuh", "configured": False, "message": "Wazuh integration not configured for this company"}
+        return _empty_provider_dashboard("wazuh", "Wazuh integration not configured for this company")
 
+    provider_meta = _provider_meta("wazuh")
     meta = latest_scan.meta_info if latest_scan and isinstance(latest_scan.meta_info, dict) else {}
     agent_meta = meta.get("agents") if isinstance(meta.get("agents"), dict) else {}
     recent = [finding.to_dict() for finding in _recent_findings(session, latest_scan.id)] if latest_scan else []
-    trend = _build_vuln_trend(session, tenant_id, "wazuh", start, end)
-    top_alerts = _build_top_alerts(session, tenant_id, "wazuh", start, end)
+    trend = _build_scan_cut_trend(session, tenant_id, "wazuh", start, end)
+    recent_scans = _build_provider_scans(session, tenant_id, "wazuh", start, end)
     agent_info = _build_agent_info(session, tenant_id, "wazuh", "soc")
+    snapshot = _build_latest_soc_snapshot(session, latest_scan)
+    total_alerts = sum(_scan_counts(latest_scan).values()) if latest_scan else 0
+    active_agents = int(agent_meta.get("active", latest_scan.total_hosts if latest_scan else 0)) if latest_scan else 0
 
     return {
-        "provider": "wazuh",
+        **provider_meta,
         "configured": True,
         "active": status["active"],
         "has_data": latest_scan is not None,
         "last_sync": latest_scan.scanned_at.isoformat() if latest_scan else None,
         "range": {"preset": range_info["preset"], "from": range_info["from"], "to": range_info["to"]},
+        "snapshot": snapshot,
         "summary": {
             "alerts": {
                 "total": sum(_scan_counts(latest_scan).values()) if latest_scan else 0,
@@ -398,13 +705,15 @@ def _build_wazuh_dashboard(session: Session, tenant_id: int, range_info: dict) -
         },
         "kpis": {
             "manager_status": meta.get("manager_status", "healthy" if latest_scan else "unknown"),
+            "alerts_active": total_alerts,
+            "agents_active": active_agents,
         },
         "charts": {
             "trend": trend,
-            "top_alerts": top_alerts,
         },
         "tables": {
             "recent_findings": recent,
+            "recent_scans": recent_scans,
         },
         "agentInfo": agent_info,
     }
@@ -414,11 +723,12 @@ def _build_zabbix_dashboard(session: Session, tenant_id: int, range_info: dict) 
     status = _base_status(session, tenant_id, "zabbix", "zabbix")
     latest_scan = _latest_noc_scan(session, tenant_id, "zabbix")
     if not status["configured"]:
-        return {"provider": "zabbix", "configured": False, "message": "Zabbix integration not configured for this company"}
+        return _empty_provider_dashboard("zabbix", "Zabbix integration not configured for this company")
 
-    meta = latest_scan.meta_info if latest_scan and isinstance(latest_scan.meta_info, dict) else {}
-    metrics = meta.get("metrics") if isinstance(meta.get("metrics"), dict) else {}
-    hosts = meta.get("hosts") if isinstance(meta.get("hosts"), list) else []
+    provider_meta = _provider_meta("zabbix")
+    scan_meta = latest_scan.meta_info if latest_scan and isinstance(latest_scan.meta_info, dict) else {}
+    metrics = scan_meta.get("metrics") if isinstance(scan_meta.get("metrics"), dict) else {}
+    hosts = scan_meta.get("hosts") if isinstance(scan_meta.get("hosts"), list) else []
     recent_alerts = [event.to_dict() for event in _recent_noc_events(session, latest_scan.id)] if latest_scan else []
     range_start = range_info["start"]
     range_end = range_info["end"]
@@ -427,7 +737,7 @@ def _build_zabbix_dashboard(session: Session, tenant_id: int, range_info: dict) 
     agent_info = _build_agent_info(session, tenant_id, "zabbix", "noc")
 
     return {
-        "provider": "zabbix",
+        **provider_meta,
         "configured": True,
         "active": status["active"],
         "has_data": latest_scan is not None,
@@ -438,8 +748,10 @@ def _build_zabbix_dashboard(session: Session, tenant_id: int, range_info: dict) 
             "hosts_monitored": int(latest_scan.total_hosts or 0) if latest_scan else 0,
         },
         "kpis": {
-            "avg_cpu": float(metrics.get("avg_cpu", meta.get("avg_cpu", 0.0))) if latest_scan else 0.0,
-            "avg_ram": float(metrics.get("avg_ram", meta.get("avg_ram", 0.0))) if latest_scan else 0.0,
+            "alerts_active": sum(_scan_counts(latest_scan).values()) if latest_scan else 0,
+            "hosts_monitored": int(latest_scan.total_hosts or 0) if latest_scan else 0,
+            "avg_cpu": float(metrics.get("avg_cpu", scan_meta.get("avg_cpu", 0.0))) if latest_scan else 0.0,
+            "avg_ram": float(metrics.get("avg_ram", scan_meta.get("avg_ram", 0.0))) if latest_scan else 0.0,
         },
         "charts": {
             "trend": trend,
@@ -457,8 +769,9 @@ def _build_uptime_kuma_dashboard(session: Session, tenant_id: int, range_info: d
     status = _base_status(session, tenant_id, "uptime_kuma", "uptime_kuma")
     latest_scan = _latest_noc_scan(session, tenant_id, "uptime_kuma")
     if not status["configured"]:
-        return {"provider": "uptime_kuma", "configured": False, "message": "Uptime Kuma integration not configured for this company"}
+        return _empty_provider_dashboard("uptime_kuma", "Uptime Kuma integration not configured for this company")
 
+    provider_meta = _provider_meta("uptime_kuma")
     meta = latest_scan.meta_info if latest_scan and isinstance(latest_scan.meta_info, dict) else {}
     services = meta.get("services") if isinstance(meta.get("services"), dict) else {}
     total = int(services.get("total", latest_scan.total_hosts if latest_scan else 0)) if latest_scan else 0
@@ -470,10 +783,11 @@ def _build_uptime_kuma_dashboard(session: Session, tenant_id: int, range_info: d
     range_end = range_info["end"]
     trend = _build_noc_trend(session, tenant_id, "uptime_kuma", range_start, range_end)
     scan_rows = _build_noc_scans(session, tenant_id, "uptime_kuma")
+    recent_events = _build_recent_noc_findings_for_provider(session, tenant_id, "uptime_kuma", range_start, range_end)
     agent_info = _build_agent_info(session, tenant_id, "uptime_kuma", "noc")
 
     return {
-        "provider": "uptime_kuma",
+        **provider_meta,
         "configured": True,
         "active": status["active"],
         "has_data": latest_scan is not None,
@@ -485,11 +799,16 @@ def _build_uptime_kuma_dashboard(session: Session, tenant_id: int, range_info: d
         },
         "kpis": {
             "status": "healthy" if down == 0 else "degraded",
+            "services_monitored": total,
+            "services_down": down,
+            "services_up": up_services,
+            "uptime_percentage": uptime,
         },
         "charts": {
             "trend": trend,
         },
         "tables": {
+            "recent_events": recent_events,
             "recent_scans": scan_rows,
         },
         "agentInfo": agent_info,
@@ -619,12 +938,13 @@ def build_home_dashboard(session: Session, tenant_id: int) -> dict:
 
 
 def build_provider_dashboard(session: Session, tenant_id: int, provider: str, preset: str | None = None, from_date: str | None = None, to_date: str | None = None) -> dict:
+    provider = _canonical_provider(provider)
     if provider not in _SUPPORTED_PROVIDERS:
         return {"error": f"Unsupported provider: {provider}", "supported": list(_SUPPORTED_PROVIDERS)}
 
     preferences = get_tenant_preferences(session, tenant_id)
     visible_providers = set(get_visible_integration_providers(preferences)) or set(_SUPPORTED_PROVIDERS)
-    if provider not in visible_providers:
+    if _provider_visibility_key(provider) not in visible_providers and provider not in visible_providers:
         raise NotFoundError("Provider dashboard not enabled for this tenant")
 
     range_info = _parse_range(preset, from_date, to_date)
