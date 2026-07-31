@@ -1,4 +1,4 @@
-const { buildService, lambdaConfig, protectedRoute, publicRoute, stageRef } = require('./serverless/services/lib/common');
+const { buildService, commonEnvironment, lambdaConfig, protectedRoute, publicRoute, stageRef } = require('./serverless/services/lib/common');
 const opsResources = require('./serverless/services/ops-resources');
 
 module.exports = buildService({
@@ -6,6 +6,16 @@ module.exports = buildService({
   attachToSharedHttpApi: true,
   iam: { database: true, snapshots: true, vpc: true, agentEncryption: true },
   additionalIamStatements: (stage) => ([
+    {
+      Effect: 'Allow',
+      Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:DeleteItem'],
+      Resource: [`arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-ops-${stage}-device-registry`],
+    },
+    {
+      Effect: 'Allow',
+      Action: ['mobiletargeting:SendMessages'],
+      Resource: [`arn:aws:mobiletargeting:${'${aws:region}'}:${'${aws:accountId}'}:apps/ccdefb15609849fcaf7a256db92065bf/messages`],
+    },
     {
       Effect: 'Allow',
       Action: ['sqs:ReceiveMessage', 'sqs:DeleteMessage', 'sqs:GetQueueAttributes', 'sqs:ChangeMessageVisibility'],
@@ -17,7 +27,28 @@ module.exports = buildService({
     dockerizePip: true,
     dockerImage: 'public.ecr.aws/sam/build-python3.11:latest',
   },
+  environment: (stage) => ({
+    ...commonEnvironment(stage),
+    DEVICE_REGISTRY_TABLE_NAME: `xoc-api-ops-${stage}-device-registry`,
+    END_USER_MESSAGING_APPLICATION_ID: process.env.END_USER_MESSAGING_APPLICATION_ID || 'ccdefb15609849fcaf7a256db92065bf',
+    AWS_REGION: process.env.AWS_REGION || 'us-east-1',
+  }),
   functions: (stage) => ({
+    pushDevicesApi: lambdaConfig(stage, {
+      handler: 'src/handlers/domains/push.handler',
+      description: 'Registers authenticated user devices and sends test push notifications',
+      include: [
+        'src/handlers/domains/push.py',
+        'src/handlers/routes/devices.py',
+        'src/shared/**',
+        'requirements.crypto.txt',
+      ],
+      events: [
+        protectedRoute(stage, 'POST', '/devices'),
+        protectedRoute(stage, 'DELETE', '/devices/{deviceId}'),
+        protectedRoute(stage, 'POST', '/notifications/test'),
+      ],
+    }),
     scansApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/scans.handler',
       description: 'Scans domain API',

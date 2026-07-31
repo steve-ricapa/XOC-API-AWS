@@ -3,6 +3,21 @@ const { stageRef } = require('./lib/common');
 module.exports = function opsResources(stage) {
   return {
     Resources: {
+      DeviceRegistryTable: {
+        Type: 'AWS::DynamoDB::Table',
+        Properties: {
+          TableName: `xoc-api-ops-${stage}-device-registry`,
+          BillingMode: 'PAY_PER_REQUEST',
+          AttributeDefinitions: [
+            { AttributeName: 'PK', AttributeType: 'S' },
+            { AttributeName: 'SK', AttributeType: 'S' },
+          ],
+          KeySchema: [
+            { AttributeName: 'PK', KeyType: 'HASH' },
+            { AttributeName: 'SK', KeyType: 'RANGE' },
+          ],
+        },
+      },
       SnapshotIngestDlq: {
         Type: 'AWS::SQS::Queue',
         Properties: {
@@ -46,6 +61,12 @@ module.exports = function opsResources(stage) {
       },
     },
     Outputs: {
+      DeviceRegistryTableName: {
+        Value: { Ref: 'DeviceRegistryTable' },
+      },
+      DeviceRegistryTableArn: {
+        Value: { 'Fn::GetAtt': ['DeviceRegistryTable', 'Arn'] },
+      },
       SnapshotIngestQueueUrl: {
         Value: { Ref: 'SnapshotIngestQueue' },
       },
