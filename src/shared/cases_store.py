@@ -21,10 +21,6 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def cases_pk(tenant_id: int) -> str:
-    return f"CASE#{tenant_id}"
-
-
 def cases_sk(case_id: str) -> str:
     return f"CASE#{case_id}"
 
@@ -45,8 +41,16 @@ def status_index_sk(created_at: str) -> str:
     return f"CASE#{created_at}"
 
 
+def tenant_index_pk(tenant_id: int) -> str:
+    return f"TENANT#{tenant_id}"
+
+
+def tenant_index_sk(created_at: str) -> str:
+    return f"CASE#{created_at}"
+
+
 def case_key(tenant_id: int, case_id: str) -> dict:
-    return {"pk": cases_pk(tenant_id), "sk": cases_sk(case_id)}
+    return {"sk": cases_sk(case_id), "tenant_id": tenant_id}
 
 
 def build_secondary_index_fields(tenant_id: int, case_id: str, status: str, created_at: str, ticket_id: str) -> dict:
@@ -55,11 +59,13 @@ def build_secondary_index_fields(tenant_id: int, case_id: str, status: str, crea
         "gsi1sk": ticket_index_sk(created_at),
         "gsi2pk": status_index_pk(tenant_id, status),
         "gsi2sk": status_index_sk(created_at),
+        "gsi3pk": tenant_index_pk(tenant_id),
+        "gsi3sk": tenant_index_sk(created_at),
     }
 
 
 def serialize_case(item: dict) -> dict:
-    return {k: v for k, v in item.items() if not k.startswith(("pk", "sk", "gsi"))}
+    return {k: v for k, v in item.items() if not k.startswith(("sk", "gsi"))}
 
 
 def parse_case_datetime(value: str | None) -> datetime:
@@ -87,8 +93,8 @@ def create_case(
     case_id = str(uuid.uuid4())
     status = "RESUELTO" if action == "success" else "NO_RESUELTO"
     item = {
-        "pk": cases_pk(tenant_id),
         "sk": cases_sk(case_id),
+        "tenant_id": tenant_id,
         "case_id": case_id,
         "tenant_id": tenant_id,
         "ticket_id": ticket_id,
@@ -143,7 +149,8 @@ def list_tenant_cases(tenant_id: int, status: str | None = None, limit: int = 50
         items = response.get("Items", [])
     else:
         response = table.query(
-            KeyConditionExpression=Key("pk").eq(cases_pk(tenant_id)),
+            IndexName="TenantIndex",
+            KeyConditionExpression=Key("gsi3pk").eq(tenant_index_pk(tenant_id)),
             ScanIndexForward=False,
         )
         items = response.get("Items", [])
@@ -153,7 +160,8 @@ def list_tenant_cases(tenant_id: int, status: str | None = None, limit: int = 50
 
 def search_similar_cases(tenant_id: int, subject: str) -> dict | None:
     response = table.query(
-        KeyConditionExpression=Key("pk").eq(cases_pk(tenant_id)),
+        IndexName="TenantIndex",
+        KeyConditionExpression=Key("gsi3pk").eq(tenant_index_pk(tenant_id)),
         ScanIndexForward=False,
     )
     items = response.get("Items", [])
@@ -172,7 +180,8 @@ def search_similar_cases(tenant_id: int, subject: str) -> dict | None:
 
 def delete_tenant_cases(tenant_id: int) -> int:
     response = table.query(
-        KeyConditionExpression=Key("pk").eq(cases_pk(tenant_id)),
+        IndexName="TenantIndex",
+        KeyConditionExpression=Key("gsi3pk").eq(tenant_index_pk(tenant_id)),
     )
     items = response.get("Items", [])
     deleted = 0
@@ -180,6 +189,6 @@ def delete_tenant_cases(tenant_id: int) -> int:
         return deleted
     with table.batch_writer() as batch:
         for item in items:
-            batch.delete_item(Key={"pk": item["pk"], "sk": item["sk"]})
+            batch.delete_item(Key={"sk": item["sk"], "tenant_id": item["tenant_id"]})
             deleted += 1
     return deleted

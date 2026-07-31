@@ -15,7 +15,7 @@ jwtSecretKey: ""
 jwtSecretKeySsmPath: ""
 jwtSecretArn: ${cf:xoc-api-shared-prod.JwtSecretArn}
 agentKeyEncryptionKeyArn: ${cf:xoc-api-shared-prod.AgentKeyEncryptionKeySecretArn}
-agentsFunctionBaseUrl: https://prod-a-xoc-cons-g9hvargsfqeafeap.centralus-01.azurewebsites.net
+agentsFunctionBaseUrl: http://44.222.129.186:8000
 agentsFunctionRouteSophia: /api/agents/SophiaDurableAgent/run
 agentsFunctionRouteSophiaHistory: /api/agents/SophiaDurableAgent/history
 agentsFunctionRouteSophiaDelete: /api/agents/SophiaDurableAgent/threads
@@ -36,4 +36,4 @@ apiVpc:
     - ${cf:xoc-infra-network-prod.LambdaSecurityGroupId}
   subnetIds:
     - ${cf:xoc-infra-network-prod.LambdaPrivateSubnetAId}
-casesTableName: xoc-api-automation-prod-cases
+casesTableName: xoc-api-automation-prod-cases-v2

@@ -383,7 +383,6 @@ def _seed_systems_alerts_vulns_tickets(session: Session, tenant: Tenant, admin_u
                 description="Synthetic ticket for dashboard and workflow demos.",
                 status=rng.choice(["PENDING", "APPROVED", "REJECTED"]),
                 action_plan={"steps": ["validate", "contain", "report"]},
-                action_plan_version="v1",
                 created_at=_now() - timedelta(days=rng.randint(1, 20)),
                 execution_status=rng.choice([None, "QUEUED", "COMPLETED"]),
             )
@@ -457,7 +456,6 @@ def _seed_dynamo_tickets(tenant_id: int, admin_user: User, rng: random.Random) -
                     {"id": "step-2", "tool": "ticket_patch", "description": "Apply remediation state", "parameters": {"status": "EN_EJECUCION"}},
                 ],
             }
-            item["action_plan_version"] = "v1"
             item["pending_decision"] = {
                 "options": [
                     {"option_id": "approve-demo", "label": "Approve remediation"},

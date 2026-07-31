@@ -7,8 +7,9 @@ from mangum import Mangum
 
 from src.shared.config import get_settings
 from src.shared.dependencies import require_access_claims
-from src.shared.errors import AppError, ValidationError
+from src.shared.errors import AppError, ForbiddenError, ValidationError
 from src.shared.logging import logger
+from src.shared.risk_config import is_role_sufficient
 from src.shared.tickets_store import (
     build_new_ticket_item,
     build_secondary_index_fields,
@@ -185,6 +186,10 @@ def select_ticket_decision(ticket_id: str, payload: dict, claims: dict = Depends
     pending_decision = item.get("pending_decision")
     if not pending_decision or not isinstance(pending_decision, dict):
         raise ValidationError("No pending decision found for this ticket")
+    required_role = pending_decision.get("required_approver_role", "USER")
+    user_role = (claims.get("role") or "").upper()
+    if not is_role_sufficient(user_role, required_role):
+        raise ForbiddenError("Insufficient role to approve this decision")
     options = pending_decision.get("options", [])
     selected_option_id = payload.get("selected_option_id")
     if not selected_option_id:

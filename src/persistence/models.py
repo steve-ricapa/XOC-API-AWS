@@ -150,17 +150,13 @@ class Ticket(Base):
     executed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
     action_plan: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    action_plan_version: Mapped[str] = mapped_column(String(20), nullable=False, default="v0")
     approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     rejected_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     execution_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    execution_logs: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
     execution_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     pending_decision: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    decision_timeout_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    on_decision_timeout: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
     def to_dict(self, include_creator: bool = False, creator: User | None = None) -> dict:
         data = {
@@ -173,17 +169,13 @@ class Ticket(Base):
             "executed_at": self.executed_at.isoformat() if self.executed_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "action_plan": self.action_plan,
-            "action_plan_version": self.action_plan_version,
             "approved_by_user_id": self.approved_by_user_id,
             "approved_at": self.approved_at.isoformat() if self.approved_at else None,
             "rejected_by_user_id": self.rejected_by_user_id,
             "rejected_at": self.rejected_at.isoformat() if self.rejected_at else None,
             "execution_status": self.execution_status,
-            "execution_logs": self.execution_logs,
             "execution_summary": self.execution_summary,
             "pending_decision": self.pending_decision,
-            "decision_timeout_minutes": self.decision_timeout_minutes,
-            "on_decision_timeout": self.on_decision_timeout,
         }
         if include_creator and creator is not None:
             data["creator"] = creator.to_dict()

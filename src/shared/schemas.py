@@ -173,17 +173,13 @@ class TicketResponse(BaseModel):
     executed_at: str | None = None
     created_at: str | None = None
     action_plan: dict[str, Any] | None = None
-    action_plan_version: str
     approved_by_user_id: int | None = None
     approved_at: str | None = None
     rejected_by_user_id: int | None = None
     rejected_at: str | None = None
     execution_status: str | None = None
-    execution_logs: dict[str, Any] | list[Any] | None = None
     execution_summary: str | None = None
     pending_decision: dict[str, Any] | None = None
-    decision_timeout_minutes: int | None = None
-    on_decision_timeout: str | None = None
     creator: UserResponse | None = None
 
 
@@ -208,12 +204,8 @@ class UpdateTicketRequest(BaseModel):
     status: str | None = None
     pending_decision: dict[str, Any] | None = None
     execution_status: str | None = None
-    execution_logs: dict[str, Any] | list[Any] | None = None
     execution_summary: str | None = None
-    decision_timeout_minutes: int | None = None
-    on_decision_timeout: str | None = None
     action_plan: dict[str, Any] | None = None
-    action_plan_version: str | None = None
 
 
 class UpdateTicketResponse(BaseModel):

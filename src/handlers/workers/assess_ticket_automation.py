@@ -8,6 +8,7 @@ import requests
 from src.shared.auth import create_access_token
 from src.shared.config import get_settings
 from src.shared.errors import ValidationError
+from src.shared.risk_config import compute_max_risk_level, DEFAULT_RISK_LEVEL
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +53,16 @@ def handler(event: dict, context) -> dict:
         return {
             "plan": {"steps": [], "source": "fallback"},
             "planSource": "fallback",
+            "maxRiskLevel": DEFAULT_RISK_LEVEL,
             "ticketId": ticket_id,
             "tenantId": tenant_id,
         }
 
     full_url = f"{base_url}{victor_route}"
     token = _build_service_token(int(tenant_id))
-    timeout_seconds = int(os.environ.get("VICTOR_TIMEOUT_SECONDS", "60"))
+    timeout_seconds = int(os.environ.get("VICTOR_TIMEOUT_SECONDS", "300"))
 
+    plan_from_event = event.get("plan")
     payload = {
         "message": f"[{phase}] Ticket: {subject}. {description}",
         "subject": subject,
@@ -68,6 +71,8 @@ def handler(event: dict, context) -> dict:
         "ticket_id": ticket_id,
         "tenant_id": int(tenant_id),
     }
+    if plan_from_event is not None:
+        payload["plan"] = plan_from_event
 
     try:
         response = requests.post(
@@ -114,10 +119,19 @@ def handler(event: dict, context) -> dict:
             "description": description,
         }
 
+    if phase == "execute":
+        return {
+            "executionResult": data,
+            "ticketId": ticket_id,
+            "tenantId": tenant_id,
+        }
+
     plan = data.get("plan", data)
+    max_risk_level = compute_max_risk_level(plan)
     return {
         "plan": plan,
         "planSource": "victor_azure",
+        "maxRiskLevel": max_risk_level,
         "ticketId": ticket_id,
         "tenantId": tenant_id,
     }

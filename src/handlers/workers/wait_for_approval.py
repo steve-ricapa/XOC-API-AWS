@@ -2,7 +2,8 @@ import json
 import logging
 
 from src.shared.errors import ValidationError
-from src.shared.tickets_store import get_tenant_ticket_or_404, update_ticket_fields
+from src.shared.risk_config import required_role_for_risk, DEFAULT_RISK_LEVEL
+from src.shared.tickets_store import get_tenant_ticket_or_none, update_ticket_fields
 
 logger = logging.getLogger(__name__)
 
@@ -10,21 +11,32 @@ logger = logging.getLogger(__name__)
 def handler(event: dict, context) -> dict:
     ticket_id = event.get("ticketId")
     tenant_id = event.get("tenantId")
+    max_risk_level = (event.get("maxRiskLevel") or DEFAULT_RISK_LEVEL).lower()
 
     if not ticket_id or not tenant_id:
         raise ValidationError("ticketId and tenantId are required")
 
-    task_token = event.get("task_token") or context.get("task_token")
+    tenant_id = int(tenant_id)
+
+    task_token = event.get("taskToken") or event.get("task_token")
     if not task_token:
-        logger.warning("No task_token found in event or context for ticket %s", ticket_id)
+        logger.warning("No task_token found in event for ticket %s", ticket_id)
         task_token = "pending"
 
-    update_ticket_fields(int(tenant_id), ticket_id, {
-        "approval_task_token": task_token,
-    })
+    required_role = required_role_for_risk(max_risk_level)
+
+    item = get_tenant_ticket_or_none(tenant_id, ticket_id)
+    if item:
+        pending_decision = item.get("pending_decision") or {}
+        if not isinstance(pending_decision, dict):
+            pending_decision = {}
+        pending_decision["max_risk_level"] = max_risk_level
+        pending_decision["required_approver_role"] = required_role
+        update_ticket_fields(tenant_id, ticket_id, {"pending_decision": pending_decision})
+        logger.info("Updated pending_decision for ticket %s: risk=%s role=%s", ticket_id, max_risk_level, required_role)
 
     return {
         "taskToken": task_token,
         "ticketId": ticket_id,
-        "tenantId": int(tenant_id),
+        "tenantId": tenant_id,
     }

@@ -6,19 +6,21 @@ module.exports = function automationResources(stage) {
       AutomationCasesTable: {
         Type: 'AWS::DynamoDB::Table',
         Properties: {
-          TableName: `xoc-api-automation-${stage}-cases`,
+          TableName: `xoc-api-automation-${stage}-cases-v2`,
           BillingMode: 'PAY_PER_REQUEST',
           AttributeDefinitions: [
-            { AttributeName: 'pk', AttributeType: 'S' },
             { AttributeName: 'sk', AttributeType: 'S' },
+            { AttributeName: 'tenant_id', AttributeType: 'N' },
             { AttributeName: 'gsi1pk', AttributeType: 'S' },
             { AttributeName: 'gsi1sk', AttributeType: 'S' },
             { AttributeName: 'gsi2pk', AttributeType: 'S' },
             { AttributeName: 'gsi2sk', AttributeType: 'S' },
+            { AttributeName: 'gsi3pk', AttributeType: 'S' },
+            { AttributeName: 'gsi3sk', AttributeType: 'S' },
           ],
           KeySchema: [
-            { AttributeName: 'pk', KeyType: 'HASH' },
-            { AttributeName: 'sk', KeyType: 'RANGE' },
+            { AttributeName: 'sk', KeyType: 'HASH' },
+            { AttributeName: 'tenant_id', KeyType: 'RANGE' },
           ],
           GlobalSecondaryIndexes: [
             {
@@ -34,6 +36,14 @@ module.exports = function automationResources(stage) {
               KeySchema: [
                 { AttributeName: 'gsi2pk', KeyType: 'HASH' },
                 { AttributeName: 'gsi2sk', KeyType: 'RANGE' },
+              ],
+              Projection: { ProjectionType: 'ALL' },
+            },
+            {
+              IndexName: 'TenantIndex',
+              KeySchema: [
+                { AttributeName: 'gsi3pk', KeyType: 'HASH' },
+                { AttributeName: 'gsi3sk', KeyType: 'RANGE' },
               ],
               Projection: { ProjectionType: 'ALL' },
             },
@@ -97,7 +107,7 @@ module.exports = function automationResources(stage) {
                   },
                   InitializeAttemptCounter: {
                     Type: 'Pass',
-                    Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', attemptCount: 1, solutionApplied: null, attemptsLog: [] },
+                    Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', attemptCount: 1, solutionApplied: null, attemptsLog: [], 'maxRiskLevel.$': '$.plan.maxRiskLevel' },
                     ResultPath: '$.state',
                     Next: 'CheckAttemptsRemaining',
                   },
@@ -114,7 +124,7 @@ module.exports = function automationResources(stage) {
                     Resource: 'arn:aws:states:::lambda:invoke.waitForTaskToken',
                     Parameters: {
                       FunctionName: '${WaitForApprovalArn}',
-                      Payload: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'taskToken.$': '$$.Task.Token' },
+                      Payload: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'taskToken.$': '$$.Task.Token', 'maxRiskLevel.$': '$.state.maxRiskLevel' },
                     },
                     ResultPath: '$.approval',
                     Next: 'CheckApproval',
@@ -122,8 +132,16 @@ module.exports = function automationResources(stage) {
                   },
                   CheckApproval: {
                     Type: 'Choice',
-                    Choices: [{ Variable: '$.approval.approved', BooleanEquals: true, Next: 'CheckTicketStatus' }],
+                    Choices: [{ Variable: '$.approval.approved', BooleanEquals: true, Next: 'ExecuteTicketPlan' }],
                     Default: 'RegisterRejectedCase',
+                  },
+                  ExecuteTicketPlan: {
+                    Type: 'Task',
+                    Resource: '${AssessTicketAutomationArn}',
+                    Parameters: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'subject.$': '$.state.subject', 'description.$': '$.state.description', 'plan.$': '$.plan.plan', phase: 'execute' },
+                    ResultPath: '$.execution',
+                    Next: 'CheckTicketStatus',
+                    Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
                   },
                   CheckTicketStatus: {
                     Type: 'Task',
@@ -148,6 +166,7 @@ module.exports = function automationResources(stage) {
                       'attemptCount.$': 'States.MathAdd($.state.attemptCount, 1)',
                       'solutionApplied.$': '$.statusCheck.solutionApplied',
                       'attemptsLog.$': '$.state.attemptsLog',
+                      'maxRiskLevel.$': '$.state.maxRiskLevel',
                     },
                     ResultPath: '$.state',
                     Next: 'CheckAttemptsRemaining',
@@ -155,7 +174,7 @@ module.exports = function automationResources(stage) {
                   RegisterSuccessfulCase: {
                     Type: 'Task',
                     Resource: '${GenerateCaseArn}',
-                    Parameters: { 'ticket_id.$': '$.state.ticketId', 'tenant_id.$': '$.state.tenantId', 'subject.$': '$.state.subject', action: 'success', 'total_attempts.$': '$.state.attemptCount', 'solution_applied.$': '$.statusCheck.solutionApplied' },
+                    Parameters: { 'ticket_id.$': '$.state.ticketId', 'tenant_id.$': '$.state.tenantId', 'subject.$': '$.state.subject', action: 'success', 'total_attempts.$': '$.state.attemptCount', 'solution_applied.$': '$.statusCheck.solutionApplied', 'plan_used.$': '$.plan.plan' },
                     ResultPath: '$.caseResult',
                     Next: 'EndCaseRegistered',
                     Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
@@ -238,7 +257,7 @@ module.exports = function automationResources(stage) {
         Value: { 'Fn::GetAtt': ['AutomationCasesTable', 'Arn'] },
       },
       CasesTableName: {
-        Value: `xoc-api-automation-${stage}-cases`,
+        Value: `xoc-api-automation-${stage}-cases-v2`,
       },
       AutomationWorkflowStateMachineArn: {
         Value: { 'Fn::GetAtt': ['AutomationWorkflowStateMachine', 'Arn'] },

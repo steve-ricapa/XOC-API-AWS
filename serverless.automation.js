@@ -1,4 +1,4 @@
-const { buildService, lambdaConfig, protectedRoute, commonEnvironment } = require('./serverless/services/lib/common');
+const { buildService, lambdaConfig, protectedRoute, publicRoute, commonEnvironment } = require('./serverless/services/lib/common');
 const automationResources = require('./serverless/services/automation-resources');
 
 module.exports = buildService({
@@ -25,7 +25,7 @@ module.exports = buildService({
     }),
     assessTicketAutomation: lambdaConfig(stage, {
       handler: 'src/handlers/workers/assess_ticket_automation.handler',
-      timeout: 120,
+      timeout: 300,
       memorySize: 512,
     }),
     checkTicketStatus: lambdaConfig(stage, {
@@ -47,6 +47,11 @@ module.exports = buildService({
     approvalCallback: lambdaConfig(stage, {
       handler: 'src/handlers/workers/approval_callback.handler',
       timeout: 30,
+    }),
+    publicApproval: lambdaConfig(stage, {
+      handler: 'src/handlers/workers/public_approval.handler',
+      timeout: 30,
+      events: [publicRoute('POST', '/automation/public-approve')],
     }),
   }),
   resources: (stage) => automationResources(stage),

@@ -89,6 +89,7 @@ module.exports = buildService({
         protectedRoute(stage, 'GET', '/superadmin/audit-logs'),
         protectedRoute(stage, 'GET', '/xoc-ops/clients'),
         protectedRoute(stage, 'GET', '/xoc-ops/kpis'),
+        protectedRoute(stage, 'GET', '/xoc-ops/overview'),
         protectedRoute(stage, 'GET', '/xoc-ops/clients/{tenantId}'),
       ],
     }),
