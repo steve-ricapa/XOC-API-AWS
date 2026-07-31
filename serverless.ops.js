@@ -31,7 +31,6 @@ module.exports = buildService({
     ...commonEnvironment(stage),
     DEVICE_REGISTRY_TABLE_NAME: `xoc-api-ops-${stage}-device-registry`,
     END_USER_MESSAGING_APPLICATION_ID: process.env.END_USER_MESSAGING_APPLICATION_ID || 'ccdefb15609849fcaf7a256db92065bf',
-    AWS_REGION: process.env.AWS_REGION || 'us-east-1',
   }),
   functions: (stage) => ({
     pushDevicesApi: lambdaConfig(stage, {

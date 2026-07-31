@@ -47,6 +47,7 @@
     "dev:reports": "python -m uvicorn src.handlers.domains.reports:app --reload --host 0.0.0.0 --port 8006"
   },
   "devDependencies": {
-    "serverless": "^4.18.2"
+    "serverless": "^3.40.0",
+    "serverless-python-requirements": "^6.1.2"
   }
 }
