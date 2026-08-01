@@ -382,6 +382,13 @@ def get_document_status(document_id: str, current_user: User = Depends(get_curre
     item = get_document_job_or_404(tenant_id, document_id)
 
     serialized = serialize_report(item)
+    if item.get("status") == "COMPLETED" and item.get("preview_s3_key"):
+        serialized["preview_url"] = generate_download_url(
+            item["preview_s3_key"],
+            bucket_name=item.get("preview_s3_bucket"),
+            document_type=item.get("document_type"),
+        )
+        serialized["preview_format"] = item.get("preview_format") or "pdf"
     response = build_document_response(serialized)
 
     if item.get("status") == "COMPLETED" and item.get("s3_key"):
@@ -422,6 +429,13 @@ def get_document_preview(document_id: str, current_user: User = Depends(get_curr
     tenant_id = effective_tenant_id_of(current_user)
     item = get_document_job_or_404(tenant_id, document_id)
     serialized = serialize_report(item)
+    if item.get("status") == "COMPLETED" and item.get("preview_s3_key"):
+        serialized["preview_url"] = generate_download_url(
+            item["preview_s3_key"],
+            bucket_name=item.get("preview_s3_bucket"),
+            document_type=item.get("document_type"),
+        )
+        serialized["preview_format"] = item.get("preview_format") or "pdf"
 
     generated_content = None
     if item.get("status") == "COMPLETED":

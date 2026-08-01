@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.reports.minority_foundry import generate_minority_payload_planner_builder
+from src.reports.minority_foundry import generate_minority_payload, generate_minority_payload_planner_builder
 from src.reports.storage import download_artifact, upload_artifact
 from src.shared.logging import logger
 
@@ -39,13 +39,29 @@ def _generate_content(collected_data: dict, document_type: str) -> dict:
     if document_type == "minority_report":
         tenant = collected_data.get("tenant", {})
         document = collected_data.get("document", {})
-        payload, plan = generate_minority_payload_planner_builder(
-            client_name=str(tenant.get("name") or "Cliente"),
-            period=str(document.get("period") or "Periodo no especificado"),
-            analyst_text=str(collected_data.get("analyst_text") or ""),
-            structured_data=collected_data.get("structured_data") or {},
-            reference_markdown=_load_minority_reference(),
-        )
+        client_name = str(tenant.get("name") or "Cliente")
+        period = str(document.get("period") or "Periodo no especificado")
+        analyst_text = str(collected_data.get("analyst_text") or "")
+        structured_data = collected_data.get("structured_data") or {}
+        reference_markdown = _load_minority_reference()
+        plan = None
+        try:
+            payload, plan = generate_minority_payload_planner_builder(
+                client_name=client_name,
+                period=period,
+                analyst_text=analyst_text,
+                structured_data=structured_data,
+                reference_markdown=reference_markdown,
+            )
+        except Exception as exc:
+            logger.warning("Planner/builder minority generation failed, falling back to single-pass builder: %s", exc)
+            payload = generate_minority_payload(
+                client_name=client_name,
+                period=period,
+                analyst_text=analyst_text,
+                structured_data=structured_data,
+                reference_markdown=reference_markdown,
+            )
         structured = collected_data.get("structured_data") or {}
         metrics = structured.get("aggregated_metrics") or {}
         payload.setdefault("document_code", collected_data.get("document_code") or structured.get("document_code") or document.get("id"))

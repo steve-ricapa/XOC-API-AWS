@@ -1,7 +1,7 @@
 const { buildService, lambdaConfig, protectedRoute, publicRoute, commonEnvironment } = require('./serverless/services/lib/common');
 const reportsResources = require('./serverless/services/reports-resources');
 
-module.exports = buildService({
+const service = buildService({
   service: 'xoc-api-reports',
   attachToSharedHttpApi: true,
   iam: { reports: true, database: true, vpc: true },
@@ -16,6 +16,9 @@ module.exports = buildService({
   ),
   pythonRequirements: {
     fileName: 'requirements.reports.txt',
+    dockerizePip: true,
+    dockerImage: 'public.ecr.aws/sam/build-python3.11:latest',
+    slim: false,
   },
   environment: (stage) => ({
     ...commonEnvironment(stage),
@@ -129,6 +132,14 @@ module.exports = buildService({
         'requirements.reports.txt',
       ],
     }),
+    generatePdfPreviewV2: {
+      description: 'Generates PDF preview from report content',
+      timeout: 180,
+      memorySize: 2048,
+      image: {
+        name: 'reportspdfpreview',
+      },
+    },
     completeReport: lambdaConfig(stage, {
       handler: 'src/handlers/workers/report_complete.handler',
       description: 'Finalizes document status and generates download URL',
@@ -143,3 +154,14 @@ module.exports = buildService({
   }),
   resources: (stage) => reportsResources(stage),
 });
+
+service.provider.ecr = {
+  images: {
+    reportspdfpreview: {
+      path: './',
+      file: 'Dockerfile.reports-pdf',
+    },
+  },
+};
+
+module.exports = service;

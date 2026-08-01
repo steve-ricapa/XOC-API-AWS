@@ -100,6 +100,15 @@ def build_document_response(item: dict) -> dict:
     if item.get("download_url"):
         response["downloadUrl"] = item["download_url"]
 
+    if item.get("preview_url"):
+        response["previewUrl"] = item["preview_url"]
+
+    if item.get("preview_format"):
+        response["previewFormat"] = item["preview_format"]
+
+    if item.get("preview_size_bytes") is not None:
+        response["previewSizeBytes"] = item.get("preview_size_bytes")
+
     return response
 
 
@@ -120,6 +129,10 @@ def build_document_preview_response(item: dict, generated_content: dict | None =
 
     document = generated_content.get("document") or {}
     response["previewStatus"] = "ready"
+    if item.get("preview_url"):
+        response["previewUrl"] = item["preview_url"]
+    if item.get("preview_format"):
+        response["previewFormat"] = item["preview_format"]
     response["preview"] = {
         "title": document.get("title"),
         "service": document.get("service"),

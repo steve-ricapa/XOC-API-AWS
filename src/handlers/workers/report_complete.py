@@ -37,6 +37,11 @@ def handler(event: dict, context) -> dict:
     s3_bucket = event.get("s3Bucket")
     s3_version_id = event.get("s3VersionId", "")
     size_bytes = event.get("sizeBytes")
+    preview_s3_key = event.get("previewS3Key")
+    preview_s3_bucket = event.get("previewS3Bucket")
+    preview_s3_version_id = event.get("previewS3VersionId", "")
+    preview_size_bytes = event.get("previewSizeBytes")
+    preview_format = event.get("previewFormat")
 
     extra = {
         "s3_bucket": s3_bucket,
@@ -48,6 +53,16 @@ def handler(event: dict, context) -> dict:
         extra["s3_version_id"] = s3_version_id
     if size_bytes is not None:
         extra["size_bytes"] = int(size_bytes)
+    if preview_s3_bucket:
+        extra["preview_s3_bucket"] = preview_s3_bucket
+    if preview_s3_key:
+        extra["preview_s3_key"] = preview_s3_key
+    if preview_s3_version_id:
+        extra["preview_s3_version_id"] = preview_s3_version_id
+    if preview_size_bytes is not None:
+        extra["preview_size_bytes"] = int(preview_size_bytes)
+    if preview_format:
+        extra["preview_format"] = preview_format
 
     update_document_status(tenant_id, document_id, "COMPLETED", **extra)
 

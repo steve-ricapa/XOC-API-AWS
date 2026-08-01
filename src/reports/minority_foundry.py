@@ -218,24 +218,49 @@ MINORITY_PLAN_JSON_SCHEMA = {
 
 
 PLANNER_PROMPT_BASE = """Eres un planner senior XOC para Minority Report.
-Tu tarea NO es redactar el reporte final. Tu tarea es planificar la estructura usando la plantilla y la evidencia entregada.
+Tu tarea NO es redactar el reporte final. Tu tarea es planificar la estructura del documento usando la plantilla y la evidencia entregada.
 
 Reglas:
-- Devuelve SOLO JSON valido.
+- Devuelve SOLO JSON válido.
 - No generes DOCX.
-- No redactes parrafos finales.
+- No redactes párrafos finales.
 - No inventes datos.
-- Manten el plan compacto: maximo 13 secciones, 5 tablas y 5 figuras.
-- Respeta allowed_top_level_sections de template_rules.
-- Si una seccion no tiene evidencia suficiente, marca include=false y explica el motivo.
+- Mantén el plan compacto: máximo 13 secciones, 5 tablas y 5 figuras.
+- Usa frases cortas. Cada reason y expected_content debe ser breve.
+- No copies daily_records completos al plan; solo referencia data_sources.
+- Decide qué secciones deben incluirse según la evidencia disponible.
+- Si template_rules incluye allowed_top_level_sections, respeta esa lista y no agregues secciones top-level fuera de ella.
+- Si una sección ideal no tiene data suficiente, puede marcarse include=false y explicar el motivo.
+- Mantén la estructura visual esperada del Minority Report corporativo.
+- Indica qué tablas y figuras deben usarse y dónde colocarlas.
 - En Seguridad por Dominio planifica tablas con columnas exactas: ID, Vulnerabilidades, Host Afectados, Severidad.
 - Para Severidad usa solo BAJO, MEDIO o ALTO.
-- Planifica Figura 1 y Figura 2 en 2.1 Analisis Comparativo de Vulnerabilidades Semanales.
+- Planifica Figura 1 y Figura 2 en 2.1 Análisis Comparativo de Vulnerabilidades Semanales.
 - Planifica Figura 3 en 2.2 Histograma de la seguridad.
 
+Secciones ideales del Minority Report completo:
+1. Datos generales
+  1.1 Servicio de Monitoreo
+  1.2 Periodo
+  1.3 Herramientas
+  1.4 Datos Base
+2. Resumen ejecutivo del dominio
+  2.1 Análisis Comparativo de Vulnerabilidades Semanales
+  2.2 Histograma de la seguridad
+  2.3 Resultados obtenidos y próximas acciones
+  2.4 Resultados obtenidos
+  2.5 Próximas acciones
+    2.5.1 Requerimiento
+3. Seguridad por Dominio
+4. Reporte de acciones trabajadas durante la semana
+5. Resultados obtenidos
+  5.1 Seguridad Reforzada
+  5.2 Hallazgos pendientes
+6. Noticias de seguridad
+
 Variantes:
-- report for client: solo Datos generales, Resumen ejecutivo del dominio y Seguridad por Dominio.
-- report for admin client: agrega Reporte de acciones trabajadas durante la semana, Resultados obtenidos y Noticias de seguridad.
+- report for client: solo top-level Datos generales, Resumen ejecutivo del dominio y Seguridad por Dominio.
+- report for admin client: incluye además Reporte de acciones trabajadas durante la semana, Resultados obtenidos y Noticias de seguridad.
 """
 
 
@@ -243,13 +268,14 @@ BUILDER_PROMPT_BASE = """Eres un builder senior XOC para Minority Report.
 Tu tarea es generar el JSON final del reporte usando un plan estructural previamente generado y la evidencia entregada.
 
 Reglas:
-- Devuelve SOLO JSON valido.
+- Devuelve SOLO JSON válido.
 - No generes DOCX.
 - Respeta el plan recibido.
-- Usa unicamente la evidencia entregada.
+- Usa únicamente la evidencia entregada.
 - No inventes fechas, IPs, activos, hallazgos, severidades, acciones, resultados, herramientas ni noticias.
-- Si falta informacion para una parte del plan, indicalo en limitations.
-- Redacta en tono ejecutivo-tecnico, claro y formal.
+- Si falta información para una parte del plan, indícalo en limitations.
+- Redacta en tono ejecutivo-técnico, claro y formal.
+- Cita las imágenes como Figura 1, Figura 2, etc. cuando correspondan.
 - Respeta report_variant/template_rules: no redactes secciones top-level fuera de allowed_top_level_sections.
 - Aplica section_instructions/admin_reference sin inventar evidencia.
 - En Seguridad por Dominio usa severidad normalizada BAJO, MEDIO o ALTO.
@@ -354,7 +380,10 @@ def _loads_json_with_repair(raw: str) -> dict[str, Any]:
     except json.JSONDecodeError as first_exc:
         repaired = _repair_common_json_issues(raw)
         if repaired != raw:
-            parsed = json.loads(repaired)
+            try:
+                parsed = json.loads(repaired)
+            except json.JSONDecodeError:
+                raise first_exc
         else:
             raise first_exc
     if not isinstance(parsed, dict):
@@ -469,7 +498,14 @@ def parse_and_validate_json(raw: str) -> dict[str, Any]:
     clean = _strip_json_fence(raw or "")
     if not clean:
         raise RuntimeError("Foundry returned no visible JSON text")
-    parsed = _loads_json_with_repair(clean)
+    try:
+        parsed = _loads_json_with_repair(clean)
+    except json.JSONDecodeError as exc:
+        sample = re.sub(r"\s+", " ", clean[:220]).strip()
+        raise RuntimeError(
+            "Foundry devolvió una respuesta que no es JSON válido "
+            f"({exc.msg}, línea {exc.lineno}, columna {exc.colno}). Inicio seguro: {sample!r}"
+        ) from exc
     return _normalize_payload(parsed)
 
 
@@ -592,7 +628,17 @@ def parse_and_validate_plan_json(raw: str) -> dict[str, Any]:
     clean = _strip_json_fence(raw or "")
     if not clean:
         raise RuntimeError("Foundry Planner returned no visible JSON text")
-    parsed = _loads_json_with_repair(clean)
+    try:
+        parsed = _loads_json_with_repair(clean)
+    except json.JSONDecodeError as exc:
+        sample = re.sub(r"\s+", " ", clean[:220]).strip()
+        hint = ""
+        if exc.msg in {"Unterminated string starting at", "Expecting value"}:
+            hint = " Posible respuesta truncada: suba MINORITY_PLANNER_MAX_OUTPUT_TOKENS o reduzca el snapshot enviado al Planner."
+        raise RuntimeError(
+            "Foundry Planner devolvió una respuesta que no es JSON válido "
+            f"({exc.msg}, línea {exc.lineno}, columna {exc.colno}). Inicio seguro: {sample!r}.{hint}"
+        ) from exc
     return _normalize_plan(parsed)
 
 

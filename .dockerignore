@@ -1,0 +1,10 @@
+.git
+.serverless
+node_modules
+local-output
+experiments
+tests
+__pycache__
+*.pyc
+tool-output
+.opencode

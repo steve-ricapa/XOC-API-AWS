@@ -17,6 +17,28 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - https://xoc.app
+              - https://www.xoc.app
+              - https://xoc-frontend.web.app
+              - https://www.xoc-frontend.web.app
+              - https://xoc-frontend.firebaseapp.com
+              - https://www.xoc-frontend.firebaseapp.com
+              - https://main.d111fod5hov6vt.amplifyapp.com
+              - https://www.main.d111fod5hov6vt.amplifyapp.com
+              - http://localhost:5173
+            AllowedMethods:
+              - GET
+              - HEAD
+            AllowedHeaders:
+              - '*'
+            ExposedHeaders:
+              - ETag
+              - Content-Length
+              - Content-Type
+            MaxAge: 300
       LifecycleConfiguration:
         Rules:
           - Id: AbortIncompleteMultipartUploads
@@ -54,6 +76,28 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - https://xoc.app
+              - https://www.xoc.app
+              - https://xoc-frontend.web.app
+              - https://www.xoc-frontend.web.app
+              - https://xoc-frontend.firebaseapp.com
+              - https://www.xoc-frontend.firebaseapp.com
+              - https://main.d111fod5hov6vt.amplifyapp.com
+              - https://www.main.d111fod5hov6vt.amplifyapp.com
+              - http://localhost:5173
+            AllowedMethods:
+              - GET
+              - HEAD
+            AllowedHeaders:
+              - '*'
+            ExposedHeaders:
+              - ETag
+              - Content-Length
+              - Content-Type
+            MaxAge: 300
       LifecycleConfiguration:
         Rules:
           - Id: AbortIncompleteMultipartUploads

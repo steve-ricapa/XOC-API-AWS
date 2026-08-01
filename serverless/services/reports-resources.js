@@ -128,6 +128,17 @@ module.exports = function reportsResources(stage) {
                   GenerateDocx: {
                     Type: 'Task',
                     Resource: '${GenerateDocxArn}',
+                    Next: 'GeneratePdfPreview',
+                    Retry: [
+                      { ErrorEquals: ['Lambda.ServiceException', 'Lambda.AWSLambdaException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 },
+                    ],
+                    Catch: [
+                      { ErrorEquals: ['States.ALL'], ResultPath: '$.error', Next: 'FailReport' },
+                    ],
+                  },
+                  GeneratePdfPreview: {
+                    Type: 'Task',
+                    Resource: '${GeneratePdfPreviewArn}',
                     Next: 'CompleteReport',
                     Retry: [
                       { ErrorEquals: ['Lambda.ServiceException', 'Lambda.AWSLambdaException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 },
@@ -162,6 +173,7 @@ module.exports = function reportsResources(stage) {
                 GenerateReportContentArn: { 'Fn::GetAtt': ['GenerateReportContentLambdaFunction', 'Arn'] },
                 ValidateReportArn: { 'Fn::GetAtt': ['ValidateReportLambdaFunction', 'Arn'] },
                 GenerateDocxArn: { 'Fn::GetAtt': ['GenerateDocxLambdaFunction', 'Arn'] },
+                GeneratePdfPreviewArn: { 'Fn::GetAtt': ['GeneratePdfPreviewV2LambdaFunction', 'Arn'] },
                 CompleteReportArn: { 'Fn::GetAtt': ['CompleteReportLambdaFunction', 'Arn'] },
               },
             ],
@@ -190,6 +202,7 @@ module.exports = function reportsResources(stage) {
                       { 'Fn::GetAtt': ['GenerateReportContentLambdaFunction', 'Arn'] },
                       { 'Fn::GetAtt': ['ValidateReportLambdaFunction', 'Arn'] },
                       { 'Fn::GetAtt': ['GenerateDocxLambdaFunction', 'Arn'] },
+                      { 'Fn::GetAtt': ['GeneratePdfPreviewV2LambdaFunction', 'Arn'] },
                       { 'Fn::GetAtt': ['CompleteReportLambdaFunction', 'Arn'] },
                     ],
                   },

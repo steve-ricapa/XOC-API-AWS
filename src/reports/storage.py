@@ -89,6 +89,16 @@ def build_generated_content_artifact_s3_key(
     return build_artifact_s3_key(tenant_id, document_id, document_type, "generated-content.json")
 
 
+def build_preview_pdf_s3_key(
+    tenant_id: int,
+    document_id: str,
+    document_type: str,
+    filename: str = "preview.pdf",
+) -> str:
+    stage = get_settings().app_stage
+    return f"{stage}/documents/{document_type}/{tenant_id}/{document_id}/{filename}"
+
+
 def download_template(document_type: str, local_path: str) -> str:
     if is_local_storage_enabled():
         from src.reports.minority_docx import base_template_path, normalize_report_variant
@@ -155,6 +165,42 @@ def upload_document(tenant_id: int, document_id: str, document_type: str, local_
         "s3_version_id": response.get("VersionId", ""),
         "size_bytes": response.get("ContentLength", 0),
     }
+
+
+def upload_preview_pdf(tenant_id: int, document_id: str, document_type: str, local_path: str, filename: str = "preview.pdf") -> dict:
+    if is_local_storage_enabled():
+        key = build_preview_pdf_s3_key(tenant_id, document_id, document_type, filename)
+        target = _local_path_for_key(key)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(local_path, target)
+        return {
+            "s3_bucket": "local",
+            "s3_key": f"{LOCAL_URI_PREFIX}{target}",
+            "s3_version_id": "",
+            "size_bytes": target.stat().st_size,
+            "local_path": str(target),
+        }
+    bucket = get_documents_bucket_name(document_type)
+    key = build_preview_pdf_s3_key(tenant_id, document_id, document_type, filename)
+    extra_args = {"ContentType": "application/pdf"}
+    _s3().upload_file(local_path, bucket, key, ExtraArgs=extra_args)
+    response = _s3().head_object(Bucket=bucket, Key=key)
+    return {
+        "s3_bucket": bucket,
+        "s3_key": key,
+        "s3_version_id": response.get("VersionId", ""),
+        "size_bytes": response.get("ContentLength", 0),
+    }
+
+
+def download_document_file(*, s3_bucket: str, s3_key: str, local_path: str) -> str:
+    if is_local_storage_enabled() or (s3_key or "").startswith(LOCAL_URI_PREFIX):
+        source = Path(str(s3_key).replace(LOCAL_URI_PREFIX, "", 1))
+        Path(local_path).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, local_path)
+        return local_path
+    _s3().download_file(s3_bucket, s3_key, local_path)
+    return local_path
 
 
 def upload_artifact(tenant_id: int, document_id: str, document_type: str, artifact_name: str, data: dict) -> str:
