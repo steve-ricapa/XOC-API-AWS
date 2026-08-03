@@ -137,7 +137,7 @@ const service = buildService({
       timeout: 180,
       memorySize: 2048,
       image: {
-        name: 'reportspdfpreview',
+        uri: `${'${env:REPORTS_PDF_PREVIEW_IMAGE_URI}'}`,
       },
     },
     completeReport: lambdaConfig(stage, {
@@ -154,14 +154,5 @@ const service = buildService({
   }),
   resources: (stage) => reportsResources(stage),
 });
-
-service.provider.ecr = {
-  images: {
-    reportspdfpreview: {
-      path: './',
-      file: 'Dockerfile.reports-pdf',
-    },
-  },
-};
 
 module.exports = service;

@@ -56,6 +56,56 @@ SEVERITY_COLOR_MAP = {
 }
 
 
+SECTION_ANCHORS = {
+    "general": ["1. Datos generales", "Datos generales"],
+    "service": ["1.1. Servicio de Monitoreo", "Servicio de Monitoreo"],
+    "period": ["1.2. Periodo", "Periodo"],
+    "tools": ["1.3. Herramientas", "Herramientas"],
+    "data_base": ["1.4. Datos Base", "Datos Base"],
+    "executive": ["2. Resumen ejecutivo del dominio", "Resumen ejecutivo del dominio"],
+    "comparison": [
+        "2.1. Análisis Comparativo de Vulnerabilidades Semanales",
+        "Análisis Comparativo de Vulnerabilidades Semanales",
+    ],
+    "histogram": ["2.2. Histograma de la seguridad", "Histograma de la seguridad"],
+    "results_next": ["2.3. Resultados obtenidos y próximas acciones", "Resultados obtenidos y próximas acciones"],
+    "results_obtained": ["2.4. Resultados obtenidos", "Resultados obtenidos"],
+    "next_actions": ["2.5. Próximas acciones", "Próximas acciones"],
+    "requirements": ["2.5.1. Requerimiento", "Requerimiento"],
+    "domains": ["3. Seguridad por Dominio", "Seguridad por Dominio"],
+    "weekly_actions": [
+        "4. Reporte de acciones trabajadas durante la semana",
+        "Reporte de acciones trabajadas durante la semana",
+    ],
+    "results": ["5. Resultados obtenidos", "Resultados obtenidos"],
+    "reinforced_security": ["5.1. Seguridad Reforzada", "Seguridad Reforzada"],
+    "pending_findings": ["5.2. Hallazgos pendientes", "Hallazgos pendientes"],
+    "security_news": ["6. Noticias de seguridad", "Noticias de seguridad"],
+}
+
+
+SECTION_ORDER = [
+    "general",
+    "service",
+    "period",
+    "tools",
+    "data_base",
+    "executive",
+    "comparison",
+    "histogram",
+    "results_next",
+    "results_obtained",
+    "next_actions",
+    "requirements",
+    "domains",
+    "weekly_actions",
+    "results",
+    "reinforced_security",
+    "pending_findings",
+    "security_news",
+]
+
+
 def normalize_report_variant(value: str | None) -> str:
     normalized = (value or "client").strip().lower().replace("-", "_")
     if normalized in {"admin", "client_admin", "admin_client", "report_for_admin_client"}:
@@ -164,6 +214,11 @@ def _replace_textbox_jockey_client(box: Any, client: str) -> None:
             return
 
 
+def _clear_textbox_content(box: Any) -> None:
+    for node in box.iter(qn("w:t")):
+        node.text = ""
+
+
 def _set_cover_line(paragraph: Paragraph, text: str) -> None:
     paragraph.text = ""
     run = paragraph.add_run(text)
@@ -195,9 +250,7 @@ def update_cover_and_footer(document: Document, payload: dict[str, Any]) -> None
         elif "Del 20 de junio al 26 de junio del 2026" in text or "Del 20 al 26 de junio del 2026" in text:
             _set_cover_line(paragraph, period)
 
-    for section_index, section in enumerate(document.sections):
-        if section_index == 0 and len(document.sections) > 1:
-            continue
+    for section in document.sections:
         footer = section.footer
         footer.is_linked_to_previous = False
         if not footer.paragraphs:
@@ -214,6 +267,10 @@ def update_cover_and_footer(document: Document, payload: dict[str, Any]) -> None
             run = paragraph.add_run(text)
             run.font.size = Pt(8.5)
             run.font.color.rgb = MUTED_TEXT
+
+        # Limpia párrafos adicionales heredados del template que dejan placeholders visibles.
+        for extra in footer.paragraphs[1:]:
+            extra.text = ""
 
 
 def clear_template_body_after_cover(document: Document) -> None:
@@ -407,7 +464,7 @@ def _set_cell_text(cell: Any, text: Any, *, bold: bool = False, color: RGBColor 
     paragraph = cell.paragraphs[0]
     _spacing(paragraph, after=2)
     run = paragraph.add_run(str(text or ""))
-    _format_run(run, bold=bold, color=color, size=size, font_name="Tahoma")
+    _format_run(run, bold=bold, color=color, size=size)
     cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
 
 
@@ -847,6 +904,284 @@ def _replace_paragraph_text(paragraph: Paragraph, value: Any) -> None:
         paragraph.add_run(text)
 
 
+def _section_keys_for_variant(report_variant: str) -> list[str]:
+    keys = [
+        "service",
+        "period",
+        "tools",
+        "data_base",
+        "executive",
+        "comparison",
+        "histogram",
+        "domains",
+    ]
+    if report_variant == "client_admin":
+        keys.extend(
+            [
+                "results_next",
+                "results_obtained",
+                "next_actions",
+                "requirements",
+                "weekly_actions",
+                "reinforced_security",
+                "pending_findings",
+                "security_news",
+            ]
+        )
+    return keys
+
+
+def _find_section_anchor(document: Document, key: str, *, required: bool = True) -> Paragraph | None:
+    anchor = _find_paragraph_containing(document, SECTION_ANCHORS[key])
+    if anchor is None and required:
+        raise RuntimeError(f"Missing template anchor for section '{key}': {SECTION_ANCHORS[key][0]}")
+    return anchor
+
+
+def _collect_section_anchors(document: Document, report_variant: str) -> dict[str, Paragraph]:
+    keys = _section_keys_for_variant(report_variant)
+    if report_variant == "client_admin":
+        keys.append("results")
+    anchors: dict[str, Paragraph] = {}
+    for key in keys:
+        required = key not in {"results"}
+        anchor = _find_section_anchor(document, key, required=required)
+        if anchor is not None:
+            anchors[key] = anchor
+    return anchors
+
+
+def _next_section_anchor(anchors: dict[str, Paragraph], current_key: str) -> Paragraph | None:
+    current_index = SECTION_ORDER.index(current_key)
+    for next_key in SECTION_ORDER[current_index + 1 :]:
+        anchor = anchors.get(next_key)
+        if anchor is not None:
+            return anchor
+    return None
+
+
+def _remove_body_between(anchor: Paragraph, next_anchor: Paragraph | None) -> None:
+    current = anchor._p.getnext()
+    while current is not None and current is not (next_anchor._p if next_anchor is not None else None):
+        following = current.getnext()
+        if current.tag != qn("w:sectPr"):
+            current.getparent().remove(current)
+        current = following
+
+
+def _insert_paragraph_after_node(document: Document, node: Any, *, style_name: str | None = None) -> Paragraph:
+    new_p = OxmlElement("w:p")
+    node.addnext(new_p)
+    paragraph = Paragraph(new_p, document._body)
+    if style_name and style_name in document.styles:
+        paragraph.style = style_name
+    return paragraph
+
+
+def _insert_text_after_node(
+    document: Document,
+    node: Any,
+    text: Any,
+    *,
+    style_candidates: tuple[str, ...] = ("Body Text", "Normal"),
+    justify: bool = True,
+    empty_text: str = "Sin información confirmada para esta sección.",
+) -> Any:
+    chunks = [_clean_text(line) for line in str(text or "").splitlines() if _clean_text(line)]
+    if not chunks:
+        chunks = [empty_text]
+    current = node
+    for chunk in chunks:
+        paragraph = _insert_paragraph_after_node(document, current, style_name=_style_name(document, *style_candidates))
+        if justify:
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        _spacing(paragraph, after=5)
+        paragraph.add_run(chunk)
+        current = paragraph._p
+    return current
+
+
+def _insert_list_after_node(
+    document: Document,
+    node: Any,
+    values: list[str],
+    *,
+    style_candidates: tuple[str, ...] = ("List Paragraph", "Body Text", "Normal"),
+) -> Any:
+    current = node
+    entries = [_clean_text(value) for value in values if _clean_text(value)]
+    if not entries:
+        return _insert_text_after_node(document, current, "Sin información confirmada para esta sección.")
+    for value in entries:
+        paragraph = _insert_paragraph_after_node(document, current, style_name=_style_name(document, *style_candidates))
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        _spacing(paragraph, after=4)
+        paragraph.add_run(f"- {value}")
+        current = paragraph._p
+    return current
+
+
+def _insert_table_after_node(document: Document, node: Any, rows: int, cols: int) -> Table:
+    table = document.add_table(rows=rows, cols=cols)
+    node.addnext(table._tbl)
+    return table
+
+
+def _insert_severity_comparison_table_after_node(document: Document, node: Any, rows: list[dict[str, Any]]) -> Any:
+    if not rows:
+        return node
+    table = _insert_table_after_node(document, node, 1, 3)
+    table.autofit = False
+    widths = [1.35, 1.25, 1.25]
+    try:
+        table.style = "Table Normal"
+    except KeyError:
+        pass
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _set_row_widths(table.rows[0], widths)
+    for cell, header in zip(table.rows[0].cells, ("Severidad", "Semana Anterior", "Semana Actual")):
+        _shade_cell(cell, "006D9F")
+        _set_cell_border(cell, "BFBFBF", "4")
+        _set_cell_text(cell, header, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF), size=8.8)
+    for row in rows:
+        cells = table.add_row().cells
+        _set_row_widths(table.rows[-1], widths)
+        for cell in cells:
+            _set_cell_border(cell, "BFBFBF", "4")
+        severity = row.get("severity")
+        _shade_cell(cells[0], _severity_color_fill(severity))
+        _set_cell_text(cells[0], severity, bold=True, color=_severity_text_color(severity), size=8.5)
+        _set_cell_text(cells[1], row.get("previous"), size=8.5)
+        _set_cell_text(cells[2], row.get("current"), size=8.5)
+    return table._tbl
+
+
+def _insert_domain_table_after_node(document: Document, node: Any, template_table: Any, findings: list[dict[str, Any]]) -> Any:
+    table = Table(deepcopy(template_table), document)
+    node.addnext(table._tbl)
+    _populate_template_findings_table(table, findings)
+    return table._tbl
+
+
+def _insert_domain_heading_after_node(document: Document, node: Any, text: str) -> Any:
+    paragraph = _insert_paragraph_after_node(document, node, style_name=_style_name(document, "Heading 3", "Normal"))
+    _spacing(paragraph, before=7, after=4)
+    paragraph.add_run(text)
+    return paragraph._p
+
+
+def _render_section_text(document: Document, anchors: dict[str, Paragraph], key: str, value: Any) -> None:
+    anchor = anchors[key]
+    next_anchor = _next_section_anchor(anchors, key)
+    _remove_body_between(anchor, next_anchor)
+    _insert_text_after_node(document, anchor._p, value)
+
+
+def _render_section_list(document: Document, anchors: dict[str, Paragraph], key: str, values: list[str]) -> None:
+    anchor = anchors[key]
+    next_anchor = _next_section_anchor(anchors, key)
+    _remove_body_between(anchor, next_anchor)
+    _insert_list_after_node(document, anchor._p, values)
+
+
+def _render_tools_section(document: Document, anchors: dict[str, Paragraph], payload: dict[str, Any]) -> None:
+    tools = [
+        f"{tool.get('name') or 'Herramienta'}: {tool.get('description') or ''}".strip()
+        for tool in (payload.get("tools") or [])
+        if isinstance(tool, dict)
+    ]
+    _render_section_list(document, anchors, "tools", tools)
+
+
+def _render_comparison_section(document: Document, anchors: dict[str, Paragraph], payload: dict[str, Any]) -> None:
+    anchor = anchors["comparison"]
+    next_anchor = _next_section_anchor(anchors, "comparison")
+    _remove_body_between(anchor, next_anchor)
+    comparison = payload.get("vulnerability_comparison") or {}
+    current = _insert_text_after_node(document, anchor._p, comparison.get("summary"))
+    current = _insert_severity_comparison_table_after_node(document, current, comparison.get("severity_rows") or [])
+    _insert_paragraph_after_node(document, current)
+
+
+def _render_domains_section(
+    document: Document,
+    anchors: dict[str, Paragraph],
+    payload: dict[str, Any],
+    domain_table_templates: list[Any] | None,
+) -> None:
+    anchor = anchors["domains"]
+    next_anchor = _next_section_anchor(anchors, "domains")
+    _remove_body_between(anchor, next_anchor)
+    current: Any = anchor._p
+    domains = payload.get("security_domains") or []
+    if not domains:
+        _insert_text_after_node(document, current, "Sin dominios de seguridad confirmados para el período evaluado.")
+        return
+    for index, domain in enumerate(domains, start=1):
+        title = domain.get("name") or f"Dominio {index}"
+        current = _insert_domain_heading_after_node(document, current, f"3.{index}. {title}")
+        current = _insert_text_after_node(document, current, domain.get("summary"))
+        template_table = (domain_table_templates or [])[index - 1] if index <= len(domain_table_templates or []) else None
+        findings = domain.get("findings") or []
+        if template_table is not None:
+            current = _insert_domain_table_after_node(document, current, template_table, findings)
+        else:
+            table = document.add_table(rows=1, cols=4)
+            current.addnext(table._tbl)
+            _populate_template_findings_table(table, findings)
+            current = table._tbl
+        current = _insert_paragraph_after_node(document, current)._p
+
+
+def _render_news_section(document: Document, anchors: dict[str, Paragraph], payload: dict[str, Any]) -> None:
+    anchor = anchors["security_news"]
+    next_anchor = _next_section_anchor(anchors, "security_news")
+    _remove_body_between(anchor, next_anchor)
+    current: Any = anchor._p
+    news_items = payload.get("security_news") or []
+    if not news_items:
+        _insert_text_after_node(document, current, "Sin noticias de seguridad confirmadas para este reporte.")
+        return
+    for index, news in enumerate(news_items, start=1):
+        current = _insert_domain_heading_after_node(document, current, f"6.{index}. {news.get('title') or f'Noticia {index}'}")
+        current = _insert_text_after_node(document, current, f"Fecha: {_clean_text(news.get('date')) or 'No especificada'}", justify=False)
+        current = _insert_text_after_node(document, current, f"Fuente: {_clean_text(news.get('source')) or 'No especificada'}", justify=False)
+        links = ", ".join(news.get("links") or [])
+        if links:
+            current = _insert_text_after_node(document, current, f"Enlaces: {links}", justify=False)
+        current = _insert_text_after_node(document, current, news.get("summary"))
+        recommendation = _clean_text(news.get("recommendation"))
+        if recommendation:
+            current = _insert_text_after_node(document, current, f"Recomendación: {recommendation}")
+        current = _insert_paragraph_after_node(document, current)._p
+
+
+def _section_has_visible_content(anchor: Paragraph, next_anchor: Paragraph | None) -> bool:
+    current = anchor._p.getnext()
+    end = next_anchor._p if next_anchor is not None else None
+    while current is not None and current is not end:
+        text = "".join(node.text or "" for node in current.iter(qn("w:t"))).strip()
+        if text:
+            return True
+        if current.tag == qn("w:tbl"):
+            return True
+        current = current.getnext()
+    return False
+
+
+def assert_required_sections_filled(document: Document, anchors: dict[str, Paragraph], report_variant: str) -> None:
+    empty_sections: list[str] = []
+    for key in _section_keys_for_variant(report_variant):
+        anchor = anchors.get(key)
+        if anchor is None:
+            empty_sections.append(key)
+            continue
+        if not _section_has_visible_content(anchor, _next_section_anchor(anchors, key)):
+            empty_sections.append(key)
+    if empty_sections:
+        raise RuntimeError(f"Rendered sections are empty or missing: {', '.join(empty_sections)}")
+
+
 def _paragraph_after_heading(document: Document, heading: str, occurrence: int = 0) -> Paragraph | None:
     matches = [p for p in document.paragraphs if _plain_match_text(heading) in _plain_match_text(p.text)]
     if occurrence >= len(matches):
@@ -856,11 +1191,62 @@ def _paragraph_after_heading(document: Document, heading: str, occurrence: int =
 
 def _clear_demo_text(document: Document) -> None:
     """Vacía únicamente contenido de ejemplo; conserva la estructura Word."""
-    markers = ("lorem ipsum", "change.", "change date", "oreм ipsum")
+    markers = (
+        "lorem",
+        "oreм ipsum",
+        "change for date",
+        "change for prepared for",
+        "change date",
+        "change.",
+        "change",
+    )
     for paragraph in document.paragraphs:
         normalized = _plain_match_text(paragraph.text)
         if any(marker in normalized for marker in markers):
             _replace_paragraph_text(paragraph, "")
+    for box in document._element.xpath(".//w:txbxContent"):
+        original = _plain_match_text(_textbox_text(box).strip())
+        if any(marker in original for marker in markers):
+            _clear_textbox_content(box)
+
+
+def _template_residue_matches(value: str) -> bool:
+    normalized = _plain_match_text(value)
+    return any(marker in normalized for marker in (
+        "lorem",
+        "change for tenant",
+        "change for",
+        "change for date",
+        "change for prepared for",
+        "change date",
+        "change.",
+        "oreм ipsum",
+    ))
+
+
+def assert_no_template_residue(document: Document) -> None:
+    leftovers: list[str] = []
+    for paragraph in document.paragraphs:
+        text = (paragraph.text or "").strip()
+        if text and _template_residue_matches(text):
+            leftovers.append(text)
+    for box in document._element.xpath(".//w:txbxContent"):
+        text = _textbox_text(box).strip()
+        if text and _template_residue_matches(text):
+            leftovers.append(text)
+    for section in document.sections:
+        for story in (section.header, section.footer):
+            for paragraph in story.paragraphs:
+                text = (paragraph.text or "").strip()
+                if text and _template_residue_matches(text):
+                    leftovers.append(text)
+            for box in story._element.xpath(".//w:txbxContent"):
+                text = _textbox_text(box).strip()
+                if text and _template_residue_matches(text):
+                    leftovers.append(text)
+    if leftovers:
+        sample = " | ".join(leftovers[:5])
+        raise RuntimeError(f"Template residue detected after fill: {sample}")
 
 
 def _fill_existing_table_slots(document: Document, payload: dict[str, Any]) -> None:
@@ -892,47 +1278,40 @@ def _fill_existing_action_slots(document: Document, heading: str, values: list[s
 
 
 def fill_minority_template_in_place(document: Document, payload: dict[str, Any]) -> None:
-    """Rellena la plantilla corporativa sin eliminar su cuerpo, tablas ni saltos."""
+    """Rellena la plantilla corporativa por secciones ancladas y validables."""
     _clear_demo_text(document)
-    replacements = (
-        ("Servicio de Monitoreo", f"{payload.get('service_name') or 'Servicio de monitoreo proactivo XOC'} implementado por {payload.get('prepared_by') or 'TXDXSECURE'} para el cliente {payload.get('client_name') or 'Cliente'}."),
-        ("Periodo", payload.get("period")),
-        ("Datos Base", payload.get("data_base")),
-        ("Resumen ejecutivo del dominio", payload.get("executive_summary")),
-        ("Análisis Comparativo de Vulnerabilidades Semanales", (payload.get("vulnerability_comparison") or {}).get("summary")),
-        ("Histograma de la seguridad", payload.get("histogram_summary")),
-        ("Resultados obtenidos y próximas acciones", payload.get("results_and_next_actions")),
-        ("Seguridad Reforzada", payload.get("reinforced_security")),
+    report_variant = normalize_report_variant(
+        payload.get("report_variant")
+        or payload.get("template_variant")
+        or (payload.get("mock_meta") or {}).get("report_variant")
     )
-    for heading, value in replacements:
-        target = _paragraph_after_heading(document, heading)
-        if target is not None and _clean_text(value):
-            _replace_paragraph_text(target, value)
+    anchors = _collect_section_anchors(document, report_variant)
+    domain_table_templates = capture_domain_table_templates(document)
 
-    _fill_existing_table_slots(document, payload)
-    tool_lines = [
-        f"{tool.get('name') or 'Herramienta'}: {tool.get('description') or ''}"
-        for tool in (payload.get("tools") or [])
-        if isinstance(tool, dict)
-    ]
-    _fill_existing_action_slots(document, "Herramientas", tool_lines)
-    _fill_existing_action_slots(document, "Reporte de acciones trabajadas durante la semana", payload.get("weekly_actions") or [])
-    _fill_existing_action_slots(document, "Hallazgos pendientes", payload.get("pending_findings") or [])
-    news = payload.get("security_news") or []
-    if news:
-        first = news[0]
-        _fill_existing_action_slots(document, "Noticias de seguridad", [
-            f"{first.get('title') or 'Noticia de seguridad'} — {first.get('summary') or ''}",
-            f"Fuente: {first.get('source') or 'No especificada'}",
-            f"Recomendación: {first.get('recommendation') or ''}",
-        ])
+    service_text = (
+        f"{payload.get('service_name') or 'Servicio de monitoreo proactivo XOC'} implementado por "
+        f"{payload.get('prepared_by') or 'TXDXSECURE'} para el cliente {payload.get('client_name') or 'Cliente'}."
+    )
+    _render_section_text(document, anchors, "service", service_text)
+    _render_section_text(document, anchors, "period", payload.get("period"))
+    _render_tools_section(document, anchors, payload)
+    _render_section_text(document, anchors, "data_base", payload.get("data_base"))
+    _render_section_text(document, anchors, "executive", payload.get("executive_summary"))
+    _render_comparison_section(document, anchors, payload)
+    _render_section_text(document, anchors, "histogram", payload.get("histogram_summary"))
+    _render_domains_section(document, anchors, payload, domain_table_templates)
 
-    comparison_anchor = _find_paragraph_containing(document, ["Análisis Comparativo de Vulnerabilidades Semanales"])
-    rows = (payload.get("vulnerability_comparison") or {}).get("severity_rows") or []
-    if comparison_anchor is not None and rows:
-        add_severity_comparison_table(document, rows)
-        comparison_table = document.tables[-1]
-        comparison_anchor._p.addnext(comparison_table._tbl)
+    if report_variant == "client_admin":
+        _render_section_text(document, anchors, "results_next", payload.get("results_and_next_actions"))
+        _render_section_text(document, anchors, "results_obtained", payload.get("results_obtained"))
+        _render_section_list(document, anchors, "next_actions", payload.get("next_actions") or [])
+        _render_section_list(document, anchors, "requirements", payload.get("requirements") or [])
+        _render_section_list(document, anchors, "weekly_actions", payload.get("weekly_actions") or [])
+        _render_section_text(document, anchors, "reinforced_security", payload.get("reinforced_security"))
+        _render_section_list(document, anchors, "pending_findings", payload.get("pending_findings") or [])
+        _render_news_section(document, anchors, payload)
+
+    assert_required_sections_filled(document, anchors, report_variant)
 
 
 def _insert_paragraph_after(paragraph: Paragraph) -> Paragraph:
@@ -1066,6 +1445,18 @@ def validate_docx(path: Path) -> None:
     with zipfile.ZipFile(path) as archive:
         if "word/document.xml" not in archive.namelist():
             raise RuntimeError("El DOCX generado no contiene word/document.xml")
+        leftovers: list[str] = []
+        for name in archive.namelist():
+            if not name.startswith("word/") or not name.endswith(".xml"):
+                continue
+            try:
+                content = archive.read(name).decode("utf-8", errors="ignore")
+            except KeyError:
+                continue
+            if _template_residue_matches(content):
+                leftovers.append(name)
+        if leftovers:
+            raise RuntimeError(f"El DOCX generado conserva residuos de plantilla en: {', '.join(leftovers[:5])}")
 
 
 def _chart_images_from_payload(payload: dict[str, Any]) -> tuple[list[Path], list[str]]:
@@ -1102,9 +1493,12 @@ def generate_minority_report_docx(template_path: str | None, payload: dict[str, 
     document = Document(selected_template)
     apply_example_body_style(document)
     update_cover_and_footer(document, payload)
-    fill_minority_template_in_place(document, payload)
+    domain_table_templates = capture_domain_table_templates(document)
+    clear_template_body_after_cover(document)
+    build_report_body(document, payload, domain_table_templates)
     images, descriptions = _chart_images_from_payload(payload)
     place_evidence_images(document, images, descriptions)
+    assert_no_template_residue(document)
 
     document.save(result_path)
     validate_docx(result_path)
@@ -1182,7 +1576,9 @@ def main() -> None:
     document = Document(model_path)
     apply_example_body_style(document)
     update_cover_and_footer(document, payload)
-    fill_minority_template_in_place(document, payload)
+    domain_table_templates = capture_domain_table_templates(document)
+    clear_template_body_after_cover(document)
+    build_report_body(document, payload, domain_table_templates)
     place_evidence_images(document, args.image, args.image_description)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
