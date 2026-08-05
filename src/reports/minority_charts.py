@@ -58,7 +58,7 @@ def _draw_centered(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], te
 
 
 def _pie_chart(values: list[int], path: Path, title: str) -> None:
-    image = Image.new("RGB", (860, 620), BACKGROUND)
+    image = Image.new("RGB", (1080, 760), BACKGROUND)
     draw = ImageDraw.Draw(image)
     title_font = _font(28, bold=True)
     label_font = _font(20)
@@ -66,7 +66,7 @@ def _pie_chart(values: list[int], path: Path, title: str) -> None:
 
     draw.text((40, 24), title, fill=TEXT, font=title_font)
 
-    chart_box = (60, 90, 460, 490)
+    chart_box = (70, 110, 610, 650)
     total = sum(values)
     safe_values = values if total > 0 else [1, 0, 0, 0, 0]
     total_safe = sum(safe_values)
@@ -87,15 +87,15 @@ def _pie_chart(values: list[int], path: Path, title: str) -> None:
     else:
         percentage_lines = ["Sin hallazgos para el periodo"]
 
-    legend_x = 520
-    legend_y = 120
+    legend_x = 690
+    legend_y = 130
     for index, severity in enumerate(SEVERITIES):
         y = legend_y + (index * 62)
         draw.rounded_rectangle((legend_x, y, legend_x + 24, y + 24), radius=5, fill=PIE_COLORS[severity])
         draw.text((legend_x + 38, y), severity, fill=TEXT, font=label_font)
         draw.text((legend_x + 38, y + 26), str(values[index]), fill="#5C6670", font=small_font)
 
-    summary_y = 450
+    summary_y = 510
     for line in percentage_lines[:5]:
         draw.text((520, summary_y), line, fill=TEXT, font=small_font)
         summary_y += 28
@@ -151,9 +151,9 @@ def _histogram(previous_values: list[int], current_values: list[int], path: Path
 
     legend_y = 610
     draw.rounded_rectangle((340, legend_y, 364, legend_y + 24), radius=4, fill=BAR_PREVIOUS)
-    draw.text((374, legend_y), "Semana anterior", fill=TEXT, font=axis_font)
+    draw.text((374, legend_y), "Referencia anterior", fill=TEXT, font=axis_font)
     draw.rounded_rectangle((620, legend_y, 644, legend_y + 24), radius=4, fill=BAR_CURRENT)
-    draw.text((654, legend_y), "Semana actual", fill=TEXT, font=axis_font)
+    draw.text((654, legend_y), "Estado actual", fill=TEXT, font=axis_font)
 
     image.save(path, format="PNG")
 
@@ -168,21 +168,21 @@ def generate_minority_charts(chart_data: dict[str, Any], output_dir: Path) -> li
     current_pie = output_dir / "figura_2_pastel_semana_actual.png"
     histogram = output_dir / "figura_3_histograma_seguridad.png"
 
-    _pie_chart(previous_values, previous_pie, "Semana anterior")
-    _pie_chart(current_values, current_pie, "Semana actual")
+    _pie_chart(previous_values, previous_pie, "Referencia anterior")
+    _pie_chart(current_values, current_pie, "Estado actual")
     _histogram(previous_values, current_values, histogram, client_name)
 
     return [
         {
             "path": str(previous_pie),
-            "description": "Distribución de vulnerabilidades por severidad en la semana anterior.",
+            "description": "Distribución de vulnerabilidades por severidad en la referencia anterior disponible.",
         },
         {
             "path": str(current_pie),
-            "description": "Distribución de vulnerabilidades por severidad en la semana actual.",
+            "description": "Distribución actual de vulnerabilidades por severidad.",
         },
         {
             "path": str(histogram),
-            "description": "Histograma de seguridad comparando semana anterior y semana actual.",
+            "description": "Comparación entre la referencia anterior disponible y el estado actual de la seguridad.",
         },
     ]

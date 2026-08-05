@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from sqlalchemy import func, select
 
+from src.integrations.summary_store import _latest_noc_scan, _latest_soc_scan
 from src.persistence.db import session_scope
 from src.persistence.models import AgentApiKey, FindingIndex, Integration, ScanSummary, ScanSummaryNoc, Tenant, Ticket
 from src.reports.store import get_document_job_or_404
@@ -51,10 +53,39 @@ def _collect_from_sources(tenant_id: int, document_id: str, document_type: str, 
 PROVIDER_LABELS = {
     "wazuh": "Wazuh SIEM",
     "nessus": "Nessus",
+    "tenable": "Nessus",
     "openvas": "OpenVAS",
     "insightvm": "InsightVM / Rapid7",
+    "rapid7": "InsightVM / Rapid7",
     "zabbix": "Zabbix",
     "uptime_kuma": "Uptime Kuma",
+}
+
+PROVIDER_ORDER = [
+    "wazuh",
+    "openvas",
+    "nessus",
+    "insightvm",
+    "zabbix",
+    "uptime_kuma",
+]
+
+SOC_PROVIDERS = {"wazuh", "openvas", "nessus", "insightvm"}
+NOC_PROVIDERS = {"zabbix", "uptime_kuma"}
+
+SEVERITY_PRIORITY = {
+    "critical": 0,
+    "critica": 0,
+    "crítica": 0,
+    "high": 1,
+    "alta": 1,
+    "medium": 2,
+    "media": 2,
+    "low": 3,
+    "baja": 3,
+    "informational": 4,
+    "informativa": 4,
+    "info": 4,
 }
 
 
@@ -64,59 +95,55 @@ def _build_real_minority_context(tenant_id: int, document_id: str, filters: dict
         if not tenant:
             raise ValueError(f"Tenant {tenant_id} not found")
 
-        date_from, date_to, period = _resolve_period(filters)
-        previous_from = date_from - timedelta(days=7)
-        previous_to = date_from - timedelta(microseconds=1)
-        findings = session.scalars(
-            select(FindingIndex).where(
-                FindingIndex.tenant_id == tenant_id,
-                FindingIndex.created_at >= date_from,
-                FindingIndex.created_at <= date_to,
-            ).order_by(FindingIndex.created_at.desc()).limit(150)
-        ).all()
-        previous_findings = session.scalars(
-            select(FindingIndex).where(
-                FindingIndex.tenant_id == tenant_id,
-                FindingIndex.created_at >= previous_from,
-                FindingIndex.created_at <= previous_to,
-            ).order_by(FindingIndex.created_at.desc()).limit(150)
-        ).all()
         integrations = session.scalars(select(Integration).where(Integration.tenant_id == tenant_id)).all()
         agent_keys = session.scalars(
             select(AgentApiKey).where(AgentApiKey.tenant_id == tenant_id, AgentApiKey.is_active == True)
         ).all()
-        tickets = session.scalars(
-            select(Ticket).where(
-                Ticket.tenant_id == tenant_id,
-                Ticket.created_at >= date_from,
-                Ticket.created_at <= date_to,
-            ).order_by(Ticket.created_at.desc()).limit(40)
-        ).all()
-
-        severity_summary = _build_real_severity_summary(findings)
-        previous_summary = _build_real_severity_summary(previous_findings)
-        scan_snapshot = _build_scan_snapshot(session, tenant_id, date_from, date_to, previous_from, previous_to)
-        if not any(severity_summary.values()) and any((scan_snapshot.get("current_scan_severity_summary") or {}).values()):
-            severity_summary = scan_snapshot["current_scan_severity_summary"]
-        if not any(previous_summary.values()) and any((scan_snapshot.get("previous_scan_severity_summary") or {}).values()):
-            previous_summary = scan_snapshot["previous_scan_severity_summary"]
         tools = _build_real_tools(integrations, agent_keys)
-        security_domains = _build_security_domains(findings)
+        tickets = session.scalars(
+            select(Ticket).where(Ticket.tenant_id == tenant_id).order_by(Ticket.created_at.desc()).limit(40)
+        ).all()
+        security_domains = _build_security_domains(
+            session,
+            tenant_id,
+            integrations,
+            agent_keys,
+            tickets,
+        )
+        findings = _flatten_domain_findings(security_domains)
+        previous_findings = _flatten_previous_domain_findings(security_domains)
+        severity_summary = _sum_domain_severity_summaries(security_domains, "current_severity_summary")
+        previous_summary = _sum_domain_severity_summaries(security_domains, "previous_severity_summary")
+        scan_snapshot = _build_latest_snapshot_overview(security_domains)
+        period = _build_current_state_period(security_domains)
         weekly_actions = _build_weekly_actions(tickets)
         admin_module_actions = _build_admin_module_actions(parameters)
         if admin_module_actions:
             weekly_actions = admin_module_actions
-        pending_findings = _build_pending_findings(findings)
+        pending_findings = _build_pending_findings_from_rows(findings)
+        integrations_overview = _build_integrations_overview(tools, security_domains)
+        coverage_rows = _build_coverage_rows(tools, security_domains)
+        coverage_summary = _build_coverage_summary(tools, security_domains, scan_snapshot)
+        priority_focuses = _build_priority_focuses(security_domains, tickets, pending_findings)
+        operational_considerations = _build_operational_considerations(tools, security_domains, scan_snapshot, tickets)
+        client_limitations = _build_client_limitations(security_domains, scan_snapshot, tickets)
         analyst_text = _build_analyst_text(parameters)
         manual_security_news = _build_manual_security_news(parameters)
         report_variant = _normalize_report_variant(parameters.get("report_variant"))
-        document_code = _build_document_code(tenant_id, document_id, tenant.name, date_to, report_variant)
+        document_code = _build_document_code(
+            tenant_id,
+            document_id,
+            tenant.name,
+            _current_state_reference_datetime(security_domains) or datetime.now(timezone.utc),
+            report_variant,
+        )
         template_rules = _template_rules(report_variant)
         chart_data = {
             "client_name": tenant.name,
             "period": period,
             "previous_severity_summary": previous_summary,
             "current_severity_summary": severity_summary,
+            "coverage_rows": coverage_rows,
         }
 
         return {
@@ -152,21 +179,31 @@ def _build_real_minority_context(tenant_id: int, document_id: str, filters: dict
                 "previous_severity_summary": previous_summary,
                 "chart_evidence": chart_data,
                 "tools": tools,
+                "integrations_overview": integrations_overview,
                 "aggregated_metrics": {
-                    "data_base": _build_data_base_text(findings, previous_findings, tickets, scan_snapshot),
+                    "data_base": _build_data_base_text(findings, previous_findings, tickets, scan_snapshot, tools, security_domains),
                     "vulnerability_comparison": _build_vulnerability_comparison_rows(previous_summary, severity_summary),
-                    "histogram_summary": _build_histogram_summary(previous_summary, severity_summary),
-                    "results_obtained": _build_results_obtained(tickets, findings, scan_snapshot),
+                    "histogram_summary": _build_histogram_summary(previous_summary, severity_summary, tools, security_domains),
+                    "results_obtained": _build_results_obtained(tickets, findings, scan_snapshot, tools, security_domains),
+                    "coverage_summary": coverage_summary,
+                    "coverage_rows": coverage_rows,
+                    "priority_focuses": priority_focuses,
+                    "operational_considerations": operational_considerations,
+                    "limitations": client_limitations,
                     "pending_findings": pending_findings,
                     "security_domains": security_domains,
                     "weekly_actions": weekly_actions,
                 },
                 "security_domains": security_domains,
+                "coverage_rows": coverage_rows,
+                "coverage_summary": coverage_summary,
+                "priority_focuses": priority_focuses,
+                "operational_considerations": operational_considerations,
                 "weekly_actions": weekly_actions,
                 "manual_security_news": manual_security_news,
                 "pending_findings": pending_findings,
-                "top_findings": [_finding_to_minority_row(finding) for finding in findings[:20]],
-                "previous_top_findings": [_finding_to_minority_row(finding) for finding in previous_findings[:20]],
+                "top_findings": [_row_to_minority_row(finding) for finding in _sort_finding_rows(findings)[:40]],
+                "previous_top_findings": [_row_to_minority_row(finding) for finding in _sort_finding_rows(previous_findings)[:40]],
                 "scan_snapshot": scan_snapshot,
                 "ticket_snapshot": [
                     {
@@ -180,7 +217,7 @@ def _build_real_minority_context(tenant_id: int, document_id: str, filters: dict
             "tools": tools,
             "severity_summary": severity_summary,
             "previous_severity_summary": previous_summary,
-            "findings": [_finding_to_legacy_row(finding) for finding in findings[:50]],
+            "findings": _sort_finding_rows(findings)[:80],
             "domains": security_domains,
             "actions_worked": weekly_actions,
             "security_news": manual_security_news,
@@ -313,79 +350,232 @@ def _build_vulnerability_comparison_rows(previous_summary: dict, current_summary
             "current": str(int(current_summary.get(key, 0) or 0)),
         })
     return {
-        "summary": "Comparativo construido con la semana anterior y la semana actual usando hallazgos reales registrados en la plataforma.",
+        "summary": "Comparativo construido entre la referencia anterior disponible y el estado actual de los hallazgos consolidados por integración.",
         "severity_rows": rows,
     }
 
 
-def _build_histogram_summary(previous_summary: dict, current_summary: dict) -> str:
+def _build_histogram_summary(previous_summary: dict, current_summary: dict, tools: list[dict], security_domains: list[dict]) -> str:
     previous_total = sum(int(value or 0) for value in previous_summary.values())
     current_total = sum(int(value or 0) for value in current_summary.values())
     delta = current_total - previous_total
+    active_domains = [str(domain.get("name") or "") for domain in security_domains if int(domain.get("current_findings_total") or 0) > 0]
     return (
         "El histograma de seguridad compara el volumen de hallazgos por severidad entre la semana anterior "
-        f"({previous_total}) y la semana actual ({current_total}), con una variación neta de {delta:+d}."
+        f"({previous_total}) y la semana actual ({current_total}), con una variación neta de {delta:+d}. "
+        f"El servicio se mantuvo activo sobre {len(tools)} integraciones; aportaron evidencia indexada en esta ventana: "
+        f"{', '.join(active_domains) if active_domains else 'ninguna'}."
     )
 
 
-def _build_data_base_text(findings: list[FindingIndex], previous_findings: list[FindingIndex], tickets: list[Ticket], scan_snapshot: dict) -> str:
+def _build_data_base_text(
+    findings: list[FindingIndex],
+    previous_findings: list[FindingIndex],
+    tickets: list[Ticket],
+    scan_snapshot: dict,
+    tools: list[dict],
+    security_domains: list[dict],
+) -> str:
+    active_with_findings = sum(1 for domain in security_domains if int(domain.get("current_findings_total") or 0) > 0)
     return (
-        f"Se consolidaron {len(findings)} hallazgos del periodo actual, {len(previous_findings)} hallazgos de la semana anterior "
-        f"y {len(tickets)} tickets operativos asociados al tenant. "
-        f"Snapshots SOC evaluados: {scan_snapshot.get('current_soc_scans', 0)}; snapshots NOC evaluados: {scan_snapshot.get('current_noc_scans', 0)}."
+        f"Se consolidaron {len(findings)} hallazgos del estado actual y {len(previous_findings)} hallazgos en la referencia anterior disponible, "
+        f"con {len(tickets)} tickets operativos asociados al tenant. "
+        f"Hay {len(tools)} integraciones activas en cobertura y {active_with_findings} dominios con hallazgos indexados en el estado actual. "
+        f"Integraciones con snapshot SOC utilizable: {scan_snapshot.get('current_soc_scans', 0)}; con snapshot NOC utilizable: {scan_snapshot.get('current_noc_scans', 0)}."
     )
 
 
-def _build_results_obtained(tickets: list[Ticket], findings: list[FindingIndex], scan_snapshot: dict) -> list[str]:
+def _build_results_obtained(
+    tickets: list[Ticket],
+    findings: list[FindingIndex],
+    scan_snapshot: dict,
+    tools: list[dict],
+    security_domains: list[dict],
+) -> list[str]:
     closed_statuses = {"RESUELTO", "RESOLVED", "COMPLETED", "EXECUTED", "APROBADO"}
     closed = [ticket for ticket in tickets if (ticket.status or "").upper() in closed_statuses]
+    active_with_findings = [str(domain.get("name") or "") for domain in security_domains if int(domain.get("current_findings_total") or 0) > 0]
+    covered_only = [str(tool.get("name") or "") for tool in tools if str(tool.get("name") or "") not in set(active_with_findings)]
     return [
         f"Tickets cerrados o ejecutados durante el periodo: {len(closed)}.",
         f"Hallazgos técnicos identificados en el periodo: {len(findings)}.",
         f"Escaneos/snapshots considerados en el periodo: {scan_snapshot.get('current_total_scans', 0)}.",
+        f"Integraciones con hallazgos indexados: {', '.join(active_with_findings) if active_with_findings else 'ninguna'}.",
+        f"Integraciones activas sin hallazgos indexados en esta ventana: {', '.join(covered_only) if covered_only else 'ninguna'}.",
     ]
 
 
-def _build_scan_snapshot(session, tenant_id: int, start: datetime, end: datetime, previous_start: datetime, previous_end: datetime) -> dict:
-    current_soc = session.scalars(
-        select(ScanSummary).where(ScanSummary.tenant_id == tenant_id, ScanSummary.scanned_at >= start, ScanSummary.scanned_at <= end)
-    ).all()
-    current_noc = session.scalars(
-        select(ScanSummaryNoc).where(ScanSummaryNoc.tenant_id == tenant_id, ScanSummaryNoc.scanned_at >= start, ScanSummaryNoc.scanned_at <= end)
-    ).all()
-    previous_soc = session.scalars(
-        select(ScanSummary).where(ScanSummary.tenant_id == tenant_id, ScanSummary.scanned_at >= previous_start, ScanSummary.scanned_at <= previous_end)
-    ).all()
-    previous_noc = session.scalars(
-        select(ScanSummaryNoc).where(ScanSummaryNoc.tenant_id == tenant_id, ScanSummaryNoc.scanned_at >= previous_start, ScanSummaryNoc.scanned_at <= previous_end)
-    ).all()
+def _sum_domain_severity_summaries(domains: list[dict], key: str) -> dict[str, int]:
+    summary = {"critical": 0, "high": 0, "medium": 0, "low": 0, "informational": 0}
+    for domain in domains:
+        values = domain.get(key) or {}
+        for severity in summary:
+            summary[severity] += int(values.get(severity, 0) or 0)
+    return summary
 
-    def totals(rows: list) -> dict:
-        return {
-            "critical": sum(int(getattr(row, "critical_count", 0) or 0) for row in rows),
-            "high": sum(int(getattr(row, "high_count", 0) or 0) for row in rows),
-            "medium": sum(int(getattr(row, "medium_count", 0) or 0) for row in rows),
-            "low": sum(int(getattr(row, "low_count", 0) or 0) for row in rows),
-            "informational": sum(int(getattr(row, "info_count", 0) or 0) for row in rows),
-        }
 
+def _flatten_domain_findings(domains: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+    for domain in domains:
+        name = str(domain.get("name") or "")
+        for finding in domain.get("findings") or []:
+            rows.append({
+                "id": finding.get("id"),
+                "domain": name,
+                "title": finding.get("vulnerability"),
+                "affected_hosts": finding.get("affected_hosts"),
+                "severity": finding.get("severity"),
+                "provider": domain.get("provider"),
+                "description": None,
+                "recommendation": None,
+            })
+    return rows
+
+
+def _flatten_previous_domain_findings(domains: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+    for domain in domains:
+        name = str(domain.get("name") or "")
+        for finding in domain.get("previous_findings") or []:
+            rows.append({
+                "id": finding.get("id"),
+                "domain": name,
+                "title": finding.get("vulnerability"),
+                "affected_hosts": finding.get("affected_hosts"),
+                "severity": finding.get("severity"),
+                "provider": domain.get("provider"),
+            })
+    return rows
+
+
+def _sort_finding_rows(rows: list[dict]) -> list[dict]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            _severity_rank(row.get("severity")),
+            str(row.get("id") or ""),
+        ),
+    )
+
+
+def _row_to_minority_row(row: dict) -> dict:
     return {
-        "current_soc_scans": len(current_soc),
-        "current_noc_scans": len(current_noc),
-        "previous_soc_scans": len(previous_soc),
-        "previous_noc_scans": len(previous_noc),
-        "current_total_scans": len(current_soc) + len(current_noc),
-        "previous_total_scans": len(previous_soc) + len(previous_noc),
-        "current_scan_severity_summary": totals(current_soc + current_noc),
-        "previous_scan_severity_summary": totals(previous_soc + previous_noc),
+        "id": str(row.get("id") or ""),
+        "vulnerability": str(row.get("title") or "Hallazgo sin titulo"),
+        "affected_hosts": str(row.get("affected_hosts") or "N/D"),
+        "severity": str(row.get("severity") or "Informativa"),
     }
 
 
+def _current_state_reference_datetime(domains: list[dict]) -> datetime | None:
+    latest_values = [
+        str((domain.get("snapshot") or {}).get("scanned_at") or "")
+        for domain in domains
+        if (domain.get("snapshot") or {}).get("scanned_at")
+    ]
+    if not latest_values:
+        return None
+    latest = max(latest_values)
+    return datetime.fromisoformat(latest.replace("Z", "+00:00"))
+
+
+def _build_current_state_period(domains: list[dict]) -> str:
+    snapshot_dates = [
+        str((domain.get("snapshot") or {}).get("scanned_at") or "")
+        for domain in domains
+        if (domain.get("snapshot") or {}).get("scanned_at")
+    ]
+    if not snapshot_dates:
+        return "Estado actual sin snapshots disponibles"
+    latest = max(snapshot_dates)
+    return f"Estado actual con última evidencia al {latest[:10]}"
+
+
+def _build_latest_snapshot_overview(domains: list[dict]) -> dict:
+    current_soc = 0
+    current_noc = 0
+    current_total = 0
+    previous_total = 0
+    current_summary = {"critical": 0, "high": 0, "medium": 0, "low": 0, "informational": 0}
+    previous_summary = {"critical": 0, "high": 0, "medium": 0, "low": 0, "informational": 0}
+    for domain in domains:
+        snapshot = domain.get("snapshot") or {}
+        previous_snapshot = domain.get("previous_snapshot") or {}
+        if snapshot.get("available"):
+            current_total += 1
+            if snapshot.get("domain") == "noc":
+                current_noc += 1
+            else:
+                current_soc += 1
+        if previous_snapshot.get("available"):
+            previous_total += 1
+        for severity in current_summary:
+            current_summary[severity] += int((snapshot.get("counts") or {}).get(severity, 0) or 0)
+            previous_summary[severity] += int((previous_snapshot.get("counts") or {}).get(severity, 0) or 0)
+    return {
+        "current_soc_scans": current_soc,
+        "current_noc_scans": current_noc,
+        "previous_soc_scans": previous_total,
+        "previous_noc_scans": 0,
+        "current_total_scans": current_total,
+        "previous_total_scans": previous_total,
+        "current_scan_severity_summary": current_summary,
+        "previous_scan_severity_summary": previous_summary,
+    }
+
+
+def _normalize_provider(value: object) -> str:
+    normalized = str(value or "other").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "rapid7": "insightvm",
+        "insight_vm": "insightvm",
+        "tenable": "nessus",
+        "uptime": "uptime_kuma",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _provider_sort_key(provider: str) -> tuple[int, str]:
+    normalized = _normalize_provider(provider)
+    try:
+        return (PROVIDER_ORDER.index(normalized), PROVIDER_LABELS.get(normalized, normalized))
+    except ValueError:
+        return (len(PROVIDER_ORDER), PROVIDER_LABELS.get(normalized, normalized))
+
+
+def _provider_layer(provider: str) -> str:
+    normalized = _normalize_provider(provider)
+    if normalized in NOC_PROVIDERS:
+        return "NOC"
+    return "SOC"
+
+
+def _severity_rank(value: object) -> int:
+    normalized = str(value or "").strip().lower()
+    return SEVERITY_PRIORITY.get(normalized, 99)
+
+
+def _sort_findings(findings: list[FindingIndex]) -> list[FindingIndex]:
+    return sorted(
+        findings,
+        key=lambda finding: (
+            _severity_rank(finding.severity),
+            -(finding.created_at.timestamp() if finding.created_at else 0),
+            str(finding.id),
+        ),
+    )
+
+
+def _build_integration_provider_names(integrations: list[Integration], agent_keys: list[AgentApiKey]) -> list[str]:
+    names = {_normalize_provider(integration.provider) for integration in integrations}
+    names.update(_normalize_provider(agent_key.integration_type) for agent_key in agent_keys)
+    names.discard("other")
+    return sorted(names, key=_provider_sort_key)
+
+
 def _build_real_tools(integrations: list[Integration], agent_keys: list[AgentApiKey]) -> list[dict]:
-    names = {integration.provider for integration in integrations}
-    names.update(agent_key.integration_type for agent_key in agent_keys)
     tools = []
-    for provider in sorted(names):
+    for provider in _build_integration_provider_names(integrations, agent_keys):
         tools.append({
             "name": PROVIDER_LABELS.get(provider, provider.upper()),
             "description": f"Integracion activa para {PROVIDER_LABELS.get(provider, provider)}.",
@@ -396,19 +586,198 @@ def _build_real_tools(integrations: list[Integration], agent_keys: list[AgentApi
 def _group_findings_by_provider(findings: list[FindingIndex]) -> dict[str, list[FindingIndex]]:
     grouped: dict[str, list[FindingIndex]] = {}
     for finding in findings:
-        grouped.setdefault(finding.scanner_type or "other", []).append(finding)
+        grouped.setdefault(_normalize_provider(finding.scanner_type), []).append(finding)
     return grouped
 
 
-def _build_security_domains(findings: list[FindingIndex]) -> list[dict]:
-    grouped = _group_findings_by_provider(findings)
+def _load_snapshot_findings(session, provider: str, scan: ScanSummary | ScanSummaryNoc | None) -> list[FindingIndex]:
+    if scan is None:
+        return []
+    if provider in {"zabbix", "uptime_kuma"}:
+        stmt = select(FindingIndex).where(FindingIndex.scan_summary_noc_id == scan.id)
+    else:
+        stmt = select(FindingIndex).where(FindingIndex.scan_summary_soc_id == scan.id)
+    return list(session.scalars(stmt.order_by(FindingIndex.created_at.desc()).limit(200)))
+
+
+def _latest_provider_scan(session, tenant_id: int, provider: str) -> ScanSummary | ScanSummaryNoc | None:
+    if provider in {"zabbix", "uptime_kuma"}:
+        return _latest_noc_scan(session, tenant_id, provider)
+    return _latest_soc_scan(session, tenant_id, provider)
+
+
+def _previous_provider_scan(
+    session,
+    tenant_id: int,
+    provider: str,
+    before: datetime | None,
+) -> ScanSummary | ScanSummaryNoc | None:
+    if before is None:
+        return None
+    if provider in {"zabbix", "uptime_kuma"}:
+        return session.scalar(
+            select(ScanSummaryNoc)
+            .where(
+                ScanSummaryNoc.tenant_id == tenant_id,
+                ScanSummaryNoc.scanner_type == provider,
+                ScanSummaryNoc.scanned_at < before,
+            )
+            .order_by(ScanSummaryNoc.scanned_at.desc())
+        )
+    return session.scalar(
+        select(ScanSummary)
+        .where(
+            ScanSummary.tenant_id == tenant_id,
+            ScanSummary.scanner_type == provider,
+            ScanSummary.scanned_at < before,
+        )
+        .order_by(ScanSummary.scanned_at.desc())
+    )
+
+
+def _scan_counts_dict(scan: ScanSummary | ScanSummaryNoc | None) -> dict[str, int]:
+    if scan is None:
+        return {"critical": 0, "high": 0, "medium": 0, "low": 0, "informational": 0}
+    return {
+        "critical": int(getattr(scan, "critical_count", 0) or 0),
+        "high": int(getattr(scan, "high_count", 0) or 0),
+        "medium": int(getattr(scan, "medium_count", 0) or 0),
+        "low": int(getattr(scan, "low_count", 0) or 0),
+        "informational": int(getattr(scan, "info_count", 0) or 0),
+    }
+
+
+def _total_from_scan_counts(scan: ScanSummary | ScanSummaryNoc | None) -> int:
+    counts = _scan_counts_dict(scan)
+    return sum(counts.values())
+
+
+def _build_snapshot_summary(provider: str, scan: ScanSummary | ScanSummaryNoc | None, findings_count: int) -> dict[str, Any]:
+    if scan is None:
+        return {
+            "available": False,
+            "domain": "noc" if provider in {"zabbix", "uptime_kuma"} else "soc",
+            "scanned_at": None,
+            "status": None,
+            "scan_id": None,
+            "summary_type": None,
+            "counts": {"critical": 0, "high": 0, "medium": 0, "low": 0, "informational": 0},
+            "total_hosts": 0,
+            "findings_indexed": findings_count,
+        }
+    return {
+        "available": True,
+        "domain": "noc" if provider in {"zabbix", "uptime_kuma"} else "soc",
+        "scanned_at": scan.scanned_at.isoformat() if getattr(scan, "scanned_at", None) else None,
+        "status": getattr(scan, "status", None),
+        "scan_id": getattr(scan, "scan_id", None),
+        "summary_type": getattr(scan, "summary_type", None),
+        "counts": _scan_counts_dict(scan),
+        "total_hosts": int(getattr(scan, "total_hosts", 0) or 0),
+        "findings_indexed": findings_count,
+    }
+
+
+def _snapshot_compact_row(scan: ScanSummary | ScanSummaryNoc | None) -> dict[str, Any]:
+    if scan is None:
+        return {
+            "available": False,
+            "scanned_at": None,
+            "counts": {"critical": 0, "high": 0, "medium": 0, "low": 0, "informational": 0},
+            "scan_id": None,
+            "status": None,
+        }
+    return {
+        "available": True,
+        "scanned_at": scan.scanned_at.isoformat() if getattr(scan, "scanned_at", None) else None,
+        "counts": _scan_counts_dict(scan),
+        "scan_id": getattr(scan, "scan_id", None),
+        "status": getattr(scan, "status", None),
+    }
+
+
+def _build_severity_summary_for_findings(findings: list[FindingIndex]) -> dict[str, int]:
+    return _build_real_severity_summary(findings)
+
+
+def _sample_findings_for_domain(findings: list[FindingIndex], limit: int = 12) -> list[dict]:
+    return [_finding_to_minority_row(item) for item in _sort_findings(findings)[:limit]]
+
+
+def _build_domain_summary(
+    provider: str,
+    current_items: list[FindingIndex],
+    previous_items: list[FindingIndex],
+    tickets: list[Ticket],
+    total_integrations: int,
+    latest_scan: ScanSummary | ScanSummaryNoc | None,
+) -> str:
+    label = PROVIDER_LABELS.get(provider, provider.upper())
+    current_total = len(current_items) or _total_from_scan_counts(latest_scan)
+    previous_total = len(previous_items)
+    delta = current_total - previous_total
+    current_severity = _build_severity_summary_for_findings(current_items) if current_items else _scan_counts_dict(latest_scan)
+    tickets_total = len(tickets)
+    latest_scan_at = latest_scan.scanned_at.date().isoformat() if latest_scan and getattr(latest_scan, "scanned_at", None) else None
+    if current_total:
+        return (
+            f"{label} aporta {current_total} hallazgos en el periodo evaluado "
+            f"({delta:+d} frente a la ventana previa con {previous_total}). "
+            f"Distribución actual: críticas {current_severity.get('critical', 0)}, altas {current_severity.get('high', 0)}, "
+            f"medias {current_severity.get('medium', 0)}, bajas {current_severity.get('low', 0)} e informativas {current_severity.get('informational', 0)}. "
+            f"Último snapshot disponible: {latest_scan_at or 'sin fecha registrada'}. "
+            f"El tenant mantiene {total_integrations} integraciones activas en cobertura actual, "
+            f"con {tickets_total} tickets operativos asociados para seguimiento."
+        )
+    if latest_scan is not None:
+        return (
+            f"{label} se mantiene como integración activa del servicio y su último snapshot disponible corresponde a {latest_scan_at or 'una fecha no registrada'}, "
+            "pero ese snapshot no dejó hallazgos indexados consumibles en el reporte. "
+            f"En la ventana previa se observaron {previous_total} hallazgos asociados. "
+            "Se recomienda validar su última ejecución para mantener continuidad operativa."
+        )
+    return (
+        f"{label} se mantiene como integración activa del servicio, pero no registra snapshot utilizable ni hallazgos indexados en el periodo evaluado. "
+        f"En la ventana previa se observaron {previous_total} hallazgos asociados. "
+        "Se recomienda usar esta integración como cobertura operativa complementaria y validar su estado operativo actual."
+    )
+
+
+def _build_security_domains(
+    session,
+    tenant_id: int,
+    integrations: list[Integration],
+    agent_keys: list[AgentApiKey],
+    tickets: list[Ticket],
+) -> list[dict]:
+    active_providers = _build_integration_provider_names(integrations, agent_keys)
+    provider_names = sorted(active_providers, key=_provider_sort_key)
     domains = []
-    for provider in sorted(grouped):
-        items = grouped[provider]
+    total_integrations = len(active_providers)
+    for provider in provider_names:
+        latest_scan = _latest_provider_scan(session, tenant_id, provider)
+        snapshot_items = _load_snapshot_findings(session, provider, latest_scan)
+        previous_scan = _previous_provider_scan(session, tenant_id, provider, getattr(latest_scan, "scanned_at", None))
+        previous_items = _load_snapshot_findings(session, provider, previous_scan)
+        items = snapshot_items
+        current_severity = _build_severity_summary_for_findings(items) if items else _scan_counts_dict(latest_scan)
+        previous_severity = _build_severity_summary_for_findings(previous_items) if previous_items else _scan_counts_dict(previous_scan)
+        current_total = len(items) or _total_from_scan_counts(latest_scan)
+        previous_total = len(previous_items) or _total_from_scan_counts(previous_scan)
         domains.append({
             "name": PROVIDER_LABELS.get(provider, provider.upper()),
-            "summary": f"Se identificaron {len(items)} hallazgos asociados a {PROVIDER_LABELS.get(provider, provider)} en el periodo evaluado.",
-            "findings": [_finding_to_minority_row(item) for item in items[:8]],
+            "provider": provider,
+            "layer": _provider_layer(provider),
+            "is_active": provider in active_providers,
+            "current_findings_total": current_total,
+            "previous_findings_total": previous_total,
+            "current_severity_summary": current_severity,
+            "previous_severity_summary": previous_severity,
+            "snapshot": _build_snapshot_summary(provider, latest_scan, len(items)),
+            "previous_snapshot": _snapshot_compact_row(previous_scan),
+            "summary": _build_domain_summary(provider, items, previous_items, tickets, total_integrations, latest_scan),
+            "findings": _sample_findings_for_domain(items, limit=12),
+            "previous_findings": _sample_findings_for_domain(previous_items, limit=8),
         })
     return domains
 
@@ -443,9 +812,126 @@ def _build_weekly_actions(tickets: list[Ticket]) -> list[str]:
 
 def _build_pending_findings(findings: list[FindingIndex]) -> list[str]:
     pending = []
-    for finding in findings[:12]:
-        pending.append(f"{finding.scanner_type}: {(finding.name or finding.cve or finding.event_type or 'Hallazgo')} ({finding.severity})")
+    for finding in _sort_findings(findings)[:20]:
+        pending.append(
+            f"{_normalize_provider(finding.scanner_type)}: {(finding.name or finding.cve or finding.event_type or 'Hallazgo')} ({finding.severity})"
+        )
     return pending
+
+
+def _build_pending_findings_from_rows(findings: list[dict]) -> list[str]:
+    pending = []
+    for finding in _sort_finding_rows(findings)[:20]:
+        pending.append(
+            f"{_normalize_provider(finding.get('provider'))}: {(finding.get('title') or 'Hallazgo')} ({finding.get('severity')})"
+        )
+    return pending
+
+
+def _build_coverage_rows(tools: list[dict], security_domains: list[dict]) -> list[dict[str, Any]]:
+    domain_by_name = {str(domain.get("name") or ""): domain for domain in security_domains}
+    rows: list[dict[str, Any]] = []
+    for tool in tools:
+        name = str(tool.get("name") or "")
+        domain = domain_by_name.get(name, {})
+        snapshot = domain.get("snapshot") or {}
+        current_total = int(domain.get("current_findings_total") or 0)
+        status = "Con evidencia reciente" if current_total > 0 else (
+            "Sin hallazgos observables" if snapshot.get("available") else "Sin snapshot reciente"
+        )
+        rows.append(
+            {
+                "integration": name,
+                "layer": _provider_layer(domain.get("provider") or name),
+                "last_evidence_at": snapshot.get("scanned_at") or "No disponible",
+                "current_findings_total": current_total,
+                "status": status,
+            }
+        )
+    return rows
+
+
+def _build_coverage_summary(tools: list[dict], security_domains: list[dict], scan_snapshot: dict) -> str:
+    rows = _build_coverage_rows(tools, security_domains)
+    with_evidence = [row["integration"] for row in rows if row["current_findings_total"] > 0]
+    without_findings = [row["integration"] for row in rows if row["current_findings_total"] == 0 and row["status"] == "Sin hallazgos observables"]
+    without_snapshot = [row["integration"] for row in rows if row["status"] == "Sin snapshot reciente"]
+    return (
+        f"La cobertura del servicio abarca {len(rows)} integraciones activas ({sum(1 for row in rows if row['layer']=='SOC')} SOC y {sum(1 for row in rows if row['layer']=='NOC')} NOC). "
+        f"Con evidencia reciente en la ventana o último snapshot utilizable: {', '.join(with_evidence) if with_evidence else 'ninguna'}. "
+        f"Activas sin hallazgos observables en la última evidencia: {', '.join(without_findings) if without_findings else 'ninguna'}. "
+        f"Sin snapshot reciente utilizable: {', '.join(without_snapshot) if without_snapshot else 'ninguna'}. "
+        f"Snapshots SOC/NOC dentro de la ventana actual: {scan_snapshot.get('current_total_scans', 0)}."
+    )
+
+
+def _build_priority_focuses(security_domains: list[dict], tickets: list[Ticket], pending_findings: list[str]) -> list[str]:
+    focuses: list[str] = []
+    ranked = sorted(
+        security_domains,
+        key=lambda domain: (
+            -int((domain.get("current_severity_summary") or {}).get("critical", 0) or 0),
+            -int((domain.get("current_severity_summary") or {}).get("high", 0) or 0),
+            -int(domain.get("current_findings_total") or 0),
+        ),
+    )
+    for domain in ranked[:3]:
+        sev = domain.get("current_severity_summary") or {}
+        if int(domain.get("current_findings_total") or 0) <= 0:
+            continue
+        focuses.append(
+            f"Priorizar {domain.get('name')} por concentración de hallazgos: críticas {sev.get('critical', 0)}, altas {sev.get('high', 0)} y total {domain.get('current_findings_total', 0)}."
+        )
+    if pending_findings:
+        focuses.append(f"Mantener seguimiento sobre {len(pending_findings)} hallazgos pendientes priorizados para remediación.")
+    if not tickets:
+        focuses.append("No se registran tickets operativos en la ventana; validar si las acciones de remediación están siendo trazadas fuera del flujo de tickets.")
+    return focuses[:5]
+
+
+def _build_operational_considerations(tools: list[dict], security_domains: list[dict], scan_snapshot: dict, tickets: list[Ticket]) -> list[str]:
+    considerations: list[str] = []
+    if int(scan_snapshot.get("current_total_scans", 0) or 0) == 0:
+        considerations.append("No se registraron scans o snapshots SOC/NOC dentro de la ventana actual; parte del análisis se apoya en la última evidencia disponible por integración.")
+    dormant = [domain.get("name") for domain in security_domains if int(domain.get("current_findings_total") or 0) == 0]
+    if dormant:
+        considerations.append(f"Las integraciones {', '.join(str(name) for name in dormant)} se mantienen activas, pero sin hallazgos observables en la última evidencia disponible.")
+    if not tickets:
+        considerations.append("No se identificaron tickets operativos asociados al período, por lo que la trazabilidad de remediaciones es limitada.")
+    if len(tools) > len([domain for domain in security_domains if int(domain.get("current_findings_total") or 0) > 0]):
+        considerations.append("La cobertura del servicio es más amplia que la evidencia con hallazgos del período; esto debe leerse como diferencia entre monitoreo activo y actividad observable.")
+    return considerations[:5]
+
+
+def _build_client_limitations(security_domains: list[dict], scan_snapshot: dict, tickets: list[Ticket]) -> list[str]:
+    limitations: list[str] = []
+    if int(scan_snapshot.get("current_total_scans", 0) or 0) == 0:
+        limitations.append("No se registraron snapshots SOC/NOC dentro de la ventana evaluada; parte de la comparación se apoya en la última evidencia disponible por integración.")
+    if not tickets:
+        limitations.append("No se identificaron tickets operativos asociados al período, lo que limita la validación de remediaciones ejecutadas.")
+    zero_domains = [domain.get("name") for domain in security_domains if int(domain.get("current_findings_total") or 0) == 0]
+    if zero_domains:
+        limitations.append(f"Algunas integraciones activas no generaron hallazgos observables en la última evidencia disponible ({', '.join(str(name) for name in zero_domains)}).")
+    limitations.append("Las tablas por dominio presentan una muestra priorizada de hallazgos y no el universo completo de eventos del período.")
+    return limitations[:5]
+
+
+def _build_integrations_overview(tools: list[dict], security_domains: list[dict]) -> list[dict]:
+    domain_by_name = {str(domain.get("name") or ""): domain for domain in security_domains}
+    overview = []
+    for tool in tools:
+        name = str(tool.get("name") or "")
+        domain = domain_by_name.get(name, {})
+        overview.append(
+            {
+                "name": name,
+                "description": tool.get("description") or "",
+                "current_findings_total": int(domain.get("current_findings_total") or 0),
+                "previous_findings_total": int(domain.get("previous_findings_total") or 0),
+                "is_active": bool(domain.get("is_active", True)),
+            }
+        )
+    return overview
 
 
 def _build_analyst_text(parameters: dict) -> str:

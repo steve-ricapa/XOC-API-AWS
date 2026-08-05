@@ -19,9 +19,13 @@ MINORITY_KEYS = {
     "service_name",
     "tools",
     "data_base",
+    "coverage_summary",
+    "coverage_rows",
     "executive_summary",
     "vulnerability_comparison",
     "histogram_summary",
+    "priority_focuses",
+    "operational_considerations",
     "results_and_next_actions",
     "results_obtained",
     "next_actions",
@@ -58,6 +62,22 @@ MINORITY_JSON_SCHEMA = {
             },
         },
         "data_base": {"type": "string"},
+        "coverage_summary": {"type": "string"},
+        "coverage_rows": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["integration", "layer", "last_evidence_at", "current_findings_total", "status"],
+                "properties": {
+                    "integration": {"type": "string"},
+                    "layer": {"type": "string"},
+                    "last_evidence_at": {"type": "string"},
+                    "current_findings_total": {"type": ["integer", "string"]},
+                    "status": {"type": "string"},
+                },
+            },
+        },
         "executive_summary": {"type": "string"},
         "vulnerability_comparison": {
             "type": "object",
@@ -81,6 +101,8 @@ MINORITY_JSON_SCHEMA = {
             },
         },
         "histogram_summary": {"type": "string"},
+        "priority_focuses": {"type": "array", "items": {"type": "string"}},
+        "operational_considerations": {"type": "array", "items": {"type": "string"}},
         "results_and_next_actions": {"type": "string"},
         "results_obtained": {"type": "string"},
         "next_actions": {"type": "array", "items": {"type": "string"}},
@@ -156,7 +178,11 @@ Reglas obligatorias:
 - Si algo no se puede confirmar, agregalo en limitations.
 - No generes DOCX.
 - Devuelve SOLO JSON valido, sin markdown ni bloques de codigo.
-- Mantén el estilo de Minority Report: ejecutivo, ordenado, con dominios de seguridad y seguimiento semanal.
+- Mantén el estilo de Minority Report: ejecutivo, ordenado, con foco en el estado actual del servicio y sus dominios de seguridad.
+- Distingue siempre entre integraciones activas con hallazgos indexados y integraciones activas sin hallazgos indexados en la ventana; ambas deben mencionarse cuando existan.
+- Si una integración está activa pero no aportó hallazgos en el periodo, descríbela como cobertura operativa vigente, no como ausencia de monitoreo.
+- Prioriza profundidad y contexto: explica cobertura, tendencia, limitaciones y prioridades, no solo conteos.
+- Cuando exista evidencia de cobertura, úsala para construir un análisis SOC/NOC más rico mediante `coverage_summary`, `coverage_rows`, `priority_focuses` y `operational_considerations`.
 """
 
 
@@ -235,8 +261,12 @@ Reglas:
 - Indica qué tablas y figuras deben usarse y dónde colocarlas.
 - En Seguridad por Dominio planifica tablas con columnas exactas: ID, Vulnerabilidades, Host Afectados, Severidad.
 - Para Severidad usa solo BAJO, MEDIO o ALTO.
-- Planifica Figura 1 y Figura 2 en 2.1 Análisis Comparativo de Vulnerabilidades Semanales.
-- Planifica Figura 3 en 2.2 Histograma de la seguridad.
+- Planifica Figura 1 y Figura 2 en 2.1 Distribución actual de hallazgos por severidad.
+- Planifica Figura 3 en 2.2 Estado actual de la seguridad.
+- Cuando existan múltiples integraciones activas, planifica cobertura explícita para todas, incluso si algunas no tienen hallazgos indexados en el periodo.
+- En report_variant=client puedes mantener solo tres secciones top-level, pero debes profundizar dentro de ellas para cubrir herramientas activas, cobertura, hallazgos, tendencias y limitaciones.
+- Si hay evidencia suficiente, planifica dentro de `Datos generales` una subsección `1.5 Cobertura del servicio`.
+- Si hay evidencia suficiente, planifica dentro de `Resumen ejecutivo del dominio` las subsecciones `2.3 Focos prioritarios` y `2.4 Consideraciones operativas`.
 
 Secciones ideales del Minority Report completo:
 1. Datos generales
@@ -244,9 +274,12 @@ Secciones ideales del Minority Report completo:
   1.2 Periodo
   1.3 Herramientas
   1.4 Datos Base
+  1.5 Cobertura del servicio
 2. Resumen ejecutivo del dominio
-  2.1 Análisis Comparativo de Vulnerabilidades Semanales
-  2.2 Histograma de la seguridad
+  2.1 Distribución actual de hallazgos por severidad
+  2.2 Estado actual de la seguridad
+  2.3 Focos prioritarios
+  2.4 Consideraciones operativas
   2.3 Resultados obtenidos y próximas acciones
   2.4 Resultados obtenidos
   2.5 Próximas acciones
@@ -281,6 +314,12 @@ Reglas:
 - En Seguridad por Dominio usa severidad normalizada BAJO, MEDIO o ALTO.
 - Figura 1 y Figura 2 pertenecen a 2.1; Figura 3 pertenece a 2.2.
 - El resultado debe cumplir exactamente el schema final de Minority Report.
+- Si una herramienta está activa pero sin hallazgos indexados en la ventana, incorpórala en la narrativa ejecutiva y/o en el resumen por dominio como cobertura operativa vigente.
+- No reduzcas el informe al proveedor con más hallazgos; sintetiza el panorama completo de integraciones activas y explica qué aportó evidencia y qué quedó sin hallazgos observables.
+- Usa las métricas por dominio, los snapshots de scans y la cobertura de integraciones para producir un informe más completo, siempre sin inventar datos.
+- Usa `coverage_summary` y `coverage_rows` para explicar la cobertura del servicio en lenguaje ejecutivo y orientado a SOC/NOC.
+- Usa `priority_focuses` para producir 3-5 focos accionables y `operational_considerations` para contextualizar el periodo sin exponer detalles internos del pipeline.
+- En `limitations`, describe solo límites interpretativos para el cliente; no menciones nombres de campos, variables internas ni metadatos técnicos del sistema.
 """
 
 
@@ -419,6 +458,7 @@ def _normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "period",
         "service_name",
         "data_base",
+        "coverage_summary",
         "executive_summary",
         "histogram_summary",
         "results_and_next_actions",
@@ -447,8 +487,20 @@ def _normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
         ],
     }
 
-    for key in ("next_actions", "requirements", "weekly_actions", "pending_findings", "limitations"):
+    for key in ("next_actions", "requirements", "weekly_actions", "pending_findings", "limitations", "priority_focuses", "operational_considerations"):
         normalized[key] = [_clean_string(item) for item in _as_list(normalized[key]) if _clean_string(item)]
+
+    normalized["coverage_rows"] = [
+        {
+            "integration": _clean_string(item.get("integration")),
+            "layer": _clean_string(item.get("layer")),
+            "last_evidence_at": _clean_string(item.get("last_evidence_at")),
+            "current_findings_total": item.get("current_findings_total"),
+            "status": _clean_string(item.get("status")),
+        }
+        for item in _as_list(normalized["coverage_rows"])
+        if isinstance(item, dict) and _clean_string(item.get("integration"))
+    ]
 
     domains = []
     for domain in _as_list(normalized["security_domains"]):
@@ -644,6 +696,7 @@ def parse_and_validate_plan_json(raw: str) -> dict[str, Any]:
 
 def _planner_structured_snapshot(structured_data: dict[str, Any]) -> dict[str, Any]:
     metrics = structured_data.get("aggregated_metrics") if isinstance(structured_data.get("aggregated_metrics"), dict) else {}
+    security_domains = _as_list(structured_data.get("security_domains"))
     return {
         "source": structured_data.get("source"),
         "client_name": structured_data.get("client_name") or structured_data.get("tenant_name"),
@@ -655,17 +708,34 @@ def _planner_structured_snapshot(structured_data: dict[str, Any]) -> dict[str, A
         "section_instructions": structured_data.get("section_instructions"),
         "template_rules": structured_data.get("template_rules"),
         "tools": structured_data.get("tools"),
+        "integrations_overview": structured_data.get("integrations_overview"),
         "severity_summary": structured_data.get("severity_summary"),
         "previous_severity_summary": structured_data.get("previous_severity_summary"),
         "aggregated_metrics": {
             "data_base": metrics.get("data_base"),
+            "coverage_summary": metrics.get("coverage_summary"),
+            "coverage_rows": metrics.get("coverage_rows"),
             "vulnerability_comparison": metrics.get("vulnerability_comparison"),
             "histogram_summary": metrics.get("histogram_summary"),
             "results_obtained": metrics.get("results_obtained"),
+            "priority_focuses": metrics.get("priority_focuses"),
+            "operational_considerations": metrics.get("operational_considerations"),
             "pending_findings_count": len(_as_list(metrics.get("pending_findings"))),
             "security_domains_count": len(_as_list(metrics.get("security_domains"))),
             "weekly_actions_count": len(_as_list(metrics.get("weekly_actions"))),
         },
+        "security_domains": [
+            {
+                "name": _clean_string(item.get("name")),
+                "is_active": bool(item.get("is_active", True)),
+                "current_findings_total": int(item.get("current_findings_total") or 0),
+                "previous_findings_total": int(item.get("previous_findings_total") or 0),
+                "summary": _clean_string(item.get("summary")),
+                "sample_findings_count": len(_as_list(item.get("findings"))),
+            }
+            for item in security_domains
+            if isinstance(item, dict)
+        ],
         "chart_evidence": structured_data.get("chart_evidence"),
         "scan_snapshot": structured_data.get("scan_snapshot"),
     }

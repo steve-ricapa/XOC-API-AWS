@@ -31,12 +31,21 @@ CLIENT_TEMPLATE_PATH = TEMPLATES_DIR / "TXDX_report_for_client-tenant MINORITY_R
 ADMIN_CLIENT_TEMPLATE_PATH = TEMPLATES_DIR / "TXDX_report_for_admin_client-tenant MINORITY_REPORT_SEMANAL_dia_mes.docx"
 TEMPLATE_PATH = CLIENT_TEMPLATE_PATH
 OUTPUT_DIR = ROOT / "output"
+BODY_START_MARKER = "[[BODY_START]]"
+DOMAIN_TABLE_MARKER = "[[PROTO:DOMAIN_TABLE]]"
+COMPARISON_TABLE_MARKER = "[[PROTO:COMPARISON_TABLE]]"
+COVER_CLIENT_MARKER = "[[COVER_CLIENT]]"
+COVER_PERIOD_MARKER = "[[COVER_PERIOD]]"
+COVER_PREPARED_BY_MARKER = "[[COVER_PREPARED_BY]]"
+FOOTER_CLIENT_MARKER = "[[FOOTER_CLIENT]]"
 
 BRAND_GREEN = RGBColor(0x00, 0xFF, 0x9F)
 BRAND_BLUE = RGBColor(0x00, 0xF0, 0xFF)
 MODEL_BLUE = RGBColor(0x00, 0x6D, 0x9F)
 DARK_TEXT = RGBColor(0x1F, 0x38, 0x62)
 MUTED_TEXT = RGBColor(0x5C, 0x66, 0x70)
+SOC_FILL = "FFE5E5"
+NOC_FILL = "E6F7F5"
 TABLE_HEADER = "0B1F2A"
 TABLE_ALT = "EAF8F5"
 CALLOUT = "EAF8F5"
@@ -64,10 +73,10 @@ SECTION_ANCHORS = {
     "data_base": ["1.4. Datos Base", "Datos Base"],
     "executive": ["2. Resumen ejecutivo del dominio", "Resumen ejecutivo del dominio"],
     "comparison": [
-        "2.1. Análisis Comparativo de Vulnerabilidades Semanales",
-        "Análisis Comparativo de Vulnerabilidades Semanales",
+        "2.1. Distribución actual de hallazgos por severidad",
+        "Distribución actual de hallazgos por severidad",
     ],
-    "histogram": ["2.2. Histograma de la seguridad", "Histograma de la seguridad"],
+    "histogram": ["2.2. Estado actual de la seguridad", "Estado actual de la seguridad"],
     "results_next": ["2.3. Resultados obtenidos y próximas acciones", "Resultados obtenidos y próximas acciones"],
     "results_obtained": ["2.4. Resultados obtenidos", "Resultados obtenidos"],
     "next_actions": ["2.5. Próximas acciones", "Próximas acciones"],
@@ -234,20 +243,26 @@ def update_cover_and_footer(document: Document, payload: dict[str, Any]) -> None
 
     for box in document._element.xpath(".//w:txbxContent"):
         original = _textbox_text(box).strip()
-        if original == "Change for date":
+        if original in {"Change for date", COVER_PERIOD_MARKER}:
             _set_textbox_text(box, period, size_pt=9.5)
-        elif original == "Change for prepared for":
+        elif original in {"Change for prepared for", COVER_CLIENT_MARKER}:
             _set_textbox_text(box, client, size_pt=11)
-        elif original == "TXDXSECURE":
+        elif original in {"TXDXSECURE", COVER_PREPARED_BY_MARKER}:
             _set_textbox_text(box, prepared_by, size_pt=11)
         elif "JOCKEY" in original and "SALUD" in original:
             _replace_textbox_jockey_client(box, client)
+        elif original == FOOTER_CLIENT_MARKER:
+            _set_textbox_text(box, client, size_pt=11)
 
     for paragraph in document.paragraphs[:45]:
         text = paragraph.text.strip()
         if "JOCKEY SALUD" in text and "TXDXSECURE" in text:
             _set_cover_line(paragraph, f"{client}\t{prepared_by}")
+        elif COVER_CLIENT_MARKER in text or COVER_PREPARED_BY_MARKER in text:
+            _set_cover_line(paragraph, text.replace(COVER_CLIENT_MARKER, client).replace(COVER_PREPARED_BY_MARKER, prepared_by))
         elif "Del 20 de junio al 26 de junio del 2026" in text or "Del 20 al 26 de junio del 2026" in text:
+            _set_cover_line(paragraph, period)
+        elif COVER_PERIOD_MARKER in text:
             _set_cover_line(paragraph, period)
 
     for section in document.sections:
@@ -274,13 +289,16 @@ def update_cover_and_footer(document: Document, payload: dict[str, Any]) -> None
 
 
 def clear_template_body_after_cover(document: Document) -> None:
-    """Conserva portada del modelo y remueve índice/contenido ejemplo."""
+    """Conserva portada/TOC/marker y remueve cualquier prototipo o cuerpo restante."""
     body = document._element.body
     children = list(body)
     preserve_until = -1
     for index, child in enumerate(children):
         text = "".join(node.text or "" for node in child.iter(qn("w:t"))).strip()
-        if text == "Datos generales":
+        if BODY_START_MARKER in text:
+            preserve_until = index
+            break
+        if text == "Datos generales" and preserve_until < 0:
             preserve_until = index - 1
             break
     if preserve_until >= 0:
@@ -377,8 +395,7 @@ def add_heading(document: Document, title: str, number: str | None = None) -> No
     paragraph.style = _style_name(document, "Heading 2", "Normal")
     _spacing(paragraph, before=12, after=6)
     display = f"{number} {title}" if number else title
-    run = paragraph.add_run(display)
-    _format_run(run, bold=True, color=MODEL_BLUE, size=12, font_name="Arial Black")
+    paragraph.add_run(display)
 
 
 def add_subheading(document: Document, title: str, number: str | None = None) -> None:
@@ -386,8 +403,7 @@ def add_subheading(document: Document, title: str, number: str | None = None) ->
     paragraph.style = _style_name(document, "Heading 3", "Normal")
     _spacing(paragraph, before=7, after=4)
     display = f"{number} {title}" if number else title
-    run = paragraph.add_run(display)
-    _format_run(run, bold=True, color=RGBColor(0x00, 0x00, 0x00), size=10.5, font_name="Arial Black")
+    paragraph.add_run(display)
 
 
 def add_body(document: Document, text: Any, *, indent: bool = False) -> None:
@@ -400,8 +416,7 @@ def add_body(document: Document, text: Any, *, indent: bool = False) -> None:
         paragraph.style = _style_name(document, "Body Text", "Normal")
         paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         _spacing(paragraph, after=5, left=18 if indent else 0)
-        run = paragraph.add_run(chunk)
-        _format_run(run, color=RGBColor(0x00, 0x00, 0x00), size=10, font_name="Tahoma")
+        paragraph.add_run(chunk)
 
 
 def add_bullets(document: Document, values: Any) -> None:
@@ -413,8 +428,7 @@ def add_bullets(document: Document, values: Any) -> None:
         paragraph.style = _style_name(document, "List Paragraph", "Body Text", "Normal")
         paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         _spacing(paragraph, after=4)
-        run = paragraph.add_run(text)
-        _format_run(run, color=RGBColor(0x00, 0x00, 0x00), size=10, font_name="Tahoma")
+        paragraph.add_run(text)
 
 
 def _shade_cell(cell: Any, fill: str) -> None:
@@ -550,12 +564,7 @@ def _populate_template_findings_table(table: Table, findings: list[dict[str, Any
         _set_cell_text(cell, header, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF), size=8.8)
 
     _remove_table_data_rows(table)
-    rows = findings or [{
-        "id": "N/D",
-        "vulnerability": "Sin hallazgos registrados para el período evaluado.",
-        "affected_hosts": "N/D",
-        "severity": "BAJO",
-    }]
+    rows = findings or []
     for finding in rows:
         cells = table.add_row().cells
         _set_cell_text(cells[0], finding.get("id"), color=DARK_TEXT, size=8.5)
@@ -566,13 +575,46 @@ def _populate_template_findings_table(table: Table, findings: list[dict[str, Any
         _set_cell_text(cells[3], severity, bold=True, color=severity_color, size=8.5)
 
 
+def _populate_template_comparison_table(table: Table, rows: list[dict[str, Any]]) -> None:
+    if not table.rows or len(table.columns) != 3:
+        raise ValueError("La tabla comparativa de la plantilla debe tener tres columnas")
+    headers = ("Severidad", "Referencia anterior", "Estado actual")
+    for cell, header in zip(table.rows[0].cells, headers):
+        _set_cell_text(cell, header, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF), size=8.8)
+    _remove_table_data_rows(table)
+    for row in rows:
+        cells = table.add_row().cells
+        severity = row.get("severity")
+        _shade_cell(cells[0], _severity_color_fill(severity))
+        _set_cell_text(cells[0], severity, bold=True, color=_severity_text_color(severity), size=8.5)
+        _set_cell_text(cells[1], row.get("previous"), size=8.5)
+        _set_cell_text(cells[2], row.get("current"), size=8.5)
+
+
 def capture_domain_table_templates(document: Document) -> list[Any]:
     """Captura las tablas del modelo antes de limpiar su contenido de ejemplo.
 
     Se reinsertan como clones, de modo que se mantiene el diseño corporativo
     (bordes, rellenos y anchos) en lugar de generar tablas desde cero.
     """
+    marker_index = next((index for index, p in enumerate(document.paragraphs) if DOMAIN_TABLE_MARKER in p.text), None)
+    if marker_index is not None:
+        for table in document.tables:
+            if len(table.columns) == 4 and table.rows:
+                return [deepcopy(table._tbl)]
     return [deepcopy(table._tbl) for table in document.tables if len(table.columns) == 4 and table.rows]
+
+
+def capture_comparison_table_template(document: Document) -> Any | None:
+    marker_index = next((index for index, p in enumerate(document.paragraphs) if COMPARISON_TABLE_MARKER in p.text), None)
+    if marker_index is not None:
+        for table in document.tables:
+            if len(table.columns) == 3 and table.rows:
+                return deepcopy(table._tbl)
+    for table in document.tables:
+        if len(table.columns) == 3 and table.rows:
+            return deepcopy(table._tbl)
+    return None
 
 
 def add_template_findings_table(document: Document, template_table: Any, findings: list[dict[str, Any]]) -> None:
@@ -580,6 +622,124 @@ def add_template_findings_table(document: Document, template_table: Any, finding
     table = Table(deepcopy(template_table), document)
     marker._p.addprevious(table._tbl)
     _populate_template_findings_table(table, findings)
+    document.add_paragraph()
+
+
+def add_coverage_table(document: Document, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    table = document.add_table(rows=1, cols=5)
+    table.autofit = False
+    widths = [1.9, 0.9, 1.65, 0.95, 1.35]
+    try:
+        table.style = "Table Normal"
+    except KeyError:
+        pass
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _set_row_widths(table.rows[0], widths)
+    headers = ("Integración", "Capa", "Última evidencia", "Hallazgos", "Estado")
+    for cell, header in zip(table.rows[0].cells, headers):
+        _shade_cell(cell, "006D9F")
+        _set_cell_border(cell, "BFBFBF", "4")
+        _set_cell_text(cell, header, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF), size=8.6)
+    for row in rows:
+        cells = table.add_row().cells
+        _set_row_widths(table.rows[-1], widths)
+        for cell in cells:
+            _set_cell_border(cell, "BFBFBF", "4")
+        _set_cell_text(cells[0], row.get("integration"), size=8.4)
+        _set_cell_text(cells[1], row.get("layer"), bold=True, color=DARK_TEXT, size=8.4)
+        _set_cell_text(cells[2], row.get("last_evidence_at"), size=8.4)
+        _set_cell_text(cells[3], row.get("current_findings_total"), size=8.4)
+        _set_cell_text(cells[4], row.get("status"), size=8.4)
+    document.add_paragraph()
+
+
+def add_domain_snapshot_table(document: Document, rows: list[tuple[str, Any]], *, fill: str) -> None:
+    table = document.add_table(rows=1, cols=len(rows))
+    table.autofit = False
+    widths = [max(1.0, 6.9 / max(1, len(rows)))] * len(rows)
+    try:
+        table.style = "Table Normal"
+    except KeyError:
+        pass
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _set_row_widths(table.rows[0], widths)
+    for index, (label, value) in enumerate(rows):
+        cell = table.rows[0].cells[index]
+        _shade_cell(cell, fill)
+        _set_cell_border(cell, "BFBFBF", "4")
+        cell.text = ""
+        title = cell.paragraphs[0]
+        _spacing(title, after=1)
+        title.add_run(str(label or ""))
+        title.runs[0].bold = True
+        detail = cell.add_paragraph()
+        _spacing(detail, after=0)
+        detail.add_run(str(value or "N/D"))
+    document.add_paragraph()
+
+
+def _domain_layer(domain: dict[str, Any]) -> str:
+    layer = _clean_text(domain.get("layer")).upper()
+    if layer in {"SOC", "NOC"}:
+        return layer
+    provider = _clean_text(domain.get("provider")).lower()
+    return "NOC" if provider in {"zabbix", "uptime_kuma"} else "SOC"
+
+
+def _domain_latest_snapshot(domain: dict[str, Any]) -> str:
+    snapshot = domain.get("snapshot") or {}
+    scanned_at = _clean_text(snapshot.get("scanned_at"))
+    if scanned_at:
+        return scanned_at[:10]
+    return "No disponible"
+
+
+def _domain_soc_kpis(domain: dict[str, Any]) -> list[tuple[str, Any]]:
+    severity = domain.get("current_severity_summary") or {}
+    return [
+        ("Capa", "SOC"),
+        ("Último snapshot", _domain_latest_snapshot(domain)),
+        ("Hallazgos", domain.get("current_findings_total") or 0),
+        ("Críticos + Altos", int(severity.get("critical", 0) or 0) + int(severity.get("high", 0) or 0)),
+    ]
+
+
+def _domain_noc_kpis(domain: dict[str, Any]) -> list[tuple[str, Any]]:
+    severity = domain.get("current_severity_summary") or {}
+    status = "Con eventos observables" if int(domain.get("current_findings_total") or 0) > 0 else "Cobertura sin eventos"
+    return [
+        ("Capa", "NOC"),
+        ("Último snapshot", _domain_latest_snapshot(domain)),
+        ("Eventos", domain.get("current_findings_total") or 0),
+        ("Estado", status),
+        ("Altos + Medios", int(severity.get("high", 0) or 0) + int(severity.get("medium", 0) or 0)),
+    ]
+
+
+def _domain_callout_title(domain: dict[str, Any]) -> str:
+    return "Riesgo prioritario" if _domain_layer(domain) == "SOC" else "Impacto operativo"
+
+
+def _domain_callout_text(domain: dict[str, Any]) -> str:
+    severity = domain.get("current_severity_summary") or {}
+    if _domain_layer(domain) == "SOC":
+        return (
+            f"El dominio concentra {int(severity.get('critical', 0) or 0)} hallazgos críticos y "
+            f"{int(severity.get('high', 0) or 0)} hallazgos altos, por lo que debe priorizarse en remediación y seguimiento técnico."
+        )
+    return (
+        f"La última evidencia de este dominio refleja {domain.get('current_findings_total') or 0} eventos observables. "
+        "La lectura debe enfocarse en continuidad, estabilidad e impacto sobre la operación monitoreada."
+    )
+
+
+def add_template_comparison_table(document: Document, template_table: Any, rows: list[dict[str, Any]]) -> None:
+    marker = document.add_paragraph()
+    table = Table(deepcopy(template_table), document)
+    marker._p.addprevious(table._tbl)
+    _populate_template_comparison_table(table, rows)
     document.add_paragraph()
 
 
@@ -616,7 +776,7 @@ def add_severity_comparison_table(document: Document, rows: list[dict[str, Any]]
         pass
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     _set_row_widths(table.rows[0], widths)
-    for cell, header in zip(table.rows[0].cells, ("Severidad", "Semana Anterior", "Semana Actual")):
+    for cell, header in zip(table.rows[0].cells, ("Severidad", "Referencia anterior", "Estado actual")):
         _shade_cell(cell, "006D9F")
         _set_cell_border(cell, "BFBFBF", "4")
         _set_cell_text(cell, header, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF), size=8.8)
@@ -686,17 +846,20 @@ def _index_entries(report_variant: str, payload: dict[str, Any]) -> list[tuple[s
         ("1.2. Periodo", 1),
         ("1.3. Herramientas", 1),
         ("1.4. Datos Base", 1),
+        ("1.5. Cobertura del servicio", 1),
         ("2. Resumen ejecutivo del dominio", 0),
-        ("2.1. Análisis Comparativo de Vulnerabilidades Semanales", 1),
-        ("2.2. Histograma de la seguridad", 1),
+        ("2.1. Distribución actual de hallazgos por severidad", 1),
+        ("2.2. Estado actual de la seguridad", 1),
+        ("2.3. Focos prioritarios", 1),
+        ("2.4. Consideraciones operativas", 1),
     ]
     if report_variant == "client_admin":
         entries.extend(
             [
-                ("2.3. Resultados obtenidos y próximas acciones", 1),
-                ("2.4. Resultados obtenidos", 1),
-                ("2.5. Próximas acciones", 1),
-                ("2.5.1. Requerimiento", 2),
+                ("2.5. Resultados obtenidos y próximas acciones", 1),
+                ("2.6. Resultados obtenidos", 1),
+                ("2.7. Próximas acciones", 1),
+                ("2.7.1. Requerimiento", 2),
             ]
         )
     entries.append(("3. Seguridad por Dominio", 0))
@@ -806,7 +969,12 @@ def add_content_overview(document: Document, payload: dict[str, Any]) -> None:
     document.add_page_break()
 
 
-def build_report_body(document: Document, payload: dict[str, Any], domain_table_templates: list[Any] | None = None) -> None:
+def build_report_body(
+    document: Document,
+    payload: dict[str, Any],
+    domain_table_templates: list[Any] | None = None,
+    comparison_table_template: Any | None = None,
+) -> None:
     enable_update_fields_on_open(document)
     ensure_body_starts_after_cover(document)
     report_variant = normalize_report_variant(
@@ -816,6 +984,10 @@ def build_report_body(document: Document, payload: dict[str, Any], domain_table_
     )
     include_admin_sections = report_variant == "client_admin"
     refresh_template_index(document, payload, report_variant)
+    for paragraph in document.paragraphs:
+        if BODY_START_MARKER in paragraph.text:
+            paragraph.text = ""
+            break
 
     add_heading(document, "Datos generales", "1.")
     add_subheading(document, "Servicio de Monitoreo", "1.1.")
@@ -834,33 +1006,50 @@ def build_report_body(document: Document, payload: dict[str, Any], domain_table_
         add_bullets(document, ["No se confirmaron herramientas específicas desde la evidencia entregada."])
     add_subheading(document, "Datos Base", "1.4.")
     add_body(document, payload.get("data_base"))
+    add_subheading(document, "Cobertura del servicio", "1.5.")
+    add_body(document, payload.get("coverage_summary"))
+    add_coverage_table(document, payload.get("coverage_rows") or [])
 
     add_heading(document, "Resumen ejecutivo del dominio", "2.")
     add_body(document, payload.get("executive_summary"))
     comparison = payload.get("vulnerability_comparison") or {}
-    add_subheading(document, "Análisis Comparativo de Vulnerabilidades Semanales", "2.1.")
+    add_subheading(document, "Distribución actual de hallazgos por severidad", "2.1.")
     add_body(document, comparison.get("summary"))
     severity_rows = comparison.get("severity_rows") or []
     if severity_rows:
-        add_severity_comparison_table(document, severity_rows)
-    add_subheading(document, "Histograma de la seguridad", "2.2.")
+        if comparison_table_template is not None:
+            add_template_comparison_table(document, comparison_table_template, severity_rows)
+        else:
+            add_severity_comparison_table(document, severity_rows)
+    add_subheading(document, "Estado actual de la seguridad", "2.2.")
     add_body(document, payload.get("histogram_summary"))
+    add_subheading(document, "Focos prioritarios", "2.3.")
+    add_bullets(document, payload.get("priority_focuses"))
+    add_subheading(document, "Consideraciones operativas", "2.4.")
+    add_bullets(document, payload.get("operational_considerations"))
     if include_admin_sections:
-        add_subheading(document, "Resultados obtenidos y próximas acciones", "2.3.")
+        add_subheading(document, "Resultados obtenidos y próximas acciones", "2.5.")
         add_body(document, payload.get("results_and_next_actions"))
-        add_subheading(document, "Resultados obtenidos", "2.4.")
+        add_subheading(document, "Resultados obtenidos", "2.6.")
         add_body(document, payload.get("results_obtained"))
-        add_subheading(document, "Próximas acciones", "2.5.")
+        add_subheading(document, "Próximas acciones", "2.7.")
         add_bullets(document, payload.get("next_actions"))
-        add_subheading(document, "Requerimiento", "2.5.1.")
+        add_subheading(document, "Requerimiento", "2.7.1.")
         add_bullets(document, payload.get("requirements"))
 
     add_heading(document, "Seguridad por Dominio", "3.")
     domains = payload.get("security_domains") or []
     for index, domain in enumerate(domains, start=1):
         add_subheading(document, domain.get("name") or f"Dominio {index}", f"3.{index}.")
+        layer = _domain_layer(domain)
+        kpis = _domain_soc_kpis(domain) if layer == "SOC" else _domain_noc_kpis(domain)
+        add_domain_snapshot_table(document, kpis, fill=SOC_FILL if layer == "SOC" else NOC_FILL)
         add_body(document, domain.get("summary"))
-        template_table = (domain_table_templates or [])[index - 1] if index <= len(domain_table_templates or []) else None
+        add_callout(document, _domain_callout_title(domain), _domain_callout_text(domain), fill=SOC_FILL if layer == "SOC" else NOC_FILL)
+        if not (domain.get("findings") or []):
+            add_body(document, "No se registraron hallazgos indexados para esta integración en el período evaluado.")
+            continue
+        template_table = (domain_table_templates or [None])[0]
         if template_table is not None:
             add_template_findings_table(document, template_table, domain.get("findings") or [])
         else:
@@ -1039,7 +1228,7 @@ def _insert_severity_comparison_table_after_node(document: Document, node: Any, 
         pass
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     _set_row_widths(table.rows[0], widths)
-    for cell, header in zip(table.rows[0].cells, ("Severidad", "Semana Anterior", "Semana Actual")):
+    for cell, header in zip(table.rows[0].cells, ("Severidad", "Referencia anterior", "Estado actual")):
         _shade_cell(cell, "006D9F")
         _set_cell_border(cell, "BFBFBF", "4")
         _set_cell_text(cell, header, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF), size=8.8)
@@ -1121,6 +1310,11 @@ def _render_domains_section(
         title = domain.get("name") or f"Dominio {index}"
         current = _insert_domain_heading_after_node(document, current, f"3.{index}. {title}")
         current = _insert_text_after_node(document, current, domain.get("summary"))
+        current = _insert_text_after_node(document, current, f"{_domain_callout_title(domain)}: {_domain_callout_text(domain)}")
+        if not (domain.get("findings") or []):
+            current = _insert_text_after_node(document, current, "No se registraron hallazgos indexados para esta integración en el período evaluado.")
+            current = _insert_paragraph_after_node(document, current)._p
+            continue
         template_table = (domain_table_templates or [])[index - 1] if index <= len(domain_table_templates or []) else None
         findings = domain.get("findings") or []
         if template_table is not None:
@@ -1380,11 +1574,11 @@ def _insert_pie_pair_after(anchor: Paragraph, images: list[Path], descriptions: 
     picture.paragraph_format.space_before = Pt(0)
     picture.paragraph_format.space_after = Pt(0)
     first = picture.add_run()
-    first.add_picture(str(images[0]), width=Inches(2.35))
+    first.add_picture(str(images[0]), width=Inches(2.95))
     spacer = picture.add_run("    ")
     spacer.font.size = Pt(6)
     second = picture.add_run()
-    second.add_picture(str(images[1]), width=Inches(2.35))
+    second.add_picture(str(images[1]), width=Inches(2.95))
 
     desc_1 = descriptions[0] if len(descriptions) > 0 else "Semana anterior."
     desc_2 = descriptions[1] if len(descriptions) > 1 else "Semana actual."
@@ -1399,7 +1593,7 @@ def place_evidence_images(document: Document, images: list[Path], descriptions: 
     last_citation_anchor_el = None
     skipped_indexes: set[int] = set()
     if len(images) >= 2:
-        pie_anchor = _find_last_paragraph_containing(document, ["Análisis Comparativo de Vulnerabilidades Semanales"])
+        pie_anchor = _find_last_paragraph_containing(document, ["Distribución actual de hallazgos por severidad"])
         if pie_anchor is not None:
             inserted_after = _insert_pie_pair_after(_next_content_paragraph(document, pie_anchor) or pie_anchor, images[:2], descriptions[:2])
             skipped_indexes.update({1, 2})
@@ -1414,9 +1608,9 @@ def place_evidence_images(document: Document, images: list[Path], descriptions: 
                 break
         if target is None:
             if index in {1, 2}:
-                target = _find_last_paragraph_containing(document, ["Análisis Comparativo de Vulnerabilidades Semanales"])
+                target = _find_last_paragraph_containing(document, ["Distribución actual de hallazgos por severidad"])
             elif index == 3:
-                target = _find_last_paragraph_containing(document, ["Histograma de la seguridad"])
+                target = _find_last_paragraph_containing(document, ["Estado actual de la seguridad"])
         citation_anchor_el = target._p if target is not None else None
         if target is None or citation_anchor_el is last_citation_anchor_el:
             target = inserted_after
@@ -1432,7 +1626,7 @@ def place_evidence_images(document: Document, images: list[Path], descriptions: 
         picture.alignment = WD_ALIGN_PARAGRAPH.CENTER
         picture.paragraph_format.space_before = Pt(0)
         picture.paragraph_format.space_after = Pt(0)
-        image_width = 2.35 if index in {1, 2} else 4.65
+        image_width = 2.95 if index in {1, 2} else 5.2
         picture.add_run().add_picture(str(path), width=Inches(image_width))
         description = descriptions[index - 1] if index - 1 < len(descriptions) else ""
         caption = _caption_after(picture, f"{label}. {description or 'Evidencia visual proporcionada.'}")
@@ -1494,8 +1688,9 @@ def generate_minority_report_docx(template_path: str | None, payload: dict[str, 
     apply_example_body_style(document)
     update_cover_and_footer(document, payload)
     domain_table_templates = capture_domain_table_templates(document)
+    comparison_table_template = capture_comparison_table_template(document)
     clear_template_body_after_cover(document)
-    build_report_body(document, payload, domain_table_templates)
+    build_report_body(document, payload, domain_table_templates, comparison_table_template)
     images, descriptions = _chart_images_from_payload(payload)
     place_evidence_images(document, images, descriptions)
     assert_no_template_residue(document)
@@ -1577,8 +1772,9 @@ def main() -> None:
     apply_example_body_style(document)
     update_cover_and_footer(document, payload)
     domain_table_templates = capture_domain_table_templates(document)
+    comparison_table_template = capture_comparison_table_template(document)
     clear_template_body_after_cover(document)
-    build_report_body(document, payload, domain_table_templates)
+    build_report_body(document, payload, domain_table_templates, comparison_table_template)
     place_evidence_images(document, args.image, args.image_description)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
