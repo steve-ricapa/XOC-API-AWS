@@ -27,6 +27,7 @@ module.exports = buildService({
       handler: 'src/handlers/workers/assess_ticket_automation.handler',
       timeout: 300,
       memorySize: 512,
+      needsVpc: true,
     }),
     checkTicketStatus: lambdaConfig(stage, {
       handler: 'src/handlers/workers/check_ticket_status.handler',

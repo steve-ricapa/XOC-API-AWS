@@ -2,7 +2,7 @@ import json
 import logging
 
 from src.shared.errors import ValidationError
-from src.shared.risk_config import required_role_for_risk, DEFAULT_RISK_LEVEL
+from src.shared.risk_config import approval_requirement, DEFAULT_RISK_LEVEL
 from src.shared.tickets_store import get_tenant_ticket_or_none, update_ticket_fields
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ def handler(event: dict, context) -> dict:
         logger.warning("No task_token found in event for ticket %s", ticket_id)
         task_token = "pending"
 
-    required_role = required_role_for_risk(max_risk_level)
+    requirement = approval_requirement({"risk_level": max_risk_level})
 
     item = get_tenant_ticket_or_none(tenant_id, ticket_id)
     if item:
@@ -31,9 +31,11 @@ def handler(event: dict, context) -> dict:
         if not isinstance(pending_decision, dict):
             pending_decision = {}
         pending_decision["max_risk_level"] = max_risk_level
-        pending_decision["required_approver_role"] = required_role
+        pending_decision["required_approver_role"] = requirement["required_approver_role"]
+        pending_decision["approver_label"] = requirement["approver_label"]
+        pending_decision["publicly_approvable"] = requirement["publicly_approvable"]
         update_ticket_fields(tenant_id, ticket_id, {"pending_decision": pending_decision})
-        logger.info("Updated pending_decision for ticket %s: risk=%s role=%s", ticket_id, max_risk_level, required_role)
+        logger.info("Updated pending_decision for ticket %s: risk=%s role=%s", ticket_id, max_risk_level, requirement["required_approver_role"])
 
     return {
         "taskToken": task_token,

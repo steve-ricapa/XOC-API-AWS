@@ -46,6 +46,22 @@ def _get_ticket_or_404(tenant_id: int, ticket_id: str) -> dict:
     return get_tenant_ticket_or_404(tenant_id, ticket_id)
 
 
+def _assert_can_approve(claims: dict, item: dict) -> None:
+    """Valida que el rol del usuario alcance el rol requerido por el contrato.
+
+    El rol requerido viene de pending_decision (escrito por wait_for_approval).
+    Si por cualquier motivo no existe, se conserva el comportamiento previo
+    (USER puede aprobar) en lugar de bloquear tickets legados.
+    """
+    pending_decision = item.get("pending_decision") or {}
+    if not isinstance(pending_decision, dict):
+        pending_decision = {}
+    required_role = pending_decision.get("required_approver_role", "USER")
+    user_role = (claims.get("role") or "").upper()
+    if not is_role_sufficient(user_role, required_role):
+        raise ForbiddenError(f"Insufficient role to approve this ticket. Required: {required_role}")
+
+
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
 
@@ -102,6 +118,7 @@ def approve_ticket(ticket_id: str, claims: dict = Depends(require_access_claims)
     item = _get_ticket_or_404(tenant_id, ticket_id)
     if item.get("status") != "PREAPROBADO":
         raise ValidationError("Only PREAPROBADO tickets can be approved")
+    _assert_can_approve(claims, item)
     now = now_iso()
     secondary = build_secondary_index_fields(tenant_id, ticket_id, "APROBADO", item.get("created_at") or now)
     table.update_item(
@@ -144,6 +161,7 @@ def reject_ticket(ticket_id: str, claims: dict = Depends(require_access_claims))
     item = _get_ticket_or_404(tenant_id, ticket_id)
     if item.get("status") != "PREAPROBADO":
         raise ValidationError("Only PREAPROBADO tickets can be rejected")
+    _assert_can_approve(claims, item)
     now = now_iso()
     secondary = build_secondary_index_fields(tenant_id, ticket_id, "RECHAZADO", item.get("created_at") or now)
     table.update_item(
