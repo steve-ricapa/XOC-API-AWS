@@ -92,15 +92,20 @@ def create_case(
     now = now_iso()
     case_id = str(uuid.uuid4())
     status = "RESUELTO" if action == "success" else "NO_RESUELTO"
+    resolution_result = {
+        "success": "SUCCESS",
+        "failed_after_attempts": "FAILED_AFTER_ATTEMPTS",
+        "rejected": "REJECTED",
+        "derivado": "DERIVED",
+    }.get(action, "FAILED_AFTER_ATTEMPTS")
     item = {
         "sk": cases_sk(case_id),
         "tenant_id": tenant_id,
         "case_id": case_id,
-        "tenant_id": tenant_id,
         "ticket_id": ticket_id,
         "subject": subject,
         "status": status,
-        "resolution_result": "SUCCESS" if action == "success" else "FAILED_AFTER_ATTEMPTS",
+        "resolution_result": resolution_result,
         "total_attempts": total_attempts,
         "solution_applied": solution_applied,
         "plan_used": plan_used,

@@ -1,0 +1,170 @@
+"""Unit coverage for the ticket approval flow (approve/reject resume the workflow)."""
+from __future__ import annotations
+
+import os
+import unittest
+from unittest.mock import patch
+
+os.environ["TICKETS_TABLE_NAME"] = "xoc-api-tickets-test-tickets"
+os.environ["EVENT_BUS_NAME"] = "xoc-api-tickets-test-bus"
+os.environ["CASES_TABLE_NAME"] = "xoc-api-automation-test-cases-v2"
+os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+
+from src.handlers.domains import tickets_dynamo
+from src.handlers.workers import generate_case, register_timeout_case, wait_for_approval
+from src.shared.errors import AppError, ValidationError
+from src.shared.tickets_store import normalize_status
+
+
+class WaitForApprovalTests(unittest.TestCase):
+    def test_persists_task_token_deadline_and_status(self) -> None:
+        item = {"tenant_id": 7, "ticket_id": "t1", "pending_decision": {}}
+        with patch.object(wait_for_approval, "get_tenant_ticket_or_none", return_value=item) as mock_get, patch.object(
+            wait_for_approval, "update_ticket_fields"
+        ) as mock_update:
+            result = wait_for_approval.handler(
+                {"ticketId": "t1", "tenantId": "7", "taskToken": "tok-1", "maxRiskLevel": "risky"},
+                None,
+            )
+        self.assertEqual("tok-1", result["taskToken"])
+        mock_get.assert_called_once_with(7, "t1")
+        updates = mock_update.call_args.args[2]
+        self.assertEqual("PREAPROBADO", updates["status"])
+        self.assertEqual("AWAITING_APPROVAL", updates["execution_status"])
+        pending = updates["pending_decision"]
+        self.assertEqual("tok-1", pending["task_token"])
+        self.assertEqual("ADMIN_XOC", pending["required_approver_role"])
+        self.assertTrue(pending["requested_at"])
+        self.assertTrue(pending["approval_deadline"])
+
+    def test_missing_task_token_raises(self) -> None:
+        with patch.object(wait_for_approval, "get_tenant_ticket_or_none", return_value={"pending_decision": {}}):
+            with self.assertRaises(ValidationError):
+                wait_for_approval.handler({"ticketId": "t1", "tenantId": "7"}, None)
+
+
+class TicketApprovalFlowTests(unittest.TestCase):
+    def setUp(self) -> None:
+        tickets_dynamo.get_settings.cache_clear()
+
+    def tearDown(self) -> None:
+        tickets_dynamo.get_settings.cache_clear()
+
+    def _preaprobado_ticket(self, required_role: str = "USER", task_token: str | None = "tok-123") -> dict:
+        return {
+            "ticket_id": "t1",
+            "tenant_id": 7,
+            "status": "PREAPROBADO",
+            "pending_decision": {
+                "max_risk_level": "basic",
+                "required_approver_role": required_role,
+                "task_token": task_token,
+            },
+        }
+
+    def test_tenant_user_resolves_ticket_by_tenant(self) -> None:
+        claims = {"role": "USER", "tenantId": 7}
+        with patch.object(tickets_dynamo, "get_tenant_ticket_or_404", return_value={"tenant_id": 7}) as tenant_lookup, patch.object(
+            tickets_dynamo, "get_ticket_by_id_or_none"
+        ) as global_lookup:
+            item = tickets_dynamo._resolve_ticket_for_action(claims, "t1")
+        tenant_lookup.assert_called_once_with(7, "t1")
+        global_lookup.assert_not_called()
+        self.assertEqual(7, item["tenant_id"])
+
+    def test_platform_operator_resolves_ticket_globally(self) -> None:
+        claims = {"role": "ADMIN_XOC"}
+        item = {"ticket_id": "t1", "tenant_id": 3}
+        with patch.object(tickets_dynamo, "get_tenant_ticket_or_404") as tenant_lookup, patch.object(
+            tickets_dynamo, "get_ticket_by_id_or_none", return_value=item
+        ) as global_lookup:
+            result = tickets_dynamo._resolve_ticket_for_action(claims, "t1")
+        global_lookup.assert_called_once_with("t1")
+        tenant_lookup.assert_not_called()
+        self.assertIs(item, result)
+
+    def test_platform_operator_missing_ticket_raises_not_found(self) -> None:
+        claims = {"role": "SUPERADMIN"}
+        with patch.object(tickets_dynamo, "get_ticket_by_id_or_none", return_value=None):
+            with self.assertRaises(tickets_dynamo.NotFoundError):
+                tickets_dynamo._resolve_ticket_for_action(claims, "missing")
+
+    def test_approve_resumes_workflow(self) -> None:
+        item = self._preaprobado_ticket()
+        with patch.object(tickets_dynamo.stepfunctions, "send_task_success") as mock_send:
+            tickets_dynamo._resume_workflow(item, approved=True)
+        mock_send.assert_called_once_with(taskToken="tok-123", output='{"approved": true}')
+
+    def test_reject_resumes_workflow_as_not_approved(self) -> None:
+        item = self._preaprobado_ticket()
+        with patch.object(tickets_dynamo.stepfunctions, "send_task_success") as mock_send:
+            tickets_dynamo._resume_workflow(item, approved=False)
+        mock_send.assert_called_once_with(taskToken="tok-123", output='{"approved": false}')
+
+    def test_resume_without_task_token_raises(self) -> None:
+        item = self._preaprobado_ticket(task_token=None)
+        with self.assertRaises(ValidationError):
+            tickets_dynamo._resume_workflow(item, approved=True)
+
+    def test_resume_send_failure_raises_app_error(self) -> None:
+        item = self._preaprobado_ticket()
+        with patch.object(tickets_dynamo.stepfunctions, "send_task_success", side_effect=Exception("boom")):
+            with self.assertRaises(AppError):
+                tickets_dynamo._resume_workflow(item, approved=True)
+
+    def test_assert_can_approve_blocks_low_role(self) -> None:
+        item = self._preaprobado_ticket(required_role="ADMIN_XOC")
+        with self.assertRaises(tickets_dynamo.ForbiddenError):
+            tickets_dynamo._assert_can_approve({"role": "USER"}, item)
+
+    def test_assert_can_approve_allows_sufficient_role(self) -> None:
+        item = self._preaprobado_ticket(required_role="ADMIN_XOC")
+        tickets_dynamo._assert_can_approve({"role": "ADMIN_XOC"}, item)
+
+    def test_derivado_is_a_valid_ticket_status(self) -> None:
+        self.assertEqual("DERIVADO", normalize_status("derivado"))
+
+
+class GenerateCaseTests(unittest.TestCase):
+    def test_rejected_action_is_accepted(self) -> None:
+        with patch(
+            "src.handlers.workers.generate_case.create_case",
+            return_value={"case_id": "c1", "status": "NO_RESUELTO", "created_at": "x"},
+        ) as mock_create:
+            result = generate_case.handler(
+                {"ticket_id": "t1", "tenant_id": 7, "subject": "s", "action": "rejected"}, None
+            )
+        self.assertEqual("c1", result["caseId"])
+        mock_create.assert_called_once()
+        self.assertEqual("rejected", mock_create.call_args.kwargs["action"])
+
+    def test_derivado_action_is_accepted(self) -> None:
+        with patch(
+            "src.handlers.workers.generate_case.create_case",
+            return_value={"case_id": "c2", "status": "NO_RESUELTO", "created_at": "x"},
+        ) as mock_create:
+            result = generate_case.handler(
+                {"ticket_id": "t1", "tenant_id": 7, "subject": "s", "action": "derivado"}, None
+            )
+        self.assertEqual("c2", result["caseId"])
+        self.assertEqual("derivado", mock_create.call_args.kwargs["action"])
+
+    def test_invalid_action_raises(self) -> None:
+        with self.assertRaises(ValidationError):
+            generate_case.handler({"ticket_id": "t1", "tenant_id": 7, "action": "bogus"}, None)
+
+
+class RegisterTimeoutCaseTests(unittest.TestCase):
+    def test_marks_ticket_derivado_and_creates_case(self) -> None:
+        with patch("src.handlers.workers.register_timeout_case.update_ticket_fields") as mock_update, patch(
+            "src.handlers.workers.register_timeout_case.create_case",
+            return_value={"case_id": "c1", "status": "NO_RESUELTO", "created_at": "x"},
+        ) as mock_create:
+            result = register_timeout_case.handler({"ticketId": "t1", "tenantId": 7, "subject": "s"}, None)
+        mock_update.assert_called_once_with(7, "t1", {"status": "DERIVADO", "execution_status": "TIMED_OUT"})
+        self.assertEqual("c1", result["caseId"])
+        self.assertEqual("derivado", mock_create.call_args.kwargs["action"])
+
+
+if __name__ == "__main__":
+    unittest.main()

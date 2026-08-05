@@ -122,12 +122,14 @@ module.exports = function automationResources(stage) {
                   WaitForApproval: {
                     Type: 'Task',
                     Resource: 'arn:aws:states:::lambda:invoke.waitForTaskToken',
+                    TimeoutSeconds: 604800,
                     Parameters: {
                       FunctionName: '${WaitForApprovalArn}',
                       Payload: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'taskToken.$': '$$.Task.Token', 'maxRiskLevel.$': '$.state.maxRiskLevel' },
                     },
                     ResultPath: '$.approval',
                     Next: 'CheckApproval',
+                    Catch: [{ ErrorEquals: ['States.Timeout'], Next: 'RegisterTimeoutCase' }],
                     Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
                   },
                   CheckApproval: {
@@ -195,9 +197,22 @@ module.exports = function automationResources(stage) {
                     Next: 'EndCaseRegistered',
                     Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
                   },
+                  RegisterTimeoutCase: {
+                    Type: 'Task',
+                    Resource: '${RegisterTimeoutCaseArn}',
+                    Parameters: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'subject.$': '$.state.subject' },
+                    ResultPath: '$.timeoutResult',
+                    Next: 'EndTimeoutRegistered',
+                    Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
+                  },
                   EndCannotResolve: {
                     Type: 'Pass',
                     Result: { status: 'cannot_resolve', message: 'Victor Azure determined this ticket cannot be resolved automatically.' },
+                    End: true,
+                  },
+                  EndTimeoutRegistered: {
+                    Type: 'Pass',
+                    Result: { status: 'timeout_registered', message: 'Approval not granted in time; ticket marked as DERIVADO.' },
                     End: true,
                   },
                   EndCaseRegistered: {
@@ -213,6 +228,7 @@ module.exports = function automationResources(stage) {
                 GenerateCaseArn: { 'Fn::GetAtt': ['GenerateCaseLambdaFunction', 'Arn'] },
                 WaitForApprovalArn: { 'Fn::GetAtt': ['WaitForApprovalLambdaFunction', 'Arn'] },
                 CheckTicketStatusArn: { 'Fn::GetAtt': ['CheckTicketStatusLambdaFunction', 'Arn'] },
+                RegisterTimeoutCaseArn: { 'Fn::GetAtt': ['RegisterTimeoutCaseLambdaFunction', 'Arn'] },
               },
             ],
           },
@@ -239,6 +255,7 @@ module.exports = function automationResources(stage) {
                     { 'Fn::GetAtt': ['GenerateCaseLambdaFunction', 'Arn'] },
                     { 'Fn::GetAtt': ['WaitForApprovalLambdaFunction', 'Arn'] },
                     { 'Fn::GetAtt': ['ApprovalCallbackLambdaFunction', 'Arn'] },
+                    { 'Fn::GetAtt': ['RegisterTimeoutCaseLambdaFunction', 'Arn'] },
                   ]},
                   { Effect: 'Allow', Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:Query'], Resource: [
                     { 'Fn::GetAtt': ['AutomationCasesTable', 'Arn'] },

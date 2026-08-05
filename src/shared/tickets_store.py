@@ -18,6 +18,7 @@ VALID_STATUSES = {
     "PREAPROBADO",
     "APROBADO",
     "RECHAZADO",
+    "DERIVADO",
     "PENDIENTE_EJECUCION",
     "EN_EJECUCION",
     "RESUELTO",
@@ -258,6 +259,7 @@ def build_new_ticket_item(payload: dict, tenant_id: int, user_id: int | None) ->
         "rejected_at": None,
         "execution_status": None,
         "execution_summary": None,
+        "execution_arn": None,
         "pending_decision": None,
     }
     item.update(build_secondary_index_fields(tenant_id, ticket_id, status, now))
@@ -283,6 +285,7 @@ def update_ticket_fields(tenant_id: int, ticket_id: str, payload: dict) -> dict:
         "status": "status",
         "execution_status": "execution_status",
         "execution_summary": "execution_summary",
+        "execution_arn": "execution_arn",
         "pending_decision": "pending_decision",
         "action_plan": "action_plan",
     }

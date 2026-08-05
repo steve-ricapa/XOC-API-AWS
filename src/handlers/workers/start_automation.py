@@ -4,7 +4,7 @@ import os
 
 import boto3
 
-from src.shared.tickets_store import get_tenant_ticket_or_none
+from src.shared.tickets_store import get_tenant_ticket_or_none, update_ticket_fields
 
 logger = logging.getLogger(__name__)
 stepfunctions = boto3.client("stepfunctions")
@@ -55,6 +55,14 @@ def handler(event: dict, context) -> dict:
             input=json.dumps(payload),
         )
         logger.info("Started automation workflow for ticket %s: %s", ticket_id, response["executionArn"])
+        try:
+            update_ticket_fields(
+                tenant_id,
+                ticket_id,
+                {"execution_arn": response["executionArn"], "execution_status": "STARTED"},
+            )
+        except Exception as exc:
+            logger.warning("Failed to store execution_arn for ticket %s: %s", ticket_id, exc)
         return {"status": "started", "executionArn": response["executionArn"]}
     except Exception as e:
         logger.error("Failed to start automation workflow for ticket %s: %s", ticket_id, e)

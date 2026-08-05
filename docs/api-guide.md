@@ -278,9 +278,14 @@ Content-Type: application/json
 | GET    | `/tickets/{ticketId}`                 | PROT | Obtener ticket                           |
 | PUT    | `/tickets/{ticketId}`                 | PROT | Actualizar ticket                        |
 | DELETE | `/tickets/{ticketId}`                 | PROT | Eliminar ticket                          |
-| PATCH  | `/tickets/{ticketId}/approve`         | PROT | Aprobar ticket (requiere PREAPROBADO)    |
-| PATCH  | `/tickets/{ticketId}/reject`          | PROT | Rechazar ticket (requiere PREAPROBADO)   |
+| PATCH  | `/tickets/{ticketId}/approve`         | PROT | Aprobar ticket (requiere PREAPROBADO; reanuda la automatización) |
+| PATCH  | `/tickets/{ticketId}/reject`          | PROT | Rechazar ticket (requiere PREAPROBADO; registra caso REJECTED) |
 | PATCH  | `/tickets/{ticketId}/decision/select` | PROT | Seleccionar opción de decisión pendiente |
+
+Los endpoints `approve`/`reject` validan el rol del token contra `pending_decision.required_approver_role`
+(`USER` para `basic`, `ADMIN` para `controlled`, `ADMIN_XOC` para `risky`, `SUPERADMIN` para `critical`).
+`ADMIN_XOC`/`SUPERADMIN` pueden aprobar tickets de cualquier tenant; si el ticket no se aprueba en 7 días
+pasa a `DERIVADO`.
 
 Ejemplo: Crear ticket
 

@@ -19,8 +19,8 @@ def handler(event: dict, context) -> dict:
 
     if not ticket_id or not tenant_id:
         raise ValidationError("ticket_id and tenant_id are required")
-    if action not in ("success", "failed_after_attempts"):
-        raise ValidationError("action must be 'success' or 'failed_after_attempts'")
+    if action not in ("success", "failed_after_attempts", "rejected", "derivado"):
+        raise ValidationError("action must be 'success', 'failed_after_attempts', 'rejected' or 'derivado'")
 
     item = create_case(
         tenant_id=int(tenant_id),

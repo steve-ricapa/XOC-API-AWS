@@ -117,7 +117,7 @@ module.exports = function ticketsResources(stage) {
                   { Effect: 'Allow', Action: ['events:PutEvents'], Resource: [{ 'Fn::GetAtt': ['ApplicationEventBus', 'Arn'] }] },
                   { Effect: 'Allow', Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem'], Resource: [{ 'Fn::GetAtt': ['TicketsTable', 'Arn'] }] },
                   { Effect: 'Allow', Action: ['states:StartExecution'], Resource: [`arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:stateMachine:xoc-api-automation-${stage}-workflow`] },
-                  { Effect: 'Allow', Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:Query'], Resource: [`arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-automation-${stage}-cases`, `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-automation-${stage}-cases/index/*`] },
+                  { Effect: 'Allow', Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:Query'], Resource: [`arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-automation-${stage}-cases-v2`, `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-automation-${stage}-cases-v2/index/*`] },
                   { Effect: 'Allow', Action: ['lambda:InvokeFunction'], Resource: [{ 'Fn::GetAtt': ['StartAutomationLambdaFunction', 'Arn'] }] },
                 ],
               },

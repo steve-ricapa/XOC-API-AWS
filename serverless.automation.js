@@ -45,6 +45,10 @@ module.exports = buildService({
       handler: 'src/handlers/workers/wait_for_approval.handler',
       timeout: 30,
     }),
+    registerTimeoutCase: lambdaConfig(stage, {
+      handler: 'src/handlers/workers/register_timeout_case.handler',
+      timeout: 30,
+    }),
     approvalCallback: lambdaConfig(stage, {
       handler: 'src/handlers/workers/approval_callback.handler',
       timeout: 30,

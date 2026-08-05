@@ -176,6 +176,31 @@ Flujo recomendado para `ADMIN_XOC`:
 - El backend marca el tenant como `DELETING` y ejecuta cleanup async
 - Si el tenant tiene documents activos (`PENDING`/`PROCESSING`) o tickets en ejecución, el backend bloquea el borrado
 
+### Tickets: flujo de aprobación (botón en frontend)
+
+Cuando la automatización determina que un ticket necesita aprobación humana lo deja en `PREAPROBADO` y expone el contrato de aprobación en `pending_decision`:
+
+- `max_risk_level`: `basic` | `controlled` | `risky` | `critical`
+- `required_approver_role`: `USER` | `ADMIN` | `ADMIN_XOC` | `SUPERADMIN`
+- `approver_label`: texto para la UI ("Usuario", "Admin del tenant", "Admin XOC", "Superadmin XOC")
+- `publicly_approvable`: si el riesgo es `basic`
+- `approval_deadline`: fecha límite (7 días) para aprobar/rechazar antes de que el ticket pase a `DERIVADO`
+
+Endpoints del botón (protegidos, mismo JWT del usuario autenticado):
+
+- `PATCH /tickets/{ticketId}/approve` → aprueba y reanuda la automatización
+- `PATCH /tickets/{ticketId}/reject` → rechaza, registra caso `REJECTED` y cierra el flujo
+- El backend valida el rol del token contra `required_approver_role` y responde `403` si no basta
+- `ADMIN_XOC`/`SUPERADMIN` pueden aprobar tickets de cualquier tenant desde su token base; `USER`/`ADMIN` solo tickets de su tenant
+
+Estados resultantes del ticket:
+
+- `PREAPROBADO` → esperando aprobación
+- `APROBADO` → aprobado, la automatización continúa
+- `RECHAZADO` → rechazado por el aprobador
+- `DERIVADO` → sin aprobación en 7 días (escalado, terminal)
+- `RESUELTO` / `FALLIDO` → resultado de la ejecución
+
 ### Estado actual
 
 El backend ya expone los endpoints necesarios para:

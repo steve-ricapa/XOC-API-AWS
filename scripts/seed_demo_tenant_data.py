@@ -431,6 +431,7 @@ def _seed_dynamo_tickets(tenant_id: int, admin_user: User, rng: random.Random) -
     ticket_statuses = [
         "PENDING",
         "DERIVED",
+        "DERIVADO",
         "PREAPROBADO",
         "APROBADO",
         "EN_EJECUCION",

@@ -8,9 +8,10 @@ module.exports = buildService({
   additionalIamStatements: (stage) => [
     {
       Effect: 'Allow',
-      Action: ['states:StartExecution'],
+      Action: ['states:StartExecution', 'states:SendTaskSuccess'],
       Resource: [
         `arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:stateMachine:xoc-api-automation-${stage}-workflow`,
+        `arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:execution:xoc-api-automation-${stage}-workflow:*`,
       ],
     },
   ],

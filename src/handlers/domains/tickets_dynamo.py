@@ -7,13 +7,14 @@ from mangum import Mangum
 
 from src.shared.config import get_settings
 from src.shared.dependencies import require_access_claims
-from src.shared.errors import AppError, ForbiddenError, ValidationError
+from src.shared.errors import AppError, ForbiddenError, NotFoundError, ValidationError
 from src.shared.logging import logger
 from src.shared.risk_config import is_role_sufficient
 from src.shared.tickets_store import (
     build_new_ticket_item,
     build_secondary_index_fields,
     get_tenant_ticket_or_404,
+    get_ticket_by_id_or_none,
     list_tenant_tickets,
     now_iso,
     serialize_ticket,
@@ -24,6 +25,9 @@ from src.shared.tickets_store import (
 
 settings = get_settings()
 eventbridge = boto3.client("events")
+stepfunctions = boto3.client("stepfunctions")
+
+PLATFORM_OPERATOR_ROLES = {"ADMIN_XOC", "SUPERADMIN"}
 
 
 def _emit_event(event_name: str, tenant_id: int, ticket_id: str, payload: dict):
@@ -60,6 +64,32 @@ def _assert_can_approve(claims: dict, item: dict) -> None:
     user_role = (claims.get("role") or "").upper()
     if not is_role_sufficient(user_role, required_role):
         raise ForbiddenError(f"Insufficient role to approve this ticket. Required: {required_role}")
+
+
+def _resolve_ticket_for_action(claims: dict, ticket_id: str) -> dict:
+    role = (claims.get("role") or "").upper()
+    if role in PLATFORM_OPERATOR_ROLES:
+        item = get_ticket_by_id_or_none(ticket_id)
+        if not item:
+            raise NotFoundError("Ticket not found")
+        return item
+    tenant_id = int(claims.get("tenantId") or claims.get("tenant_id") or 0)
+    return get_tenant_ticket_or_404(tenant_id, ticket_id)
+
+
+def _resume_workflow(item: dict, approved: bool) -> None:
+    pending_decision = item.get("pending_decision") or {}
+    if not isinstance(pending_decision, dict):
+        pending_decision = {}
+    task_token = pending_decision.get("task_token") or pending_decision.get("taskToken")
+    if not task_token:
+        raise ValidationError("No pending approval found for this ticket")
+    output = json.dumps({"approved": bool(approved)})
+    try:
+        stepfunctions.send_task_success(taskToken=task_token, output=output)
+    except Exception as exc:
+        logger.error("Failed to resume workflow for ticket %s: %s", item.get("ticket_id"), exc)
+        raise AppError(status_code=502, message="Failed to resume the automation workflow")
 
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
@@ -113,22 +143,24 @@ def delete_ticket(ticket_id: str, claims: dict = Depends(require_access_claims))
 
 @router.patch("/{ticket_id}/approve")
 def approve_ticket(ticket_id: str, claims: dict = Depends(require_access_claims)):
-    tenant_id = int(claims.get("tenantId") or claims.get("tenant_id") or 0)
+    item = _resolve_ticket_for_action(claims, ticket_id)
+    tenant_id = int(item["tenant_id"])
     user_id = claims.get("userId") or claims.get("sub")
-    item = _get_ticket_or_404(tenant_id, ticket_id)
     if item.get("status") != "PREAPROBADO":
         raise ValidationError("Only PREAPROBADO tickets can be approved")
     _assert_can_approve(claims, item)
+    _resume_workflow(item, approved=True)
     now = now_iso()
     secondary = build_secondary_index_fields(tenant_id, ticket_id, "APROBADO", item.get("created_at") or now)
     table.update_item(
         Key=ticket_key(tenant_id, ticket_id),
-        UpdateExpression="SET #status = :status, #approved_by_user_id = :uid, #approved_at = :at, #updated_at = :now, #gsi1pk = :gsi1pk, #gsi1sk = :gsi1sk, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk",
+        UpdateExpression="SET #status = :status, #approved_by_user_id = :uid, #approved_at = :at, #updated_at = :now, #execution_status = :exec_status, #gsi1pk = :gsi1pk, #gsi1sk = :gsi1sk, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk",
         ExpressionAttributeValues={
             ":status": "APROBADO",
             ":uid": int(user_id) if user_id else None,
             ":at": now,
             ":now": now,
+            ":exec_status": "EXECUTING",
             ":gsi1pk": secondary["gsi1pk"],
             ":gsi1sk": secondary["gsi1sk"],
             ":gsi2pk": secondary["gsi2pk"],
@@ -141,6 +173,7 @@ def approve_ticket(ticket_id: str, claims: dict = Depends(require_access_claims)
             "#approved_by_user_id": "approved_by_user_id",
             "#approved_at": "approved_at",
             "#updated_at": "updated_at",
+            "#execution_status": "execution_status",
             "#gsi1pk": "gsi1pk",
             "#gsi1sk": "gsi1sk",
             "#gsi2pk": "gsi2pk",
@@ -149,29 +182,31 @@ def approve_ticket(ticket_id: str, claims: dict = Depends(require_access_claims)
             "#gsi3sk": "gsi3sk",
         },
     )
-    updated = _get_ticket_or_404(tenant_id, ticket_id)
+    updated = get_tenant_ticket_or_404(tenant_id, ticket_id)
     _emit_event("ticket.status_changed", tenant_id, ticket_id, {"status": "APROBADO"})
     return {"message": "Ticket approved successfully", "ticket": serialize_ticket(updated)}
 
 
 @router.patch("/{ticket_id}/reject")
 def reject_ticket(ticket_id: str, claims: dict = Depends(require_access_claims)):
-    tenant_id = int(claims.get("tenantId") or claims.get("tenant_id") or 0)
+    item = _resolve_ticket_for_action(claims, ticket_id)
+    tenant_id = int(item["tenant_id"])
     user_id = claims.get("userId") or claims.get("sub")
-    item = _get_ticket_or_404(tenant_id, ticket_id)
     if item.get("status") != "PREAPROBADO":
         raise ValidationError("Only PREAPROBADO tickets can be rejected")
     _assert_can_approve(claims, item)
+    _resume_workflow(item, approved=False)
     now = now_iso()
     secondary = build_secondary_index_fields(tenant_id, ticket_id, "RECHAZADO", item.get("created_at") or now)
     table.update_item(
         Key=ticket_key(tenant_id, ticket_id),
-        UpdateExpression="SET #status = :status, #rejected_by_user_id = :uid, #rejected_at = :at, #updated_at = :now, #gsi1pk = :gsi1pk, #gsi1sk = :gsi1sk, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk",
+        UpdateExpression="SET #status = :status, #rejected_by_user_id = :uid, #rejected_at = :at, #updated_at = :now, #execution_status = :exec_status, #gsi1pk = :gsi1pk, #gsi1sk = :gsi1sk, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk",
         ExpressionAttributeValues={
             ":status": "RECHAZADO",
             ":uid": int(user_id) if user_id else None,
             ":at": now,
             ":now": now,
+            ":exec_status": "REJECTED",
             ":gsi1pk": secondary["gsi1pk"],
             ":gsi1sk": secondary["gsi1sk"],
             ":gsi2pk": secondary["gsi2pk"],
@@ -184,6 +219,7 @@ def reject_ticket(ticket_id: str, claims: dict = Depends(require_access_claims))
             "#rejected_by_user_id": "rejected_by_user_id",
             "#rejected_at": "rejected_at",
             "#updated_at": "updated_at",
+            "#execution_status": "execution_status",
             "#gsi1pk": "gsi1pk",
             "#gsi1sk": "gsi1sk",
             "#gsi2pk": "gsi2pk",
@@ -192,7 +228,7 @@ def reject_ticket(ticket_id: str, claims: dict = Depends(require_access_claims))
             "#gsi3sk": "gsi3sk",
         },
     )
-    updated = _get_ticket_or_404(tenant_id, ticket_id)
+    updated = get_tenant_ticket_or_404(tenant_id, ticket_id)
     _emit_event("ticket.status_changed", tenant_id, ticket_id, {"status": "RECHAZADO"})
     return {"message": "Ticket rejected successfully", "ticket": serialize_ticket(updated)}
 
