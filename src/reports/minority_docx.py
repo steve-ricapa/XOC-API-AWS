@@ -250,6 +250,50 @@ def _set_cover_line(paragraph: Paragraph, text: str) -> None:
     run.font.color.rgb = DARK_TEXT
 
 
+def _clear_story(story: Any) -> None:
+    root = story._element
+    for child in list(root):
+        root.remove(child)
+
+
+def _append_field_run(paragraph: Paragraph, instruction: str) -> None:
+    begin = OxmlElement("w:fldChar")
+    begin.set(qn("w:fldCharType"), "begin")
+    paragraph.add_run()._r.append(begin)
+
+    instr = OxmlElement("w:instrText")
+    instr.set(qn("xml:space"), "preserve")
+    instr.text = f" {instruction} "
+    paragraph.add_run()._r.append(instr)
+
+    separate = OxmlElement("w:fldChar")
+    separate.set(qn("w:fldCharType"), "separate")
+    paragraph.add_run()._r.append(separate)
+
+    paragraph.add_run("1")
+
+    end = OxmlElement("w:fldChar")
+    end.set(qn("w:fldCharType"), "end")
+    paragraph.add_run()._r.append(end)
+
+
+def _set_header_page_counter(story: Any) -> None:
+    _clear_story(story)
+    paragraph = story.add_paragraph()
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    prefix = paragraph.add_run("Página ")
+    prefix.font.size = Pt(9)
+    prefix.font.color.rgb = MUTED_TEXT
+    _append_field_run(paragraph, "PAGE")
+    middle = paragraph.add_run(" de ")
+    middle.font.size = Pt(9)
+    middle.font.color.rgb = MUTED_TEXT
+    _append_field_run(paragraph, "NUMPAGES")
+    for run in paragraph.runs:
+        run.font.size = Pt(9)
+        run.font.color.rgb = MUTED_TEXT
+
+
 def update_cover_and_footer(document: Document, payload: dict[str, Any]) -> None:
     client = _clean_text(payload.get("client_name")) or "Cliente"
     period = _clean_text(payload.get("period")) or "Periodo no especificado"
@@ -279,7 +323,13 @@ def update_cover_and_footer(document: Document, payload: dict[str, Any]) -> None
         elif COVER_PERIOD_MARKER in text:
             _set_cover_line(paragraph, period)
 
-    for section in document.sections:
+    for section_index, section in enumerate(document.sections):
+        if not (section_index == 0 and len(document.sections) > 1):
+            _set_header_page_counter(section.header)
+            if hasattr(section, "first_page_header"):
+                _set_header_page_counter(section.first_page_header)
+            if hasattr(section, "even_page_header"):
+                _set_header_page_counter(section.even_page_header)
         footer = section.footer
         footer.is_linked_to_previous = False
         if not footer.paragraphs:
