@@ -32,7 +32,7 @@ const service = buildService({
     AZURE_FOUNDRY_OPENAI_ENDPOINT: process.env.AZURE_FOUNDRY_OPENAI_ENDPOINT || '',
     AZURE_FOUNDRY_MODEL_DEPLOYMENT: process.env.AZURE_FOUNDRY_MODEL_DEPLOYMENT || 'gpt-5-mini',
     REPORT_MAX_IMAGE_MB: '10',
-    MINORITY_MAX_OUTPUT_TOKENS: '9000',
+    MINORITY_MAX_OUTPUT_TOKENS: '5000',
     MINORITY_JSON_SCHEMA: 'true',
   }),
   functions: (stage) => ({
@@ -96,7 +96,7 @@ const service = buildService({
     generateReportContent: lambdaConfig(stage, {
       handler: 'src/handlers/workers/report_generate_content.handler',
       description: 'Generates document content from collected data',
-      timeout: 120,
+      timeout: 180,
       memorySize: 1024,
       needsVpc: true,
       include: [

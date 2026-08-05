@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 
-from src.reports.minority_foundry import generate_minority_payload, generate_minority_payload_planner_builder
+from src.reports.minority_foundry import _builder_structured_snapshot, generate_minority_payload
 from src.reports.storage import download_artifact, upload_artifact
 from src.shared.logging import logger
 
@@ -45,16 +47,20 @@ def _generate_content(collected_data: dict, document_type: str) -> dict:
         structured_data = collected_data.get("structured_data") or {}
         reference_markdown = _load_minority_reference()
         plan = None
+        use_foundry, budget = _should_use_foundry(structured_data)
+        logger.info(
+            "Minority content routing for document %s: use_foundry=%s compact_chars=%s domains=%s sample_findings=%s",
+            document.get("id"),
+            use_foundry,
+            budget["compact_chars"],
+            budget["domains"],
+            budget["sample_findings"],
+        )
         try:
-            payload, plan = generate_minority_payload_planner_builder(
-                client_name=client_name,
-                period=period,
-                analyst_text=analyst_text,
-                structured_data=structured_data,
-                reference_markdown=reference_markdown,
-            )
-        except Exception as exc:
-            logger.warning("Planner/builder minority generation failed, falling back to single-pass builder: %s", exc)
+            if not use_foundry:
+                raise RuntimeError(
+                    f"Minority payload exceeded budget (chars={budget['compact_chars']}, domains={budget['domains']}, sample_findings={budget['sample_findings']})"
+                )
             payload = generate_minority_payload(
                 client_name=client_name,
                 period=period,
@@ -62,6 +68,9 @@ def _generate_content(collected_data: dict, document_type: str) -> dict:
                 structured_data=structured_data,
                 reference_markdown=reference_markdown,
             )
+        except Exception as exc:
+            logger.warning("Minority Foundry generation skipped/failed; using deterministic backend fallback: %s", exc)
+            payload = _build_backend_minority_payload(collected_data)
         structured = collected_data.get("structured_data") or {}
         metrics = structured.get("aggregated_metrics") or {}
         payload.setdefault("document_code", collected_data.get("document_code") or structured.get("document_code") or document.get("id"))
@@ -139,6 +148,73 @@ def _generate_content(collected_data: dict, document_type: str) -> dict:
         "actions_worked": collected_data.get("actions_worked", []),
         "support_entries": collected_data.get("actions_worked", []),
         "security_news": collected_data.get("security_news", []),
+    }
+
+
+def _should_use_foundry(structured_data: dict) -> tuple[bool, dict[str, int]]:
+    compact = _builder_structured_snapshot(structured_data or {})
+    compact_chars = len(json.dumps(compact, ensure_ascii=False))
+    domains = len(compact.get("security_domains") or [])
+    sample_findings = sum(len(domain.get("findings") or []) for domain in (compact.get("security_domains") or []))
+    max_chars = int(os.environ.get("MINORITY_MAX_COMPACT_CHARS", "14000"))
+    max_domains = int(os.environ.get("MINORITY_MAX_DOMAINS_FOR_FOUNDRY", "6"))
+    max_sample_findings = int(os.environ.get("MINORITY_MAX_SAMPLE_FINDINGS", "18"))
+    decision = compact_chars <= max_chars and domains <= max_domains and sample_findings <= max_sample_findings
+    return decision, {
+        "compact_chars": compact_chars,
+        "domains": domains,
+        "sample_findings": sample_findings,
+    }
+
+
+def _build_backend_minority_payload(collected_data: dict) -> dict:
+    structured = collected_data.get("structured_data") or {}
+    metrics = structured.get("aggregated_metrics") or {}
+    tenant = collected_data.get("tenant") or {}
+    document = collected_data.get("document") or {}
+    tools = structured.get("tools") or []
+    security_domains = structured.get("security_domains") or []
+    coverage_summary = metrics.get("coverage_summary") or structured.get("coverage_summary") or ""
+    data_base = metrics.get("data_base") or ""
+    period = str(document.get("period") or structured.get("period") or "Estado actual")
+    client_name = str(tenant.get("name") or structured.get("client_name") or "Cliente")
+    top_domain_names = ", ".join(str(domain.get("name") or "") for domain in security_domains[:3] if str(domain.get("name") or "").strip())
+    executive_summary = (
+        f"El presente Minority Report resume el estado actual del servicio para {client_name}. "
+        f"La cobertura considera {len(tools)} integraciones activas y {len(security_domains)} dominios con evidencia utilizable. "
+        f"La última evidencia disponible se consolidó bajo el contexto '{period}'. "
+        f"Los dominios con mayor visibilidad en el estado actual son: {top_domain_names or 'sin dominios destacados en la evidencia actual'}."
+    )
+    results_obtained = metrics.get("results_obtained") or [
+        f"Integraciones activas consideradas: {len(tools)}.",
+        f"Dominios con evidencia disponible: {len(security_domains)}.",
+    ]
+    return {
+        "title": f"Minority Report - {client_name}",
+        "client_name": client_name,
+        "prepared_by": "TXDXSECURE",
+        "period": period,
+        "service_name": str(document.get("service") or "Servicio de Monitoreo XOC"),
+        "tools": tools,
+        "data_base": data_base,
+        "coverage_summary": coverage_summary,
+        "coverage_rows": metrics.get("coverage_rows") or structured.get("coverage_rows") or [],
+        "executive_summary": executive_summary,
+        "vulnerability_comparison": metrics.get("vulnerability_comparison") or {"summary": "No se dispone de referencia comparativa adicional.", "severity_rows": []},
+        "histogram_summary": metrics.get("histogram_summary") or "No se dispone de histograma adicional para la evidencia actual.",
+        "priority_focuses": metrics.get("priority_focuses") or [],
+        "operational_considerations": metrics.get("operational_considerations") or [],
+        "results_and_next_actions": " ".join(str(item) for item in (results_obtained or [])),
+        "results_obtained": " ".join(str(item) for item in (results_obtained or [])),
+        "next_actions": metrics.get("pending_findings") or [],
+        "requirements": [],
+        "security_domains": security_domains,
+        "weekly_actions": structured.get("weekly_actions") or [],
+        "reinforced_security": "La continuidad del servicio y la cobertura por integración se mantienen según la última evidencia disponible.",
+        "pending_findings": metrics.get("pending_findings") or structured.get("pending_findings") or [],
+        "security_news": structured.get("manual_security_news") or [],
+        "limitations": metrics.get("limitations") or [],
+        "image_citations": [],
     }
 
 

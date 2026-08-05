@@ -46,6 +46,20 @@ DARK_TEXT = RGBColor(0x1F, 0x38, 0x62)
 MUTED_TEXT = RGBColor(0x5C, 0x66, 0x70)
 SOC_FILL = "FFE5E5"
 NOC_FILL = "E6F7F5"
+SOC_HEADER_FILL = "8B1E3F"
+NOC_HEADER_FILL = "0F766E"
+SOC_ALT_FILL = "FFF5F6"
+NOC_ALT_FILL = "F2FBFA"
+SOC_SEVERITY_ROW_FILLS = {
+    "ALTO": "FDE7EA",
+    "MEDIO": "FFF4DA",
+    "BAJO": "F4FBF7",
+}
+NOC_SEVERITY_ROW_FILLS = {
+    "ALTO": "E6F7F5",
+    "MEDIO": "EEF7FF",
+    "BAJO": "F5FAF9",
+}
 TABLE_HEADER = "0B1F2A"
 TABLE_ALT = "EAF8F5"
 CALLOUT = "EAF8F5"
@@ -482,6 +496,26 @@ def _set_cell_text(cell: Any, text: Any, *, bold: bool = False, color: RGBColor 
     cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
 
 
+def _shade_row(row: Any, fill: str) -> None:
+    for cell in row.cells:
+        _shade_cell(cell, fill)
+
+
+def _domain_table_palette(layer: str) -> dict[str, Any]:
+    normalized = (layer or "SOC").upper()
+    if normalized == "NOC":
+        return {
+            "header_fill": NOC_HEADER_FILL,
+            "row_alt_fill": NOC_ALT_FILL,
+            "severity_fills": NOC_SEVERITY_ROW_FILLS,
+        }
+    return {
+        "header_fill": SOC_HEADER_FILL,
+        "row_alt_fill": SOC_ALT_FILL,
+        "severity_fills": SOC_SEVERITY_ROW_FILLS,
+    }
+
+
 def add_callout(document: Document, title: str, content: Any = "", *, fill: str = CALLOUT, bullets: Any = None) -> None:
     text = _clean_text(content)
     bullet_values = [_clean_text(item) for item in _as_list(bullets) if _clean_text(item)] if bullets is not None else []
@@ -518,9 +552,10 @@ def add_key_value_table(document: Document, rows: list[tuple[str, Any]]) -> None
     document.add_paragraph()
 
 
-def add_findings_table(document: Document, findings: list[dict[str, Any]]) -> None:
+def add_findings_table(document: Document, findings: list[dict[str, Any]], *, layer: str = "SOC") -> None:
     if not findings:
         return
+    palette = _domain_table_palette(layer)
     table = document.add_table(rows=1, cols=4)
     table.autofit = False
     widths = [1.02, 2.82, 0.92, 0.72]
@@ -531,7 +566,7 @@ def add_findings_table(document: Document, findings: list[dict[str, Any]]) -> No
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     _set_row_widths(table.rows[0], widths)
     for cell, header in zip(table.rows[0].cells, ("ID", "Vulnerabilidades", "Host Afectados", "Severidad")):
-        _shade_cell(cell, "006D9F")
+        _shade_cell(cell, palette["header_fill"])
         _set_cell_border(cell, "BFBFBF", "4")
         _set_cell_text(cell, header, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF), size=8.8)
     for index, finding in enumerate(findings, start=1):
@@ -539,10 +574,13 @@ def add_findings_table(document: Document, findings: list[dict[str, Any]]) -> No
         _set_row_widths(table.rows[-1], widths)
         for cell in cells:
             _set_cell_border(cell, "BFBFBF", "4")
+        severity = _display_finding_severity(finding.get("severity"))
+        fill = palette["row_alt_fill"] if index % 2 == 0 else "FFFFFF"
+        fill = palette["severity_fills"].get(severity, fill)
+        _shade_row(table.rows[-1], fill)
         _set_cell_text(cells[0], finding.get("id"), bold=False, color=DARK_TEXT, size=8.5)
         _set_cell_text(cells[1], finding.get("vulnerability"), size=8.5)
         _set_cell_text(cells[2], finding.get("affected_hosts"), size=8.5)
-        severity = _display_finding_severity(finding.get("severity"))
         severity_color = RGBColor(0xC0, 0x00, 0x00) if severity == "ALTO" else DARK_TEXT
         _set_cell_text(cells[3], severity, bold=True, color=severity_color, size=8.5)
     document.add_paragraph()
@@ -554,23 +592,28 @@ def _remove_table_data_rows(table: Table) -> None:
         table._tbl.remove(row._tr)
 
 
-def _populate_template_findings_table(table: Table, findings: list[dict[str, Any]]) -> None:
+def _populate_template_findings_table(table: Table, findings: list[dict[str, Any]], *, layer: str = "SOC") -> None:
     """Llena una tabla heredada de la plantilla sin recrear su formato OOXML."""
     if not table.rows or len(table.columns) != 4:
         raise ValueError("La tabla de hallazgos de la plantilla debe tener cuatro columnas")
 
+    palette = _domain_table_palette(layer)
     headers = ("ID", "Vulnerabilidades", "Host Afectados", "Severidad")
     for cell, header in zip(table.rows[0].cells, headers):
+        _shade_cell(cell, palette["header_fill"])
         _set_cell_text(cell, header, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF), size=8.8)
 
     _remove_table_data_rows(table)
     rows = findings or []
-    for finding in rows:
+    for index, finding in enumerate(rows):
         cells = table.add_row().cells
+        fill = palette["row_alt_fill"] if index % 2 else "FFFFFF"
+        severity = _display_finding_severity(finding.get("severity"))
+        fill = palette["severity_fills"].get(severity, fill)
+        _shade_row(table.rows[-1], fill)
         _set_cell_text(cells[0], finding.get("id"), color=DARK_TEXT, size=8.5)
         _set_cell_text(cells[1], finding.get("vulnerability"), size=8.5)
         _set_cell_text(cells[2], finding.get("affected_hosts"), size=8.5)
-        severity = _display_finding_severity(finding.get("severity"))
         severity_color = RGBColor(0xC0, 0x00, 0x00) if severity == "ALTO" else DARK_TEXT
         _set_cell_text(cells[3], severity, bold=True, color=severity_color, size=8.5)
 
@@ -617,11 +660,11 @@ def capture_comparison_table_template(document: Document) -> Any | None:
     return None
 
 
-def add_template_findings_table(document: Document, template_table: Any, findings: list[dict[str, Any]]) -> None:
+def add_template_findings_table(document: Document, template_table: Any, findings: list[dict[str, Any]], *, layer: str = "SOC") -> None:
     marker = document.add_paragraph()
     table = Table(deepcopy(template_table), document)
     marker._p.addprevious(table._tbl)
-    _populate_template_findings_table(table, findings)
+    _populate_template_findings_table(table, findings, layer=layer)
     document.add_paragraph()
 
 
@@ -1051,9 +1094,9 @@ def build_report_body(
             continue
         template_table = (domain_table_templates or [None])[0]
         if template_table is not None:
-            add_template_findings_table(document, template_table, domain.get("findings") or [])
+            add_template_findings_table(document, template_table, domain.get("findings") or [], layer=layer)
         else:
-            add_findings_table(document, domain.get("findings") or [])
+            add_findings_table(document, domain.get("findings") or [], layer=layer)
 
     if include_admin_sections:
         add_heading(document, "Reporte de acciones trabajadas durante la semana", "4.")
@@ -1562,27 +1605,35 @@ def _next_content_paragraph(document: Document, anchor: Paragraph) -> Paragraph 
 
 
 def _insert_pie_pair_after(anchor: Paragraph, images: list[Path], descriptions: list[str]) -> Paragraph:
-    tag = _insert_paragraph_after(anchor)
-    tag.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    tag.paragraph_format.space_before = Pt(6)
-    tag.paragraph_format.space_after = Pt(2)
-    run = tag.add_run("FIGURA 1 Y FIGURA 2")
-    _format_run(run, bold=True, color=BRAND_BLUE, size=8)
+    tag_1 = _insert_paragraph_after(anchor)
+    tag_1.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    tag_1.paragraph_format.space_before = Pt(6)
+    tag_1.paragraph_format.space_after = Pt(2)
+    run_1 = tag_1.add_run("FIGURA 1")
+    _format_run(run_1, bold=True, color=BRAND_BLUE, size=8)
 
-    picture = _insert_paragraph_after(tag)
-    picture.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    picture.paragraph_format.space_before = Pt(0)
-    picture.paragraph_format.space_after = Pt(0)
-    first = picture.add_run()
-    first.add_picture(str(images[0]), width=Inches(2.95))
-    spacer = picture.add_run("    ")
-    spacer.font.size = Pt(6)
-    second = picture.add_run()
-    second.add_picture(str(images[1]), width=Inches(2.95))
+    picture_1 = _insert_paragraph_after(tag_1)
+    picture_1.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    picture_1.paragraph_format.space_before = Pt(0)
+    picture_1.paragraph_format.space_after = Pt(0)
+    picture_1.add_run().add_picture(str(images[0]), width=Inches(4.15))
+    desc_1 = descriptions[0] if len(descriptions) > 0 else "Referencia anterior disponible."
+    caption_1 = _caption_after(picture_1, f"Figura 1. {desc_1}")
 
-    desc_1 = descriptions[0] if len(descriptions) > 0 else "Semana anterior."
-    desc_2 = descriptions[1] if len(descriptions) > 1 else "Semana actual."
-    return _caption_after(picture, f"Figura 1. {desc_1} / Figura 2. {desc_2}")
+    tag_2 = _insert_paragraph_after(caption_1)
+    tag_2.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    tag_2.paragraph_format.space_before = Pt(10)
+    tag_2.paragraph_format.space_after = Pt(2)
+    run_2 = tag_2.add_run("FIGURA 2")
+    _format_run(run_2, bold=True, color=BRAND_BLUE, size=8)
+
+    picture_2 = _insert_paragraph_after(tag_2)
+    picture_2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    picture_2.paragraph_format.space_before = Pt(0)
+    picture_2.paragraph_format.space_after = Pt(0)
+    picture_2.add_run().add_picture(str(images[1]), width=Inches(4.15))
+    desc_2 = descriptions[1] if len(descriptions) > 1 else "Estado actual."
+    return _caption_after(picture_2, f"Figura 2. {desc_2}")
 
 
 def place_evidence_images(document: Document, images: list[Path], descriptions: list[str]) -> None:
@@ -1626,7 +1677,7 @@ def place_evidence_images(document: Document, images: list[Path], descriptions: 
         picture.alignment = WD_ALIGN_PARAGRAPH.CENTER
         picture.paragraph_format.space_before = Pt(0)
         picture.paragraph_format.space_after = Pt(0)
-        image_width = 2.95 if index in {1, 2} else 5.2
+        image_width = 4.15 if index in {1, 2} else 5.7
         picture.add_run().add_picture(str(path), width=Inches(image_width))
         description = descriptions[index - 1] if index - 1 < len(descriptions) else ""
         caption = _caption_after(picture, f"{label}. {description or 'Evidencia visual proporcionada.'}")

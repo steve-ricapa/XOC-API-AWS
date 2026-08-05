@@ -440,6 +440,13 @@ def _clean_string(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _truncate_text(value: Any, limit: int) -> str:
+    text = _clean_string(value)
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
 def _normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
     missing = MINORITY_KEYS - set(payload)
     extra = set(payload) - MINORITY_KEYS
@@ -562,6 +569,8 @@ def parse_and_validate_json(raw: str) -> dict[str, Any]:
 
 
 def build_prompt(*, client_name: str, period: str, analyst_text: str, structured_data: dict[str, Any], reference_markdown: str = "") -> str:
+    structured = _builder_structured_snapshot(structured_data or {})
+    reference = _reference_excerpt(reference_markdown, limit=1200)
     return (
         f"{PROMPT_BASE}\n\n"
         f"Cliente objetivo: {client_name or 'No especificado'}\n"
@@ -569,9 +578,9 @@ def build_prompt(*, client_name: str, period: str, analyst_text: str, structured
         "Texto del analista:\n"
         f"{analyst_text.strip() or 'No se proporciono texto adicional del analista.'}\n\n"
         "Datos estructurados del tenant:\n"
-        f"{json.dumps(structured_data, ensure_ascii=False, indent=2)}\n\n"
+        f"{json.dumps(structured, ensure_ascii=False, indent=2)}\n\n"
         "Referencia de formato Minority Report. Usala solo como guia estructural:\n"
-        f"{reference_markdown[:18000] if reference_markdown else 'No se proporciono referencia adicional.'}"
+        f"{reference if reference else 'No se proporciono referencia adicional.'}"
     )
 
 
@@ -599,7 +608,7 @@ def _foundry_request(settings: MinorityFoundrySettings, request: dict[str, Any])
             "Content-Type": "application/json",
         },
         json=request,
-        timeout=120,
+        timeout=int(os.environ.get("MINORITY_FOUNDRY_HTTP_TIMEOUT_SECONDS", "75")),
     )
     response.raise_for_status()
     return response.json()
@@ -741,6 +750,72 @@ def _planner_structured_snapshot(structured_data: dict[str, Any]) -> dict[str, A
     }
 
 
+def _compact_domain_snapshot(domain: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(domain, dict):
+        return {}
+    return {
+        "name": _clean_string(domain.get("name")),
+        "provider": _clean_string(domain.get("provider")),
+        "layer": _clean_string(domain.get("layer")),
+        "is_active": bool(domain.get("is_active", True)),
+        "current_findings_total": int(domain.get("current_findings_total") or 0),
+        "previous_findings_total": int(domain.get("previous_findings_total") or 0),
+        "current_severity_summary": domain.get("current_severity_summary") or {},
+        "previous_severity_summary": domain.get("previous_severity_summary") or {},
+        "snapshot": domain.get("snapshot") or {},
+        "previous_snapshot": domain.get("previous_snapshot") or {},
+        "summary": _truncate_text(domain.get("summary"), 260),
+        "findings": [
+            {
+                "id": _clean_string(item.get("id")),
+                "vulnerability": _truncate_text(item.get("vulnerability"), 100),
+                "affected_hosts": _clean_string(item.get("affected_hosts")),
+                "severity": _clean_string(item.get("severity")),
+            }
+            for item in _as_list(domain.get("findings"))[:4]
+            if isinstance(item, dict)
+        ],
+    }
+
+
+def _builder_structured_snapshot(structured_data: dict[str, Any]) -> dict[str, Any]:
+    metrics = structured_data.get("aggregated_metrics") if isinstance(structured_data.get("aggregated_metrics"), dict) else {}
+    security_domains = _as_list(structured_data.get("security_domains"))
+    return {
+        "source": structured_data.get("source"),
+        "client_name": structured_data.get("client_name") or structured_data.get("tenant_name"),
+        "period": structured_data.get("period"),
+        "document_code": structured_data.get("document_code"),
+        "report_variant": structured_data.get("report_variant"),
+        "template_variant": structured_data.get("template_variant"),
+        "template_rules": structured_data.get("template_rules"),
+        "tools": structured_data.get("tools"),
+        "integrations_overview": structured_data.get("integrations_overview"),
+        "severity_summary": structured_data.get("severity_summary"),
+        "previous_severity_summary": structured_data.get("previous_severity_summary"),
+        "coverage_summary": _truncate_text(metrics.get("coverage_summary"), 320),
+        "coverage_rows": metrics.get("coverage_rows"),
+        "vulnerability_comparison": metrics.get("vulnerability_comparison"),
+        "histogram_summary": _truncate_text(metrics.get("histogram_summary"), 220),
+        "results_obtained": [_truncate_text(item, 140) for item in _as_list(metrics.get("results_obtained"))[:4]],
+        "priority_focuses": [_truncate_text(item, 140) for item in _as_list(metrics.get("priority_focuses"))[:4]],
+        "operational_considerations": [_truncate_text(item, 160) for item in _as_list(metrics.get("operational_considerations"))[:4]],
+        "pending_findings": _as_list(metrics.get("pending_findings"))[:20],
+        "limitations": [_truncate_text(item, 160) for item in _as_list(metrics.get("limitations"))[:5]],
+        "scan_snapshot": {
+            "current_soc_scans": (structured_data.get("scan_snapshot") or {}).get("current_soc_scans"),
+            "current_noc_scans": (structured_data.get("scan_snapshot") or {}).get("current_noc_scans"),
+            "current_total_scans": (structured_data.get("scan_snapshot") or {}).get("current_total_scans"),
+            "previous_total_scans": (structured_data.get("scan_snapshot") or {}).get("previous_total_scans"),
+        },
+        "security_domains": [_compact_domain_snapshot(domain) for domain in security_domains if isinstance(domain, dict)],
+    }
+
+
+def _reference_excerpt(reference_markdown: str, limit: int = 1200) -> str:
+    return _truncate_text(reference_markdown, limit) if _clean_string(reference_markdown) else ""
+
+
 def build_planner_prompt(*, client_name: str, period: str, analyst_text: str, structured_data: dict[str, Any], reference_markdown: str = "") -> str:
     structured = _planner_structured_snapshot(structured_data or {})
     return (
@@ -765,6 +840,8 @@ def build_builder_prompt(
     plan: dict[str, Any],
     reference_markdown: str = "",
 ) -> str:
+    structured = _builder_structured_snapshot(structured_data or {})
+    reference = _reference_excerpt(reference_markdown, limit=900)
     return (
         f"{BUILDER_PROMPT_BASE}\n\n"
         f"Cliente objetivo: {client_name or 'No especificado'}\n"
@@ -774,9 +851,9 @@ def build_builder_prompt(
         "Instruccion del backend/analista:\n"
         f"{analyst_text.strip() or 'No se proporciono instruccion adicional.'}\n\n"
         "Snapshot estructurado completo de BD/evidencia:\n"
-        f"{json.dumps(structured_data or {}, ensure_ascii=False, indent=2)}\n\n"
+        f"{json.dumps(structured, ensure_ascii=False, indent=2)}\n\n"
         "Referencia de formato Minority Report. Usala solo como guia de tono/estructura; no copies datos del cliente ejemplo:\n"
-        f"{reference_markdown[:12000] if reference_markdown else 'No se proporciono referencia adicional.'}"
+        f"{reference if reference else 'No se proporciono referencia adicional.'}"
     )
 
 
@@ -795,13 +872,7 @@ def _azure_json_response(settings: MinorityFoundrySettings, *, prompt: str, sche
                 "strict": True,
             }
         }
-    try:
-        response = _foundry_request(settings, request)
-    except Exception:
-        if "text" not in request:
-            raise
-        request.pop("text", None)
-        response = _foundry_request(settings, request)
+    response = _foundry_request(settings, request)
     return _extract_response_text(response)
 
 
@@ -831,14 +902,9 @@ def generate_minority_payload(*, client_name: str, period: str, analyst_text: st
                 "strict": True,
             }
         }
-    try:
-        response = _foundry_request(settings, request)
-    except Exception:
-        if "text" not in request:
-            raise
-        request.pop("text", None)
-        response = _foundry_request(settings, request)
-    return parse_and_validate_json(_extract_response_text(response))
+    response = _foundry_request(settings, request)
+    raw_text = _extract_response_text(response)
+    return parse_and_validate_json(raw_text)
 
 
 def generate_minority_payload_planner_builder(
