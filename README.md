@@ -32,6 +32,18 @@ No se mantiene compatibilidad con:
 - `apiHttp`
 - tickets SQL legacy
 
+## Push Notifications — Fase 1
+
+El stack `xoc-api-ops` incluye el registro DynamoDB de dispositivos y pruebas de push autenticadas:
+
+- `POST /devices`
+- `DELETE /devices/{deviceId}` (soft delete: `INACTIVE`)
+- `POST /notifications/test`
+
+Android usa FCM/GCM. iOS registra el entorno APNs por device: `sandbox` usa `APNS_SANDBOX` y `production` usa `APNS`.
+
+La guía de contrato, seguridad y pruebas está en [docs/push-notifications-phase-1.md](docs/push-notifications-phase-1.md).
+
 ## Arquitectura actual
 
 Stacks oficiales:

@@ -30,3 +30,30 @@ def get_registered_device(tenant_id: str, user_id: str, device_id: str) -> dict[
     response = device_registry_table().get_item(Key=device_key(tenant_id, user_id, device_id))
     return response.get("Item")
 
+
+def update_registered_device(
+    tenant_id: str,
+    user_id: str,
+    device_id: str,
+    attributes: dict[str, Any],
+) -> None:
+    """Update one authenticated user's device without changing its registry key."""
+    if not attributes:
+        return
+
+    expression_names: dict[str, str] = {}
+    expression_values: dict[str, Any] = {}
+    assignments: list[str] = []
+    for index, (field, value) in enumerate(attributes.items()):
+        name_key = f"#field{index}"
+        value_key = f":value{index}"
+        expression_names[name_key] = field
+        expression_values[value_key] = value
+        assignments.append(f"{name_key} = {value_key}")
+
+    device_registry_table().update_item(
+        Key=device_key(tenant_id, user_id, device_id),
+        UpdateExpression="SET " + ", ".join(assignments),
+        ExpressionAttributeNames=expression_names,
+        ExpressionAttributeValues=expression_values,
+    )
