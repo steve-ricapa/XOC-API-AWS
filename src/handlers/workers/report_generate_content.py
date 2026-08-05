@@ -83,6 +83,10 @@ def _generate_content(collected_data: dict, document_type: str) -> dict:
         payload["histogram_summary"] = metrics.get("histogram_summary") or payload.get("histogram_summary") or ""
         payload["security_domains"] = structured.get("security_domains") or []
         payload["pending_findings"] = metrics.get("pending_findings") or structured.get("pending_findings") or []
+        payload["coverage_summary"] = metrics.get("coverage_summary") or structured.get("coverage_summary") or ""
+        payload["coverage_rows"] = metrics.get("coverage_rows") or structured.get("coverage_rows") or []
+        payload["priority_focuses"] = metrics.get("priority_focuses") or structured.get("priority_focuses") or []
+        payload["operational_considerations"] = metrics.get("operational_considerations") or structured.get("operational_considerations") or []
         payload["chart_data"] = collected_data.get("chart_data") or structured.get("chart_evidence") or {}
         # Estas secciones son evidencia ingresada/controlada por backend. No se
         # dejan a interpretación del modelo para evitar duplicación de texto o
@@ -107,6 +111,7 @@ def _generate_content(collected_data: dict, document_type: str) -> dict:
         manual_security_news = structured.get("manual_security_news") or []
         if payload["report_variant"] == "client_admin" and manual_security_news:
             payload["security_news"] = manual_security_news
+        payload["limitations"] = metrics.get("limitations") or payload.get("limitations") or []
         normalized_findings = _build_minority_findings(payload)
         return {
             "document_type": document_type,
