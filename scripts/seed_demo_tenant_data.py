@@ -25,6 +25,8 @@ from src.persistence.models import (
     User,
     Vulnerability,
 )
+from src.reports.schemas import DOCUMENT_TYPES
+from src.reports.storage import delete_documents_for_tenant
 from src.reports.store import delete_tenant_document_jobs
 from src.shared.encryption import encrypt_agent_key, encrypt_credentials
 from src.shared.security_keys import generate_access_key, hash_access_key
@@ -122,6 +124,7 @@ def _cleanup_tenant_demo_data(session: Session, tenant_id: int) -> None:
     session.flush()
     delete_tenant_tickets(tenant_id)
     delete_tenant_document_jobs(tenant_id)
+    delete_documents_for_tenant(tenant_id, sorted(DOCUMENT_TYPES))
 
 
 def _cleanup_operational_demo_data(session: Session, tenant_id: int) -> None:
@@ -132,6 +135,7 @@ def _cleanup_operational_demo_data(session: Session, tenant_id: int) -> None:
     session.flush()
     delete_tenant_tickets(tenant_id)
     delete_tenant_document_jobs(tenant_id)
+    delete_documents_for_tenant(tenant_id, sorted(DOCUMENT_TYPES))
 
 
 def _create_integrations(session: Session, tenant_id: int) -> dict[str, Integration]:
