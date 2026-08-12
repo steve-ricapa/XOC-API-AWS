@@ -8,8 +8,13 @@ module.exports = buildService({
   additionalIamStatements: (stage) => ([
     {
       Effect: 'Allow',
-      Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem'],
+      Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:Query'],
       Resource: [`arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-ops-${stage}-device-registry`],
+    },
+    {
+      Effect: 'Allow',
+      Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:Query'],
+      Resource: [`arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-ops-${stage}-notification-campaigns`],
     },
     {
       Effect: 'Allow',
@@ -30,6 +35,7 @@ module.exports = buildService({
   environment: (stage) => ({
     ...commonEnvironment(stage),
     DEVICE_REGISTRY_TABLE_NAME: `xoc-api-ops-${stage}-device-registry`,
+    NOTIFICATION_CAMPAIGNS_TABLE_NAME: `xoc-api-ops-${stage}-notification-campaigns`,
     END_USER_MESSAGING_APPLICATION_ID: process.env.END_USER_MESSAGING_APPLICATION_ID || 'ccdefb15609849fcaf7a256db92065bf',
   }),
   functions: (stage) => ({
@@ -46,6 +52,7 @@ module.exports = buildService({
         protectedRoute(stage, 'POST', '/devices'),
         protectedRoute(stage, 'DELETE', '/devices/{deviceId}'),
         protectedRoute(stage, 'POST', '/notifications/test'),
+        protectedRoute(stage, 'POST', '/notifications/send'),
       ],
     }),
     scansApi: lambdaConfig(stage, {

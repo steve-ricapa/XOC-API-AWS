@@ -18,6 +18,21 @@ module.exports = function opsResources(stage) {
           ],
         },
       },
+      NotificationCampaignsTable: {
+        Type: 'AWS::DynamoDB::Table',
+        Properties: {
+          TableName: `xoc-api-ops-${stage}-notification-campaigns`,
+          BillingMode: 'PAY_PER_REQUEST',
+          AttributeDefinitions: [
+            { AttributeName: 'PK', AttributeType: 'S' },
+            { AttributeName: 'SK', AttributeType: 'S' },
+          ],
+          KeySchema: [
+            { AttributeName: 'PK', KeyType: 'HASH' },
+            { AttributeName: 'SK', KeyType: 'RANGE' },
+          ],
+        },
+      },
       SnapshotIngestDlq: {
         Type: 'AWS::SQS::Queue',
         Properties: {
@@ -66,6 +81,12 @@ module.exports = function opsResources(stage) {
       },
       DeviceRegistryTableArn: {
         Value: { 'Fn::GetAtt': ['DeviceRegistryTable', 'Arn'] },
+      },
+      NotificationCampaignsTableName: {
+        Value: { Ref: 'NotificationCampaignsTable' },
+      },
+      NotificationCampaignsTableArn: {
+        Value: { 'Fn::GetAtt': ['NotificationCampaignsTable', 'Arn'] },
       },
       SnapshotIngestQueueUrl: {
         Value: { Ref: 'SnapshotIngestQueue' },

@@ -1,15 +1,18 @@
-"""Phase 1 endpoints for authenticated push-device registration and testing.
+"""Authenticated push-device, controlled-audience, and campaign endpoints.
 
 There is deliberately no RDS lookup here. Tenant, user and role come from the
 trusted request-authorizer context. Device registration is DynamoDB-only for
-this phase; audience resolution and campaigns are explicitly out of scope.
+this service. Campaign persistence and audience selection are DynamoDB-only
+until a safe, existing read-only RDS audience helper is available.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
+import json
 import os
 from typing import Any
+from uuid import uuid4
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -20,10 +23,17 @@ from src.shared.device_registry import (
     device_key,
     device_registry_table,
     get_registered_device,
+    list_active_devices_by_tenant,
+    list_active_devices_by_user,
     update_registered_device,
 )
-from src.shared.errors import ConfigurationError, NotFoundError, ValidationError
+from src.shared.errors import ConfigurationError, ForbiddenError, NotFoundError, ValidationError
 from src.shared.logging import logger
+from src.shared.notification_campaigns import (
+    campaign_key,
+    create_notification_campaign,
+    update_notification_campaign_result,
+)
 
 
 router = APIRouter(tags=["devices", "notifications"])
@@ -31,6 +41,13 @@ router = APIRouter(tags=["devices", "notifications"])
 _DEVICE_STATUS_ACTIVE = "ACTIVE"
 _DEVICE_STATUS_INACTIVE = "INACTIVE"
 _DEVICE_STATUS_INVALID = "INVALID"
+_CAMPAIGN_STATUS_PROCESSING = "PROCESSING"
+_CAMPAIGN_STATUS_COMPLETED = "COMPLETED"
+_CAMPAIGN_STATUS_PARTIAL_FAILED = "PARTIAL_FAILED"
+_CAMPAIGN_STATUS_FAILED = "FAILED"
+_CAMPAIGN_STATUS_NO_DEVICES = "NO_DEVICES"
+_MAX_SYNCHRONOUS_AUDIENCE_DEVICES = 100
+_NOTIFICATION_AUDIENCES = {"SELF", "TENANT_ALL", "TENANT_ADMINS"}
 
 _PLATFORM_CONFIG = {
     "android": {
@@ -232,6 +249,207 @@ def _pinpoint_client():
     return boto3.client("pinpoint", region_name=region)
 
 
+def _push_application_id() -> str:
+    application_id = (os.environ.get("END_USER_MESSAGING_APPLICATION_ID") or "").strip()
+    if not application_id:
+        raise ConfigurationError("END_USER_MESSAGING_APPLICATION_ID is not configured")
+    return application_id
+
+
+def _send_push_to_registered_device(
+    *,
+    tenant_id: str,
+    user_id: str,
+    device_id: str,
+    device: dict[str, Any],
+    title: str,
+    body: str,
+    deep_link: str | None,
+) -> dict[str, Any]:
+    """Send one registered-device push with Phase 1 channel and invalidation rules.
+
+    This is shared by the Phase 1 test endpoint and the Phase 2 campaign
+    endpoint so Android, APNS and APNS_SANDBOX behavior cannot drift.
+    """
+    push_token = str(device.get("pushToken") or "")
+    if not push_token:
+        raise ValidationError("Device registration is invalid")
+
+    channel_type, message_key, apns_environment = _channel_details(device)
+    message: dict[str, Any] = {"Action": "OPEN_APP", "Title": title, "Body": body}
+    if deep_link:
+        message["Data"] = {"deepLink": deep_link}
+
+    logger.info(
+        "push_send_requested",
+        extra=_build_safe_push_log(
+            event="push_send_requested",
+            tenant_id=tenant_id,
+            user_id=user_id,
+            device_id=device_id,
+            device=device,
+            channel_type=channel_type,
+        ),
+    )
+
+    try:
+        response = _pinpoint_client().send_messages(
+            ApplicationId=_push_application_id(),
+            MessageRequest={
+                "Addresses": {push_token: {"ChannelType": channel_type}},
+                "MessageConfiguration": {message_key: message},
+            },
+        )
+    except (ClientError, BotoCoreError) as exc:
+        error_response = exc.response if isinstance(exc, ClientError) else {}
+        metadata = error_response.get("ResponseMetadata", {})
+        error_details = error_response.get("Error", {})
+        status_code = _safe_status_code(metadata.get("HTTPStatusCode"), fallback=502)
+        status_message = _safe_status_message(
+            error_details.get("Code") or error_details.get("Message"),
+            fallback="Push provider request failed",
+        )
+        invalid_token = _is_invalid_device_failure(status_message)
+        if invalid_token:
+            _mark_device_invalid(
+                tenant_id,
+                user_id,
+                device_id,
+                status_code=status_code,
+                status_message=status_message,
+            )
+        logger.warning(
+            "push_send_result",
+            extra=_build_safe_push_log(
+                event="push_send_result",
+                tenant_id=tenant_id,
+                user_id=user_id,
+                device_id=device_id,
+                device=device,
+                channel_type=channel_type,
+                delivery_status="FAILED",
+                status_code=status_code,
+                status_message=status_message,
+                request_id=metadata.get("RequestId"),
+            ),
+        )
+        return {
+            "status": "failed",
+            "deliveryStatus": "FAILED",
+            "statusCode": status_code,
+            "statusMessage": status_message,
+            "channelType": channel_type,
+            "platform": device.get("platform"),
+            "pushProvider": device.get("pushProvider"),
+            "apnsEnvironment": apns_environment,
+            "deviceId": device_id,
+            "invalidToken": invalid_token,
+        }
+
+    endpoint_result = response.get("MessageResponse", {}).get("Result", {}).get(push_token, {})
+    delivery_status = str(endpoint_result.get("DeliveryStatus") or "UNKNOWN")
+    http_status_code = _safe_status_code(response.get("ResponseMetadata", {}).get("HTTPStatusCode"))
+    status_code = _safe_status_code(endpoint_result.get("StatusCode"), fallback=http_status_code)
+    status_message = _safe_status_message(
+        endpoint_result.get("StatusMessage"),
+        fallback="Delivered" if delivery_status == "SUCCESSFUL" else "No status message returned by push provider",
+    )
+    invalid_token = _is_invalid_device_failure(status_message)
+    if invalid_token:
+        _mark_device_invalid(
+            tenant_id,
+            user_id,
+            device_id,
+            status_code=status_code,
+            status_message=status_message,
+        )
+
+    logger.info(
+        "push_send_result",
+        extra=_build_safe_push_log(
+            event="push_send_result",
+            tenant_id=tenant_id,
+            user_id=user_id,
+            device_id=device_id,
+            device=device,
+            channel_type=channel_type,
+            delivery_status=delivery_status,
+            status_code=status_code,
+            status_message=status_message,
+            request_id=response.get("ResponseMetadata", {}).get("RequestId"),
+        ),
+    )
+    return {
+        "status": "sent" if delivery_status == "SUCCESSFUL" else "failed",
+        "deliveryStatus": delivery_status,
+        "statusCode": status_code,
+        "statusMessage": status_message,
+        "channelType": channel_type,
+        "platform": device.get("platform"),
+        "pushProvider": device.get("pushProvider"),
+        "apnsEnvironment": apns_environment,
+        "deviceId": device_id,
+        "invalidToken": invalid_token,
+    }
+
+
+def _notification_audience(payload: dict[str, Any]) -> str:
+    audience_type = _required_string(payload, "audienceType", max_length=32).upper()
+    if audience_type not in _NOTIFICATION_AUDIENCES:
+        raise ValidationError("audienceType must be SELF, TENANT_ALL, or TENANT_ADMINS")
+    return audience_type
+
+
+def _optional_metadata(payload: dict[str, Any]) -> dict[str, Any] | None:
+    metadata = payload.get("metadata")
+    if metadata is None:
+        return None
+    if not isinstance(metadata, dict):
+        raise ValidationError("metadata must be an object")
+    try:
+        serialized = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("metadata must be JSON serializable") from exc
+    if len(serialized) > 16_384:
+        raise ValidationError("metadata exceeds 16384 characters")
+    return metadata
+
+
+def _delegation_is_active(claims: dict[str, Any]) -> bool:
+    return str(claims.get("delegation") or "").strip().lower() in {"true", "1", "yes"}
+
+
+def _authorize_campaign_audience(claims: dict[str, Any], audience_type: str) -> None:
+    role = str(claims.get("role") or "").strip().upper()
+    if role == "USER":
+        if audience_type == "SELF":
+            return
+        raise ForbiddenError("USER role may only send notifications to SELF")
+    if role == "ADMIN":
+        return
+    if role == "ADMIN_XOC":
+        if audience_type not in {"TENANT_ALL", "TENANT_ADMINS"}:
+            raise ForbiddenError("ADMIN_XOC may only send tenant notifications with delegated tenant context")
+        if not _delegation_is_active(claims) or not str(claims.get("tenantId") or claims.get("actingTenantId") or "").strip():
+            raise ForbiddenError("Delegated tenant context required for ADMIN_XOC notifications")
+        return
+    if role == "SUPERADMIN":
+        raise ForbiddenError("SUPERADMIN notification behavior is not defined")
+    raise ForbiddenError("Role is not allowed to send notifications")
+
+
+def _resolve_notification_audience(tenant_id: str, user_id: str, audience_type: str) -> list[dict[str, Any]]:
+    if audience_type == "SELF":
+        return list_active_devices_by_user(tenant_id, user_id, max_devices=_MAX_SYNCHRONOUS_AUDIENCE_DEVICES + 1)
+    if audience_type == "TENANT_ALL":
+        return list_active_devices_by_tenant(tenant_id, max_devices=_MAX_SYNCHRONOUS_AUDIENCE_DEVICES + 1)
+
+    # TODO(push-phase-2): replace this with a known-safe read-only RDS helper
+    # when the project exposes one for active tenant ADMIN user IDs. Do not
+    # infer SQL tables or columns here.
+    raise ValidationError("audience resolver not implemented for TENANT_ADMINS")
+
+
 @router.post("/devices", status_code=201)
 def register_device(payload: dict[str, Any], claims: dict[str, Any] = Depends(require_access_claims)) -> dict[str, Any]:
     tenant_id, user_id, role = _request_identity(claims)
@@ -332,124 +550,137 @@ def send_test_notification(payload: dict[str, Any], claims: dict[str, Any] = Dep
         raise NotFoundError("Device not found")
     if str(device.get("status") or "").upper() != _DEVICE_STATUS_ACTIVE or not device.get("notificationsEnabled"):
         raise ValidationError("Notifications are disabled for this device")
-
-    push_token = str(device.get("pushToken") or "")
-    if not push_token:
-        raise ValidationError("Device registration is invalid")
-    channel_type, message_key, apns_environment = _channel_details(device)
-    application_id = (os.environ.get("END_USER_MESSAGING_APPLICATION_ID") or "").strip()
-    if not application_id:
-        raise ConfigurationError("END_USER_MESSAGING_APPLICATION_ID is not configured")
-
-    message: dict[str, Any] = {"Action": "OPEN_APP", "Title": title, "Body": body}
-    if deep_link:
-        message["Data"] = {"deepLink": deep_link}
-
-    logger.info(
-        "push_send_requested",
-        extra=_build_safe_push_log(
-            event="push_send_requested",
-            tenant_id=tenant_id,
-            user_id=user_id,
-            device_id=device_id,
-            device=device,
-            channel_type=channel_type,
-        ),
+    result = _send_push_to_registered_device(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        device_id=device_id,
+        device=device,
+        title=title,
+        body=body,
+        deep_link=deep_link,
     )
-    try:
-        response = _pinpoint_client().send_messages(
-            ApplicationId=application_id,
-            MessageRequest={
-                "Addresses": {push_token: {"ChannelType": channel_type}},
-                "MessageConfiguration": {message_key: message},
-            },
-        )
-    except (ClientError, BotoCoreError) as exc:
-        error_response = exc.response if isinstance(exc, ClientError) else {}
-        metadata = error_response.get("ResponseMetadata", {})
-        error_details = error_response.get("Error", {})
-        status_code = _safe_status_code(metadata.get("HTTPStatusCode"), fallback=502)
-        status_message = _safe_status_message(
-            error_details.get("Code") or error_details.get("Message"),
-            fallback="Push provider request failed",
-        )
-        if _is_invalid_device_failure(status_message):
-            _mark_device_invalid(
-                tenant_id,
-                user_id,
-                device_id,
-                status_code=status_code,
-                status_message=status_message,
-            )
-        logger.warning(
-            "push_send_result",
-            extra=_build_safe_push_log(
-                event="push_send_result",
+    # Keep the Phase 1 endpoint response contract unchanged. This flag is an
+    # internal aggregate used by Phase 2 campaign accounting only.
+    result.pop("invalidToken", None)
+    return result
+
+
+@router.post("/notifications/send")
+def send_notification_to_audience(
+    payload: dict[str, Any], claims: dict[str, Any] = Depends(require_access_claims)
+) -> dict[str, Any]:
+    audience_type = _notification_audience(payload)
+    _authorize_campaign_audience(claims, audience_type)
+    tenant_id, user_id, role = _request_identity(claims)
+    title = _required_string(payload, "title", max_length=200)
+    body = _required_string(payload, "body", max_length=2000)
+    deep_link = _optional_string(payload, "deepLink", max_length=2048)
+    metadata = _optional_metadata(payload)
+
+    # Validate the configuration before persisting a PROCESSING campaign.
+    _push_application_id()
+    devices = _resolve_notification_audience(tenant_id, user_id, audience_type)
+    if len(devices) > _MAX_SYNCHRONOUS_AUDIENCE_DEVICES:
+        raise ValidationError("Audience exceeds max devices for synchronous send. Use async campaign flow in Phase 3.")
+
+    campaign_id = f"campaign-{uuid4()}"
+    now = _now_iso()
+    campaign = {
+        **campaign_key(tenant_id, campaign_id),
+        "tenantId": tenant_id,
+        "campaignId": campaign_id,
+        "audienceType": audience_type,
+        "title": title,
+        "body": body,
+        "deepLink": deep_link,
+        "metadata": metadata,
+        "status": _CAMPAIGN_STATUS_PROCESSING,
+        "totalDevices": len(devices),
+        "sentCount": 0,
+        "failedCount": 0,
+        "invalidTokenCount": 0,
+        "createdByUserId": user_id,
+        "createdByRole": role.upper(),
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    create_notification_campaign(campaign)
+
+    sent_count = 0
+    failed_count = 0
+    invalid_token_count = 0
+    for device in devices:
+        device_id = str(device.get("deviceId") or "")
+        device_user_id = str(device.get("userId") or "")
+        if not device_id or not device_user_id:
+            failed_count += 1
+            continue
+        try:
+            result = _send_push_to_registered_device(
                 tenant_id=tenant_id,
-                user_id=user_id,
+                user_id=device_user_id,
                 device_id=device_id,
                 device=device,
-                channel_type=channel_type,
-                delivery_status="FAILED",
-                status_code=status_code,
-                status_message=status_message,
-                request_id=metadata.get("RequestId"),
-            ),
-        )
-        return {
-            "status": "failed",
-            "deliveryStatus": "FAILED",
-            "statusCode": status_code,
-            "statusMessage": status_message,
-            "channelType": channel_type,
-            "platform": device.get("platform"),
-            "pushProvider": device.get("pushProvider"),
-            "apnsEnvironment": apns_environment,
-            "deviceId": device_id,
-        }
+                title=title,
+                body=body,
+                deep_link=deep_link,
+            )
+        except (ConfigurationError, ValidationError):
+            failed_count += 1
+            continue
 
-    endpoint_result = response.get("MessageResponse", {}).get("Result", {}).get(push_token, {})
-    delivery_status = str(endpoint_result.get("DeliveryStatus") or "UNKNOWN")
-    http_status_code = _safe_status_code(response.get("ResponseMetadata", {}).get("HTTPStatusCode"))
-    status_code = _safe_status_code(endpoint_result.get("StatusCode"), fallback=http_status_code)
-    status_message = _safe_status_message(
-        endpoint_result.get("StatusMessage"),
-        fallback="Delivered" if delivery_status == "SUCCESSFUL" else "No status message returned by push provider",
-    )
-    request_id = response.get("ResponseMetadata", {}).get("RequestId")
+        if result["deliveryStatus"] == "SUCCESSFUL":
+            sent_count += 1
+        else:
+            failed_count += 1
+        if result.get("invalidToken"):
+            invalid_token_count += 1
 
-    if _is_invalid_device_failure(status_message):
-        _mark_device_invalid(
-            tenant_id,
-            user_id,
-            device_id,
-            status_code=status_code,
-            status_message=status_message,
-        )
+    if not devices:
+        campaign_status = _CAMPAIGN_STATUS_NO_DEVICES
+        response_status = "no_devices"
+    elif sent_count == len(devices):
+        campaign_status = _CAMPAIGN_STATUS_COMPLETED
+        response_status = "completed"
+    elif sent_count == 0:
+        campaign_status = _CAMPAIGN_STATUS_FAILED
+        response_status = "failed"
+    else:
+        campaign_status = _CAMPAIGN_STATUS_PARTIAL_FAILED
+        response_status = "partial_failed"
 
+    updated_at = _now_iso()
+    summary = {
+        "status": campaign_status,
+        "totalDevices": len(devices),
+        "sentCount": sent_count,
+        "failedCount": failed_count,
+        "invalidTokenCount": invalid_token_count,
+        "updatedAt": updated_at,
+    }
+    update_notification_campaign_result(tenant_id, campaign_id, summary)
     logger.info(
-        "push_send_result",
-        extra=_build_safe_push_log(
-            event="push_send_result",
-            tenant_id=tenant_id,
-            user_id=user_id,
-            device_id=device_id,
-            device=device,
-            channel_type=channel_type,
-            delivery_status=delivery_status,
-            status_code=status_code,
-            status_message=status_message,
-            request_id=request_id,
-        ),
+        "notification_campaign_result",
+        extra={
+            "event": "notification_campaign_result",
+            "tenantId": tenant_id,
+            "campaignId": campaign_id,
+            "audienceType": audience_type,
+            "totalDevices": len(devices),
+            "sentCount": sent_count,
+            "failedCount": failed_count,
+            "invalidTokenCount": invalid_token_count,
+            "status": campaign_status,
+            "createdByUserId": user_id,
+            "createdByRole": role.upper(),
+        },
     )
     return {
-        "status": "sent" if delivery_status == "SUCCESSFUL" else "failed",
-        "deliveryStatus": delivery_status,
-        "statusCode": status_code,
-        "statusMessage": status_message,
-        "channelType": channel_type,
-        "platform": device.get("platform"),
-        "pushProvider": device.get("pushProvider"),
-        "apnsEnvironment": apns_environment,
-        "deviceId": device_id,
+        "status": response_status,
+        "campaignId": campaign_id,
+        "audienceType": audience_type,
+        "totalDevices": len(devices),
+        "sentCount": sent_count,
+        "failedCount": failed_count,
+        "invalidTokenCount": invalid_token_count,
     }
