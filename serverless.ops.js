@@ -18,6 +18,21 @@ module.exports = buildService({
     },
     {
       Effect: 'Allow',
+      Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem'],
+      Resource: [`arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-ops-${stage}-notification-event-inbox`],
+    },
+    {
+      Effect: 'Allow',
+      Action: ['events:PutEvents'],
+      Resource: [`arn:aws:events:${'${aws:region}'}:${'${aws:accountId}'}:event-bus/xoc-api-ops-${stage}-notifications-bus`],
+    },
+    {
+      Effect: 'Allow',
+      Action: ['sqs:SendMessage', 'sqs:ReceiveMessage', 'sqs:DeleteMessage', 'sqs:GetQueueAttributes', 'sqs:ChangeMessageVisibility'],
+      Resource: [`arn:aws:sqs:${'${aws:region}'}:${'${aws:accountId}'}:xoc-api-ops-${stage}-notification-events`],
+    },
+    {
+      Effect: 'Allow',
       Action: ['mobiletargeting:SendMessages'],
       Resource: [`arn:aws:mobiletargeting:${'${aws:region}'}:${'${aws:accountId}'}:apps/ccdefb15609849fcaf7a256db92065bf/messages`],
     },
@@ -36,6 +51,11 @@ module.exports = buildService({
     ...commonEnvironment(stage),
     DEVICE_REGISTRY_TABLE_NAME: `xoc-api-ops-${stage}-device-registry`,
     NOTIFICATION_CAMPAIGNS_TABLE_NAME: `xoc-api-ops-${stage}-notification-campaigns`,
+    NOTIFICATION_EVENT_INBOX_TABLE_NAME: `xoc-api-ops-${stage}-notification-event-inbox`,
+    NOTIFICATION_EVENT_BUS_NAME: `xoc-api-ops-${stage}-notifications-bus`,
+    NOTIFICATION_EVENTS_QUEUE_URL: `https://sqs.${'${aws:region}'}.amazonaws.com/${'${aws:accountId}'}/xoc-api-ops-${stage}-notification-events`,
+    NOTIFICATION_MAX_DEVICES_PER_EVENT: '500',
+    NOTIFICATION_SEND_BATCH_SIZE: '100',
     END_USER_MESSAGING_APPLICATION_ID: process.env.END_USER_MESSAGING_APPLICATION_ID || 'ccdefb15609849fcaf7a256db92065bf',
   }),
   functions: (stage) => ({
@@ -45,6 +65,7 @@ module.exports = buildService({
       include: [
         'src/handlers/domains/push.py',
         'src/handlers/routes/devices.py',
+        'src/notifications/**',
         'src/shared/**',
         'requirements.crypto.txt',
       ],
@@ -53,6 +74,29 @@ module.exports = buildService({
         protectedRoute(stage, 'DELETE', '/devices/{deviceId}'),
         protectedRoute(stage, 'POST', '/notifications/test'),
         protectedRoute(stage, 'POST', '/notifications/send'),
+        protectedRoute(stage, 'POST', '/notifications/events/test'),
+      ],
+    }),
+    notificationEventsWorker: lambdaConfig(stage, {
+      handler: 'src/handlers/workers/notification_events.handler',
+      description: 'Processes EventBridge notification events and sends tenant push notifications',
+      timeout: 120,
+      memorySize: 512,
+      include: [
+        'src/handlers/workers/notification_events.py',
+        'src/handlers/routes/devices.py',
+        'src/shared/**',
+        'src/notifications/**',
+        'requirements.crypto.txt',
+      ],
+      events: [
+        {
+          sqs: {
+            arn: { 'Fn::GetAtt': ['NotificationEventsQueue', 'Arn'] },
+            batchSize: 5,
+            functionResponseType: 'ReportBatchItemFailures',
+          },
+        },
       ],
     }),
     scansApi: lambdaConfig(stage, {

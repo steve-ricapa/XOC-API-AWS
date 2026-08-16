@@ -34,6 +34,11 @@ from src.shared.notification_campaigns import (
     create_notification_campaign,
     update_notification_campaign_result,
 )
+from src.notifications.events import (
+    NotificationEventValidationError,
+    build_notification_event,
+    publish_notification_requested,
+)
 
 
 router = APIRouter(tags=["devices", "notifications"])
@@ -438,11 +443,17 @@ def _authorize_campaign_audience(claims: dict[str, Any], audience_type: str) -> 
     raise ForbiddenError("Role is not allowed to send notifications")
 
 
-def _resolve_notification_audience(tenant_id: str, user_id: str, audience_type: str) -> list[dict[str, Any]]:
+def _resolve_notification_audience(
+    tenant_id: str,
+    user_id: str,
+    audience_type: str,
+    *,
+    max_devices: int = _MAX_SYNCHRONOUS_AUDIENCE_DEVICES + 1,
+) -> list[dict[str, Any]]:
     if audience_type == "SELF":
-        return list_active_devices_by_user(tenant_id, user_id, max_devices=_MAX_SYNCHRONOUS_AUDIENCE_DEVICES + 1)
+        return list_active_devices_by_user(tenant_id, user_id, max_devices=max_devices)
     if audience_type == "TENANT_ALL":
-        return list_active_devices_by_tenant(tenant_id, max_devices=_MAX_SYNCHRONOUS_AUDIENCE_DEVICES + 1)
+        return list_active_devices_by_tenant(tenant_id, max_devices=max_devices)
 
     # TODO(push-phase-2): replace this with a known-safe read-only RDS helper
     # when the project exposes one for active tenant ADMIN user IDs. Do not
@@ -684,3 +695,42 @@ def send_notification_to_audience(
         "failedCount": failed_count,
         "invalidTokenCount": invalid_token_count,
     }
+
+
+@router.post("/notifications/events/test", status_code=202)
+def publish_notification_event_for_qa(
+    payload: dict[str, Any], claims: dict[str, Any] = Depends(require_access_claims)
+) -> dict[str, Any]:
+    """Admin-only QA entry point for EventBridge -> SQS -> worker validation."""
+    role = str(claims.get("role") or "").strip().upper()
+    if role == "ADMIN_XOC":
+        if not _delegation_is_active(claims) or not str(claims.get("tenantId") or claims.get("actingTenantId") or "").strip():
+            raise ForbiddenError("Delegated tenant context required for ADMIN_XOC notifications")
+    elif role != "ADMIN":
+        raise ForbiddenError("Admin access required to publish notification test events")
+
+    tenant_id, user_id, _ = _request_identity(claims)
+    audience_type = _notification_audience(payload)
+    if audience_type == "TENANT_ADMINS":
+        raise ValidationError("audience resolver not implemented for TENANT_ADMINS")
+    event_type = _required_string(payload, "eventType", max_length=120)
+    metadata = _optional_metadata(payload)
+    try:
+        event = build_notification_event(
+            event_type=event_type,
+            tenant_id=tenant_id,
+            audience_type=audience_type,
+            recipient_user_id=user_id if audience_type == "SELF" else None,
+            title=_required_string(payload, "title", max_length=200),
+            body=_required_string(payload, "body", max_length=2000),
+            deep_link=_optional_string(payload, "deepLink", max_length=2048),
+            priority=_optional_string(payload, "priority", max_length=16) or "normal",
+            resource_type=_optional_string(payload, "resourceType", max_length=120),
+            resource_id=_optional_string(payload, "resourceId", max_length=256),
+            dedupe_key=_optional_string(payload, "dedupeKey", max_length=512),
+            metadata=metadata,
+        )
+    except NotificationEventValidationError as exc:
+        raise ValidationError(str(exc)) from exc
+    result = publish_notification_requested(event)
+    return {"status": "queued", "eventId": result["eventId"], "eventBusName": result["eventBusName"]}

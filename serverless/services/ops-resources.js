@@ -33,6 +33,108 @@ module.exports = function opsResources(stage) {
           ],
         },
       },
+      NotificationEventInboxTable: {
+        Type: 'AWS::DynamoDB::Table',
+        Properties: {
+          TableName: `xoc-api-ops-${stage}-notification-event-inbox`,
+          BillingMode: 'PAY_PER_REQUEST',
+          AttributeDefinitions: [
+            { AttributeName: 'PK', AttributeType: 'S' },
+            { AttributeName: 'SK', AttributeType: 'S' },
+          ],
+          KeySchema: [
+            { AttributeName: 'PK', KeyType: 'HASH' },
+            { AttributeName: 'SK', KeyType: 'RANGE' },
+          ],
+        },
+      },
+      NotificationEventsBus: {
+        Type: 'AWS::Events::EventBus',
+        Properties: {
+          Name: `xoc-api-ops-${stage}-notifications-bus`,
+        },
+      },
+      NotificationEventsDlq: {
+        Type: 'AWS::SQS::Queue',
+        Properties: {
+          QueueName: `xoc-api-ops-${stage}-notification-events-dlq`,
+          MessageRetentionPeriod: 1209600,
+        },
+      },
+      NotificationEventsQueue: {
+        Type: 'AWS::SQS::Queue',
+        Properties: {
+          QueueName: `xoc-api-ops-${stage}-notification-events`,
+          VisibilityTimeout: 120,
+          MessageRetentionPeriod: 345600,
+          RedrivePolicy: {
+            deadLetterTargetArn: { 'Fn::GetAtt': ['NotificationEventsDlq', 'Arn'] },
+            maxReceiveCount: 3,
+          },
+        },
+      },
+      NotificationEventsRule: {
+        Type: 'AWS::Events::Rule',
+        Properties: {
+          Name: `xoc-api-ops-${stage}-notification-requested`,
+          EventBusName: { Ref: 'NotificationEventsBus' },
+          EventPattern: {
+            source: ['xoc.notifications'],
+            'detail-type': ['xoc.notification.requested'],
+          },
+          Targets: [
+            {
+              Arn: { 'Fn::GetAtt': ['NotificationEventsQueue', 'Arn'] },
+              Id: 'NotificationEventsQueueTarget',
+              RoleArn: { 'Fn::GetAtt': ['NotificationEventsEventBridgeRole', 'Arn'] },
+              InputTransformer: {
+                InputPathsMap: { detail: '$.detail' },
+                InputTemplate: '{"detail": <detail>}',
+              },
+            },
+          ],
+        },
+      },
+      NotificationEventsEventBridgeRole: {
+        Type: 'AWS::IAM::Role',
+        Properties: {
+          AssumeRolePolicyDocument: {
+            Version: '2012-10-17',
+            Statement: [{ Effect: 'Allow', Principal: { Service: 'events.amazonaws.com' }, Action: 'sts:AssumeRole' }],
+          },
+          Policies: [
+            {
+              PolicyName: 'NotificationEventsToSqsPolicy',
+              PolicyDocument: {
+                Version: '2012-10-17',
+                Statement: [{
+                  Effect: 'Allow',
+                  Action: ['sqs:SendMessage'],
+                  Resource: [{ 'Fn::GetAtt': ['NotificationEventsQueue', 'Arn'] }],
+                }],
+              },
+            },
+          ],
+        },
+      },
+      NotificationEventsQueuePolicy: {
+        Type: 'AWS::SQS::QueuePolicy',
+        Properties: {
+          Queues: [{ Ref: 'NotificationEventsQueue' }],
+          PolicyDocument: {
+            Version: '2012-10-17',
+            Statement: [{
+              Effect: 'Allow',
+              Principal: { Service: 'events.amazonaws.com' },
+              Action: 'sqs:SendMessage',
+              Resource: { 'Fn::GetAtt': ['NotificationEventsQueue', 'Arn'] },
+              Condition: {
+                ArnEquals: { 'aws:SourceArn': { 'Fn::GetAtt': ['NotificationEventsRule', 'Arn'] } },
+              },
+            }],
+          },
+        },
+      },
       SnapshotIngestDlq: {
         Type: 'AWS::SQS::Queue',
         Properties: {
@@ -87,6 +189,30 @@ module.exports = function opsResources(stage) {
       },
       NotificationCampaignsTableArn: {
         Value: { 'Fn::GetAtt': ['NotificationCampaignsTable', 'Arn'] },
+      },
+      NotificationEventInboxTableName: {
+        Value: { Ref: 'NotificationEventInboxTable' },
+      },
+      NotificationEventInboxTableArn: {
+        Value: { 'Fn::GetAtt': ['NotificationEventInboxTable', 'Arn'] },
+      },
+      NotificationEventsBusName: {
+        Value: { Ref: 'NotificationEventsBus' },
+      },
+      NotificationEventsBusArn: {
+        Value: { 'Fn::GetAtt': ['NotificationEventsBus', 'Arn'] },
+      },
+      NotificationEventsQueueUrl: {
+        Value: { Ref: 'NotificationEventsQueue' },
+      },
+      NotificationEventsQueueArn: {
+        Value: { 'Fn::GetAtt': ['NotificationEventsQueue', 'Arn'] },
+      },
+      NotificationEventsDlqUrl: {
+        Value: { Ref: 'NotificationEventsDlq' },
+      },
+      NotificationEventsDlqArn: {
+        Value: { 'Fn::GetAtt': ['NotificationEventsDlq', 'Arn'] },
       },
       SnapshotIngestQueueUrl: {
         Value: { Ref: 'SnapshotIngestQueue' },
