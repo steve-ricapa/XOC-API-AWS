@@ -56,10 +56,22 @@ class NotificationEventsTests(unittest.TestCase):
 
     def test_report_generated_builder_uses_self_when_recipient_exists(self) -> None:
         event = events.build_notification_event_for_report_generated(
-            tenant_id="8", report_id="report-001", recipient_user_id="18"
+            tenant_id="8",
+            report_id="report-001",
+            recipient_user_id="18",
+            report_type="minority_report",
+            report_title="Reporte semanal",
         )
         self.assertEqual("SELF", event["audienceType"])
         self.assertEqual("18", event["recipientUserId"])
+        self.assertEqual("report.generated:8:report-001", event["dedupeKey"])
+        self.assertEqual(
+            "xoc://sophia-docs?documentId=report-001&action=download-docx",
+            event["deepLink"],
+        )
+        self.assertEqual("minority_report", event["metadata"]["reportType"])
+        self.assertEqual("Reporte semanal", event["metadata"]["reportTitle"])
+        self.assertTrue(event["metadata"]["downloadReady"])
 
     def test_critical_vulnerability_builder_uses_tenant_all(self) -> None:
         event = events.build_notification_event_for_critical_vulnerability(tenant_id="8", finding_id="finding-001")

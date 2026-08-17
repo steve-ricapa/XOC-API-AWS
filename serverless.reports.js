@@ -5,15 +5,20 @@ const service = buildService({
   service: 'xoc-api-reports',
   attachToSharedHttpApi: true,
   iam: { reports: true, database: true, vpc: true },
-  additionalIamStatements: (stage) => (
-    stage === 'prod'
+  additionalIamStatements: (stage) => ([
+    ...(stage === 'prod'
       ? [{
           Effect: 'Allow',
           Action: ['secretsmanager:GetSecretValue'],
           Resource: [`arn:aws:secretsmanager:${'${aws:region}'}:${'${aws:accountId}'}:secret:xoc/api/${stage}/minority-foundry*`],
         }]
-      : []
-  ),
+      : []),
+    {
+      Effect: 'Allow',
+      Action: ['events:PutEvents'],
+      Resource: [`arn:aws:events:${'${aws:region}'}:${'${aws:accountId}'}:event-bus/xoc-api-ops-${stage}-notifications-bus`],
+    },
+  ]),
   pythonRequirements: {
     fileName: 'requirements.reports.txt',
     dockerizePip: true,
@@ -26,6 +31,7 @@ const service = buildService({
     REPORT_REQUESTS_QUEUE_URL: `https://sqs.${'${aws:region}'}.amazonaws.com/${'${aws:accountId}'}/xoc-api-reports-${stage}-report-requests`,
     REPORT_WORKFLOW_STATE_MACHINE_ARN: `arn:aws:states:${'${aws:region}'}:${'${aws:accountId}'}:stateMachine:xoc-api-reports-${stage}-report-workflow`,
     REPORT_EVENT_BUS_NAME: `xoc-api-reports-${stage}-bus`,
+    NOTIFICATION_EVENT_BUS_NAME: `xoc-api-ops-${stage}-notifications-bus`,
     USE_AZURE_FOUNDRY: process.env.USE_AZURE_FOUNDRY || 'true',
     MINORITY_FOUNDRY_SECRET_ARN: process.env.MINORITY_FOUNDRY_SECRET_ARN || (stage === 'prod' ? `xoc/api/${stage}/minority-foundry` : ''),
     AZURE_FOUNDRY_PROJECT_ENDPOINT: process.env.AZURE_FOUNDRY_PROJECT_ENDPOINT || '',
@@ -147,6 +153,7 @@ const service = buildService({
       include: [
         'src/handlers/workers/report_complete.py',
         'src/reports/**',
+        'src/notifications/**',
         'src/shared/**',
         'requirements.reports.txt',
       ],

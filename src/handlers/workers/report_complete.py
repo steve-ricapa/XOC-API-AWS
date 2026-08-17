@@ -1,8 +1,47 @@
 from __future__ import annotations
 
+from src.notifications.events import (
+    build_notification_event_for_report_generated,
+    publish_notification_requested,
+)
 from src.reports.store import update_document_status
 from src.reports.storage import generate_download_url
 from src.shared.logging import logger
+
+
+def _publish_report_generated_notification(
+    *, tenant_id: int, document_id: str, document_type: str | None
+) -> None:
+    """Publish a ready-document notification without affecting report completion."""
+    try:
+        notification_event = build_notification_event_for_report_generated(
+            tenant_id=tenant_id,
+            report_id=document_id,
+            report_type=document_type,
+        )
+        publish_notification_requested(notification_event)
+        logger.info(
+            "report_generated_notification_published",
+            extra={
+                "event": "report_generated_notification_published",
+                "tenantId": tenant_id,
+                "reportId": document_id,
+                "eventId": notification_event["eventId"],
+            },
+        )
+    except Exception as exc:
+        # Notification delivery is asynchronous and must not undo a generated
+        # report or prevent the authenticated download path from working.
+        logger.warning(
+            "report_generated_notification_publish_failed",
+            extra={
+                "event": "report_generated_notification_publish_failed",
+                "tenantId": tenant_id,
+                "reportId": document_id,
+                "errorType": type(exc).__name__,
+                "safeMessage": "Notification event publication failed",
+            },
+        )
 
 
 def handler(event: dict, context) -> dict:
@@ -64,7 +103,29 @@ def handler(event: dict, context) -> dict:
     if preview_format:
         extra["preview_format"] = preview_format
 
-    update_document_status(tenant_id, document_id, "COMPLETED", **extra)
+    completed_document = update_document_status(tenant_id, document_id, "COMPLETED", **extra)
+
+    # This worker receives s3Key/s3Bucket only after report_generate_docx has
+    # validated and uploaded the DOCX. Failed or intermediate reports never
+    # reach this publication point.
+    if s3_key and s3_bucket:
+        _publish_report_generated_notification(
+            tenant_id=tenant_id,
+            document_id=str(document_id),
+            document_type=str(
+                completed_document.get("document_type") or event.get("documentType") or ""
+            ) or None,
+        )
+    else:
+        logger.warning(
+            "report_generated_notification_skipped",
+            extra={
+                "event": "report_generated_notification_skipped",
+                "tenantId": tenant_id,
+                "reportId": document_id,
+                "reason": "docx_storage_not_ready",
+            },
+        )
 
     download_url = generate_download_url(
         s3_key,

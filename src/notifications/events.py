@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import json
 import os
 from typing import Any
+from urllib.parse import quote
 from uuid import uuid4
 
 import boto3
@@ -180,20 +181,40 @@ def build_notification_event(
 
 
 def build_notification_event_for_report_generated(
-    *, tenant_id: str | int, report_id: str, recipient_user_id: str | int | None = None
+    *,
+    tenant_id: str | int,
+    report_id: str,
+    recipient_user_id: str | int | None = None,
+    report_type: str | None = None,
+    report_title: str | None = None,
 ) -> dict[str, Any]:
+    normalized_report_id = str(report_id).strip()
+    metadata: dict[str, Any] = {
+        "reportId": normalized_report_id,
+        "downloadReady": True,
+    }
+    if report_type:
+        metadata["reportType"] = str(report_type).strip()
+    if report_title:
+        metadata["reportTitle"] = str(report_title).strip()
+
     return build_notification_event(
         event_type="report.generated",
         tenant_id=tenant_id,
         audience_type="SELF" if recipient_user_id is not None else "TENANT_ALL",
         recipient_user_id=recipient_user_id,
         title="Reporte generado",
-        body="Tu reporte ya está disponible.",
-        deep_link=f"xoc://reports/{report_id}",
+        body="El reporte ya está listo para descargar.",
+        # Sophia Docs is the existing mobile document-download screen. Do not
+        # expose the S3 key or a presigned download URL in the notification.
+        deep_link=(
+            "xoc://sophia-docs?"
+            f"documentId={quote(normalized_report_id, safe='')}&action=download-docx"
+        ),
         resource_type="report",
-        resource_id=report_id,
-        dedupe_key=f"report.generated:{tenant_id}:{report_id}",
-        metadata={"reportId": report_id},
+        resource_id=normalized_report_id,
+        dedupe_key=f"report.generated:{tenant_id}:{normalized_report_id}",
+        metadata=metadata,
     )
 
 
