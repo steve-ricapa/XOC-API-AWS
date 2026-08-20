@@ -228,6 +228,7 @@ module.exports = buildService({
         protectedRoute(stage, 'GET', '/preventions/issues/monitoring'),
         protectedRoute(stage, 'GET', '/systems/status'),
         protectedRoute(stage, 'GET', '/systems'),
+        protectedRoute(stage, 'POST', '/systems'),
         protectedRoute(stage, 'GET', '/systems/{systemId}'),
         protectedRoute(stage, 'GET', '/vulnerabilities'),
         protectedRoute(stage, 'GET', '/vulnerabilities/{vulnId}'),

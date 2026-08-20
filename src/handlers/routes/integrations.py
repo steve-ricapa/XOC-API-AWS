@@ -13,7 +13,7 @@ from src.shared.errors import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
-VALID_PROVIDERS = ["palo_alto", "splunk", "wazuh", "meraki", "zabbix", "nessus", "uptime_kuma"]
+VALID_PROVIDERS = ["palo_alto", "splunk", "wazuh", "meraki", "zabbix", "nessus", "uptime_kuma", "xoc_appliance"]
 
 
 def _get_integration_or_404(session: Session, tenant_id: int, integration_id: int) -> Integration:
