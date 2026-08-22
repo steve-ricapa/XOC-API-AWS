@@ -171,6 +171,18 @@ def handler(event: dict, context) -> dict:
         }
 
     if phase == "execute":
+        all_success = bool(data.get("all_success", False))
+        if all_success:
+            try:
+                from src.shared.tickets_store import update_ticket_fields
+                update_ticket_fields(int(tenant_id), ticket_id, {
+                    "status": "RESUELTO",
+                    "execution_status": "EXECUTED",
+                    "execution_summary": str(data.get("step_results", data))[:500],
+                })
+                logger.info("Ticket %s marked as RESUELTO after successful execution", ticket_id)
+            except Exception as exc:
+                logger.error("Failed to update ticket %s to RESUELTO: %s", ticket_id, exc)
         return {
             "executionResult": data,
             "ticketId": ticket_id,
