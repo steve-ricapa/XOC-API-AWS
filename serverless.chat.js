@@ -3,7 +3,7 @@ const { buildService, lambdaConfig, protectedRoute } = require('./serverless/ser
 module.exports = buildService({
   service: 'xoc-api-chat',
   attachToSharedHttpApi: true,
-  iam: { database: true, vpc: true, jwt: true },
+  iam: { database: true, vpc: true, jwt: true, dynamo: true, events: true },
   pythonRequirements: {
     fileName: 'requirements.crypto.txt',
     dockerizePip: true,
