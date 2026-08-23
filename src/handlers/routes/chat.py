@@ -65,6 +65,7 @@ def _resolve_agent_routes(session: Session, tenant_id: int) -> dict[str, str]:
             "function_route_sophia_history": runtime_settings.function_route_sophia_history or global_history,
             "function_route_sophia_delete": runtime_settings.function_route_sophia_delete or global_delete,
             "function_route_victor": runtime_settings.function_route_victor or global_victor,
+            "extra_json": getattr(runtime_settings, "extra_json", None) or {},
         }
 
     if global_base_url:
@@ -74,6 +75,7 @@ def _resolve_agent_routes(session: Session, tenant_id: int) -> dict[str, str]:
             "function_route_sophia_history": global_history,
             "function_route_sophia_delete": global_delete,
             "function_route_victor": global_victor,
+            "extra_json": {},
         }
 
     return {
@@ -82,6 +84,7 @@ def _resolve_agent_routes(session: Session, tenant_id: int) -> dict[str, str]:
         "function_route_sophia_history": global_history,
         "function_route_sophia_delete": global_delete,
         "function_route_victor": global_victor,
+        "extra_json": {},
     }
 
 
@@ -226,7 +229,22 @@ _TICKET_CREATION_TRIGGERS = [
     "clean up", "remover", "eliminar script", "remove script", "delete script",
     "limpiar servidor", "clean server", "fix server", "arreglar servidor",
     "malicious", "malware", "virus", "trojan", "backdoor", "ransomware",
+    "sospechoso", "suspicious", "amenaza", "threat", "compromiso", "compromised",
 ]
+
+
+def _extract_filename(message: str) -> str | None:
+    """Try to extract a filename from the user message."""
+    patterns = [
+        r"(?:archivo|file)\s+(?:llamado?|named?|called?)?\s*[`:]*\s*[\"']?([^\s\"']+)[\"']?",
+        r"([\/\w\-\.]+\.(?:sh|py|exe|bat|ps1|js|php|pl|rb|c|cpp|java|tmp|bak|log))",
+        r"suspicious[_\w]*\.\w+",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, message, re.IGNORECASE)
+        if match:
+            return match.group(0).strip()
+    return None
 
 
 def _detect_ticket_creation_intent(message: str) -> dict | None:
@@ -235,8 +253,13 @@ def _detect_ticket_creation_intent(message: str) -> dict | None:
         return None
     if not any(t in lower for t in _TICKET_CREATION_TRIGGERS):
         return None
-    subject = message.strip()[:120]
-    return {"subject": subject, "description": message.strip(), "severity": "high"}
+    filename = _extract_filename(message)
+    if filename:
+        subject = f"Eliminación de archivo sospechoso: {filename}"
+    else:
+        subject = "Incidente de seguridad reportado"
+    description = message.strip()
+    return {"subject": subject, "description": description, "severity": "high"}
 
 
 def _maybe_create_ticket_from_intent(
@@ -244,28 +267,41 @@ def _maybe_create_ticket_from_intent(
     user_message: str,
     tenant_id: int,
     user_id: int | None,
+    tenant_extra: dict | None = None,
 ) -> dict:
     if cleaned_payload.get("ticket_created"):
         return cleaned_payload
     intent = _detect_ticket_creation_intent(user_message)
     if not intent:
         return cleaned_payload
+    server_ip = (tenant_extra or {}).get("default_server_ip", "")
+    server_name = (tenant_extra or {}).get("server_name", "")
+    description_parts = [intent["description"]]
+    if server_ip:
+        description_parts.append(f"Servidor: {server_ip}" + (f" ({server_name})" if server_name else ""))
+    full_description = ". ".join(description_parts)
+    metadata = {"source": "sophia_chat_intent_detection"}
+    if server_ip:
+        metadata["server_ip"] = server_ip
+    if server_name:
+        metadata["server_name"] = server_name
     try:
         from src.handlers.domains.tickets_dynamo import create_ticket_from_agent
         result = create_ticket_from_agent(
             tenant_id=int(tenant_id),
             subject=intent["subject"],
-            description=intent["description"],
+            description=full_description,
             severity=intent["severity"],
-            metadata={"source": "sophia_chat_intent_detection"},
+            metadata=metadata,
             user_id=user_id,
         )
         cleaned_payload["ticket_created"] = True
         cleaned_payload["ticket_id"] = result["ticket_id"]
         logger.info(
-            "Auto-created ticket from intent detection: tenant=%s ticket=%s",
+            "Auto-created ticket from intent detection: tenant=%s ticket=%s server=%s",
             tenant_id,
             result["ticket_id"],
+            server_ip or "unknown",
         )
     except Exception as exc:
         logger.warning("Failed to auto-create ticket from intent detection: %s", exc)
@@ -569,7 +605,8 @@ def proxy_chat(
                 cleaned_payload, int(tenant_id), current_user.id
             )
             cleaned_payload = _maybe_create_ticket_from_intent(
-                cleaned_payload, message, int(tenant_id), current_user.id
+                cleaned_payload, message, int(tenant_id), current_user.id,
+                tenant_extra=runtime_settings.get("extra_json"),
             )
             response_thread_id = response_payload.get("thread_id") if isinstance(response_payload, dict) else None
 
