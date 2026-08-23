@@ -167,6 +167,97 @@ def _clean_agent_response(payload: dict) -> dict:
     return cleaned or payload
 
 
+def _maybe_create_ticket_from_action_plan(
+    cleaned_payload: dict,
+    tenant_id: int,
+    user_id: int | None,
+) -> dict:
+    """If SOPHIA returned an action_plan with a subject, auto-create a ticket."""
+    action_plan = cleaned_payload.get("action_plan")
+    if not action_plan or not isinstance(action_plan, dict):
+        return cleaned_payload
+
+    subject = action_plan.get("subject")
+    if not subject:
+        return cleaned_payload
+
+    try:
+        from src.handlers.domains.tickets_dynamo import create_ticket_from_agent
+
+        result = create_ticket_from_agent(
+            tenant_id=tenant_id,
+            subject=subject,
+            description=action_plan.get("description", ""),
+            severity=action_plan.get("severity", "medium"),
+            metadata={"source": "sophia_chat", "action_plan": action_plan},
+            user_id=user_id,
+        )
+        cleaned_payload["ticket_created"] = True
+        cleaned_payload["ticket_id"] = result["ticket_id"]
+        logger.info(
+            "Auto-created ticket from SOPHIA action_plan: tenant=%s ticket=%s",
+            tenant_id,
+            result["ticket_id"],
+        )
+    except Exception as exc:
+        logger.warning("Failed to auto-create ticket from action_plan: %s", exc)
+
+    return cleaned_payload
+
+
+_TICKET_CREATION_TRIGGERS = [
+    "crear ticket", "create ticket", "generar ticket", "abrir ticket",
+    "eliminar archivo", "remove file", "delete file", "borrar archivo",
+    "eliminar malware", "remove malware", "quitar archivo", "remover archivo",
+    "clean up", "remover", "eliminar script", "remove script", "delete script",
+    "limpiar servidor", "clean server", "fix server", "arreglar servidor",
+    "malicious", "malware", "virus", "trojan", "backdoor", "ransomware",
+]
+
+
+def _detect_ticket_creation_intent(message: str) -> dict | None:
+    lower = (message or "").strip().lower()
+    if not lower or len(lower) < 10:
+        return None
+    if not any(t in lower for t in _TICKET_CREATION_TRIGGERS):
+        return None
+    subject = message.strip()[:120]
+    return {"subject": subject, "description": message.strip(), "severity": "high"}
+
+
+def _maybe_create_ticket_from_intent(
+    cleaned_payload: dict,
+    user_message: str,
+    tenant_id: int,
+    user_id: int | None,
+) -> dict:
+    if cleaned_payload.get("ticket_created"):
+        return cleaned_payload
+    intent = _detect_ticket_creation_intent(user_message)
+    if not intent:
+        return cleaned_payload
+    try:
+        from src.handlers.domains.tickets_dynamo import create_ticket_from_agent
+        result = create_ticket_from_agent(
+            tenant_id=int(tenant_id),
+            subject=intent["subject"],
+            description=intent["description"],
+            severity=intent["severity"],
+            metadata={"source": "sophia_chat_intent_detection"},
+            user_id=user_id,
+        )
+        cleaned_payload["ticket_created"] = True
+        cleaned_payload["ticket_id"] = result["ticket_id"]
+        logger.info(
+            "Auto-created ticket from intent detection: tenant=%s ticket=%s",
+            tenant_id,
+            result["ticket_id"],
+        )
+    except Exception as exc:
+        logger.warning("Failed to auto-create ticket from intent detection: %s", exc)
+    return cleaned_payload
+
+
 def _build_session_title(message: str, max_length: int = 160) -> str:
     normalized = (message or "").strip()
     if not normalized:
@@ -460,6 +551,12 @@ def proxy_chat(
         if sophia_response.status_code == 200:
             response_payload = sophia_response.json()
             cleaned_payload = _clean_agent_response(response_payload)
+            cleaned_payload = _maybe_create_ticket_from_action_plan(
+                cleaned_payload, int(tenant_id), current_user.id
+            )
+            cleaned_payload = _maybe_create_ticket_from_intent(
+                cleaned_payload, message, int(tenant_id), current_user.id
+            )
             response_thread_id = response_payload.get("thread_id") if isinstance(response_payload, dict) else None
 
             if response_thread_id:
