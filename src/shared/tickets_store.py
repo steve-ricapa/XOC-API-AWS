@@ -85,7 +85,12 @@ def build_secondary_index_fields(tenant_id: int, ticket_id: str, status: str, cr
 
 
 def serialize_ticket(item: dict) -> dict:
-    serialized = {k: v for k, v in item.items() if not k.startswith(("pk", "sk", "gsi"))}
+    serialized = {}
+    for k, v in item.items():
+        if k.startswith(("pk", "sk", "gsi")):
+            continue
+        if v is not None:
+            serialized[k] = v
     if "ticket_id" in serialized:
         serialized["id"] = serialized["ticket_id"]
     if "tenant_id" in serialized:

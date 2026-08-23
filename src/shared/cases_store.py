@@ -164,6 +164,11 @@ def list_tenant_cases(tenant_id: int, status: str | None = None, limit: int = 50
 
 
 def search_similar_cases(tenant_id: int, subject: str) -> dict | None:
+    """Search for similar resolved cases using keyword matching with scoring.
+
+    Matches against both subject and description. Uses keyword expansion
+    for common Spanish security terms to improve correlation.
+    """
     response = table.query(
         IndexName="TenantIndex",
         KeyConditionExpression=Key("gsi3pk").eq(tenant_index_pk(tenant_id)),
@@ -174,12 +179,50 @@ def search_similar_cases(tenant_id: int, subject: str) -> dict | None:
     keywords = [w for w in subject_lower.split() if len(w) > 3]
     if not keywords:
         return None
+
+    # Expand keywords with synonyms for better matching
+    synonym_map = {
+        "eliminar": ["remover", "borrar", "quitar", "destruir", "remocion"],
+        "remover": ["eliminar", "borrar", "quitar"],
+        "archivo": ["fichero", "documento", "data"],
+        "malicioso": ["virus", "trojan", "malware", "amenaza", "infeccion"],
+        "sospechoso": ["anomalo", "inusual", "no_autorizado"],
+        "compromiso": ["breach", "violacion", "acceso_no_autorizado"],
+        "proceso": ["servicio", "daemon", "pid"],
+        "conexion": ["network", "red", "trafico"],
+        "instalar": ["instalacion", "deploy", "desplegar"],
+        "configurar": ["configuracion", "setup", "ajustar"],
+    }
+
+    expanded_keywords = set(keywords)
+    for kw in keywords:
+        for key, synonyms in synonym_map.items():
+            if kw == key or kw in synonyms:
+                expanded_keywords.update([key] + synonyms)
+
+    best_match = None
+    best_score = 0
+
     for item in items:
         if item.get("status") != "RESUELTO":
             continue
         item_subject = (item.get("subject") or "").lower()
-        if any(kw in item_subject for kw in keywords):
-            return item
+        item_description = (item.get("description") or "").lower()
+        item_text = f"{item_subject} {item_description}"
+
+        score = 0
+        for kw in expanded_keywords:
+            if kw in item_text:
+                score += 1
+            elif kw in item_subject:
+                score += 2  # Subject match is worth more
+
+        if score > best_score:
+            best_score = score
+            best_match = item
+
+    if best_score >= 2:  # Require at least 2 keyword matches
+        return best_match
     return None
 
 
