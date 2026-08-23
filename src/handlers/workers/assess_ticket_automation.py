@@ -63,7 +63,7 @@ def _resolve_victor_endpoint(tenant_id: int) -> tuple[str | None, str, str]:
     return None, default_route, "fallback"
 
 
-def _payload_for(phase: str, subject: str, description: str, ticket_id: str, tenant_id: int, plan_from_event) -> dict:
+def _payload_for(phase: str, subject: str, description: str, ticket_id: str, tenant_id: int, plan_from_event, similar_case_plan=None, similar_case_solution=None) -> dict:
     payload = {
         "message": f"[{phase}] Ticket: {subject}. {description}",
         "subject": subject,
@@ -74,6 +74,10 @@ def _payload_for(phase: str, subject: str, description: str, ticket_id: str, ten
     }
     if plan_from_event is not None:
         payload["plan"] = plan_from_event
+    if similar_case_plan is not None:
+        payload["similar_case_plan"] = similar_case_plan
+    if similar_case_solution is not None:
+        payload["similar_case_solution"] = similar_case_solution
     return payload
 
 
@@ -120,7 +124,9 @@ def handler(event: dict, context) -> dict:
     timeout_seconds = int(os.environ.get("VICTOR_TIMEOUT_SECONDS", "300"))
 
     plan_from_event = event.get("plan")
-    payload = _payload_for(phase, subject, description, ticket_id, tenant_id, plan_from_event)
+    similar_case_plan = event.get("similarCasePlan")
+    similar_case_solution = event.get("similarCaseSolution")
+    payload = _payload_for(phase, subject, description, ticket_id, tenant_id, plan_from_event, similar_case_plan, similar_case_solution)
 
     try:
         response = requests.post(

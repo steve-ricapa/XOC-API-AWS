@@ -86,7 +86,7 @@ module.exports = function automationResources(stage) {
                   },
                   CheckSimilarCase: {
                     Type: 'Choice',
-                    Choices: [{ Variable: '$.similarCases.similarCaseFound', BooleanEquals: true, Next: 'GenerateCaseFromSimilar' }],
+                    Choices: [{ Variable: '$.similarCases.similarCaseFound', BooleanEquals: true, Next: 'AssessTicketPlanWithSimilar' }],
                     Default: 'AssessTicketPlan',
                   },
                   AssessTicketPlan: {
@@ -97,12 +97,12 @@ module.exports = function automationResources(stage) {
                     Next: 'InitializeAttemptCounter',
                     Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
                   },
-                  GenerateCaseFromSimilar: {
+                  AssessTicketPlanWithSimilar: {
                     Type: 'Task',
-                    Resource: '${GenerateCaseArn}',
-                    Parameters: { 'ticket_id.$': '$.input.ticketId', 'tenant_id.$': '$.input.tenantId', 'subject.$': '$.input.subject', action: 'success', total_attempts: 1, 'plan_used.$': '$.similarCases.similarCase.plan_used', 'solution_applied.$': '$.similarCases.similarCase.solution_applied', 'similar_case_id.$': '$.similarCases.similarCase.case_id' },
-                    ResultPath: '$.caseResult',
-                    Next: 'EndCaseRegistered',
+                    Resource: '${AssessTicketAutomationArn}',
+                    Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', 'similarCasePlan.$': '$.similarCases.similarCase.plan_used', 'similarCaseSolution.$': '$.similarCases.similarCase.solution_applied', phase: 'plan' },
+                    ResultPath: '$.plan',
+                    Next: 'InitializeAttemptCounter',
                     Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
                   },
                   InitializeAttemptCounter: {
