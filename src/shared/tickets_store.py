@@ -85,7 +85,12 @@ def build_secondary_index_fields(tenant_id: int, ticket_id: str, status: str, cr
 
 
 def serialize_ticket(item: dict) -> dict:
-    return {k: v for k, v in item.items() if not k.startswith(("pk", "sk", "gsi"))}
+    serialized = {k: v for k, v in item.items() if not k.startswith(("pk", "sk", "gsi"))}
+    if "ticket_id" in serialized:
+        serialized["id"] = serialized["ticket_id"]
+    if "tenant_id" in serialized:
+        serialized["company_id"] = serialized["tenant_id"]
+    return serialized
 
 
 def parse_ticket_datetime(value: str | None) -> datetime:

@@ -123,6 +123,57 @@ def create_ticket(payload: dict, claims: dict = Depends(require_access_claims)):
     return {"message": "Ticket created successfully", "ticket": serialize_ticket(item)}
 
 
+def create_ticket_from_agent(
+    tenant_id: int,
+    subject: str,
+    description: str | None = None,
+    status: str | None = "PENDING",
+    severity: str | None = "medium",
+    metadata: dict | None = None,
+    user_id: int | None = None,
+) -> dict:
+    """Create a ticket from an agent (SOPHIA/VICTOR) and emit ticket.created event."""
+    ticket_payload = {
+        "subject": subject,
+        "description": description or "",
+        "status": status or "PENDING",
+        "priority": severity or "medium",
+        "metadata": {
+            "source": "agent",
+            **(metadata or {}),
+        },
+    }
+    ticket_id, item = build_new_ticket_item(ticket_payload, tenant_id, user_id)
+    table.put_item(Item=item)
+    _emit_event("ticket.created", tenant_id, ticket_id, {"subject": subject, "status": item["status"]})
+    logger.info("Ticket created from agent: tenant=%s ticket=%s subject=%s", tenant_id, ticket_id, subject)
+    return {"ticket_id": ticket_id, "ticket": serialize_ticket(item)}
+
+
+@router.post("/agent", status_code=201)
+def create_ticket_from_agent_endpoint(
+    payload: dict,
+    claims: dict = Depends(require_access_claims),
+):
+    """Endpoint for agents (SOPHIA/VICTOR) to create tickets programmatically."""
+    tenant_id = int(claims.get("tenantId") or claims.get("tenant_id") or 0)
+    if not tenant_id:
+        raise ValidationError("tenant_id not found in request context")
+    subject = payload.get("subject")
+    if not subject:
+        raise ValidationError("subject is required")
+    result = create_ticket_from_agent(
+        tenant_id=tenant_id,
+        subject=subject,
+        description=payload.get("description"),
+        status=payload.get("status", "PENDING"),
+        severity=payload.get("severity", "medium"),
+        metadata=payload.get("metadata"),
+        user_id=claims.get("userId") or claims.get("sub"),
+    )
+    return {"message": "Ticket created successfully by agent", **result}
+
+
 @router.put("/{ticket_id}")
 def update_ticket(ticket_id: str, payload: dict, claims: dict = Depends(require_access_claims)):
     tenant_id = int(claims.get("tenantId") or claims.get("tenant_id") or 0)
