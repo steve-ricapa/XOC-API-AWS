@@ -29,8 +29,8 @@ def _resolve_victor_endpoint(tenant_id: int) -> tuple[str | None, str, str]:
     """Resuelve el endpoint de Victor a usar para un tenant.
 
     Orden de prioridad:
-      1. URL global configurada por env (AGENTS_FUNCTION_BASE_URL): Victor on-premise
-         compartido / Azure. Devuelve source "global".
+      1. URL global configurada por env (AGENTS_FUNCTION_BASE_URL_VICTOR): Victor on-premise
+         dedicado. Devuelve source "global".
       2. Runtime settings del tenant en RDS (function_base_url + function_route_victor):
          Victor on-premise por tenant. Devuelve source "on_premise".
       3. Nada configurado -> (None, route, "fallback").
@@ -41,7 +41,7 @@ def _resolve_victor_endpoint(tenant_id: int) -> tuple[str | None, str, str]:
     settings = get_settings()
     default_route = (settings.agents_function_route_victor or "/api/agents/VictorDurableAgent/run").strip()
 
-    base_url = (settings.agents_function_base_url or "").strip()
+    base_url = (settings.agents_function_base_url_victor or "").strip()
     if base_url:
         return base_url, default_route, "global"
 

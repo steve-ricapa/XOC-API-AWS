@@ -23,6 +23,7 @@ class Settings:
     cors_allowed_origins: list[str]
     event_bus_name: str | None
     agents_function_base_url: str | None
+    agents_function_base_url_victor: str | None
     agents_function_route_sophia: str | None
     agents_function_route_sophia_history: str | None
     agents_function_route_sophia_delete: str | None
@@ -59,6 +60,7 @@ def get_settings() -> Settings:
         cors_allowed_origins=_split_csv(os.environ.get("CORS_ALLOWED_ORIGINS")),
         event_bus_name=os.environ.get("EVENT_BUS_NAME"),
         agents_function_base_url=os.environ.get("AGENTS_FUNCTION_BASE_URL"),
+        agents_function_base_url_victor=os.environ.get("AGENTS_FUNCTION_BASE_URL_VICTOR"),
         agents_function_route_sophia=os.environ.get("AGENTS_FUNCTION_ROUTE_SOPHIA"),
         agents_function_route_sophia_history=os.environ.get("AGENTS_FUNCTION_ROUTE_SOPHIA_HISTORY"),
         agents_function_route_sophia_delete=os.environ.get("AGENTS_FUNCTION_ROUTE_SOPHIA_DELETE"),

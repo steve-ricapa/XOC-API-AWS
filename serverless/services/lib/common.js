@@ -31,6 +31,7 @@ function commonEnvironment(stage) {
     TXDX_DOCUMENT_TYPES_CSV: stageRef(stage, 'txdxDocumentTypesCsv'),
     CORS_ALLOWED_ORIGINS: stageRef(stage, 'corsAllowedOriginsCsv'),
     AGENTS_FUNCTION_BASE_URL: stageRef(stage, 'agentsFunctionBaseUrl'),
+    AGENTS_FUNCTION_BASE_URL_VICTOR: stageRef(stage, 'agentsFunctionBaseUrlVictor'),
     AGENTS_FUNCTION_ROUTE_SOPHIA: stageRef(stage, 'agentsFunctionRouteSophia'),
     AGENTS_FUNCTION_ROUTE_SOPHIA_HISTORY: stageRef(stage, 'agentsFunctionRouteSophiaHistory'),
     AGENTS_FUNCTION_ROUTE_SOPHIA_DELETE: stageRef(stage, 'agentsFunctionRouteSophiaDelete'),

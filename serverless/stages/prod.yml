@@ -15,7 +15,8 @@ jwtSecretKey: ""
 jwtSecretKeySsmPath: ""
 jwtSecretArn: ${cf:xoc-api-shared-prod.JwtSecretArn}
 agentKeyEncryptionKeyArn: ${cf:xoc-api-shared-prod.AgentKeyEncryptionKeySecretArn}
-agentsFunctionBaseUrl: https://chairman-optimize-cellular-mods.trycloudflare.com
+agentsFunctionBaseUrl: ""
+agentsFunctionBaseUrlVictor: https://chairman-optimize-cellular-mods.trycloudflare.com
 agentsFunctionRouteSophia: /api/agents/SophiaDurableAgent/run
 agentsFunctionRouteSophiaHistory: /api/agents/SophiaDurableAgent/history
 agentsFunctionRouteSophiaDelete: /api/agents/SophiaDurableAgent/threads
