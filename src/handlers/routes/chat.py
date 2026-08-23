@@ -211,6 +211,12 @@ def _maybe_create_ticket_from_action_plan(
         )
         cleaned_payload["ticket_created"] = True
         cleaned_payload["ticket_id"] = result["ticket_id"]
+        cleaned_payload["text"] = (
+            f"He creado el ticket **#{result['ticket_id'][:8]}** para atender este caso.\n\n"
+            f"**Asunto:** {subject}\n"
+            f"**Estado:** Pendiente de revision por Victor On-Premise\n\n"
+            f"Victor analizara el caso, generara un plan de accion y te solicitara aprobacion antes de ejecutar."
+        )
         logger.info(
             "Auto-created ticket from SOPHIA action_plan: tenant=%s ticket=%s",
             tenant_id,
@@ -297,6 +303,12 @@ def _maybe_create_ticket_from_intent(
         )
         cleaned_payload["ticket_created"] = True
         cleaned_payload["ticket_id"] = result["ticket_id"]
+        cleaned_payload["text"] = (
+            f"He creado el ticket **#{result['ticket_id'][:8]}** para atender este caso.\n\n"
+            f"**Asunto:** {intent['subject']}\n"
+            f"**Estado:** Pendiente de revision por Victor On-Premise\n\n"
+            f"Victor analizara el caso, generara un plan de accion y te solicitara aprobacion antes de ejecutar."
+        )
         logger.info(
             "Auto-created ticket from intent detection: tenant=%s ticket=%s server=%s",
             tenant_id,
