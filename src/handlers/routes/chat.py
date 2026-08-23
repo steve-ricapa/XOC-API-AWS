@@ -52,6 +52,21 @@ def _resolve_agent_routes(session: Session, tenant_id: int) -> dict[str, str]:
     global_delete = (settings.agents_function_route_sophia_delete or "/api/agents/SophiaDurableAgent/threads").strip()
     global_victor = (settings.agents_function_route_victor or "/api/agents/VictorDurableAgent/run").strip()
 
+    runtime_settings = None
+    try:
+        runtime_settings = _get_runtime_settings(session, tenant_id)
+    except Exception:
+        pass
+
+    if runtime_settings and getattr(runtime_settings, "function_base_url", None):
+        return {
+            "function_base_url": runtime_settings.function_base_url,
+            "function_route_sophia": runtime_settings.function_route_sophia or global_sophia,
+            "function_route_sophia_history": runtime_settings.function_route_sophia_history or global_history,
+            "function_route_sophia_delete": runtime_settings.function_route_sophia_delete or global_delete,
+            "function_route_victor": runtime_settings.function_route_victor or global_victor,
+        }
+
     if global_base_url:
         return {
             "function_base_url": global_base_url,
@@ -61,13 +76,12 @@ def _resolve_agent_routes(session: Session, tenant_id: int) -> dict[str, str]:
             "function_route_victor": global_victor,
         }
 
-    runtime_settings = _get_runtime_settings(session, tenant_id)
     return {
-        "function_base_url": runtime_settings.function_base_url,
-        "function_route_sophia": runtime_settings.function_route_sophia or "/api/agents/SophiaDurableAgent/run",
-        "function_route_sophia_history": runtime_settings.function_route_sophia_history or "/api/agents/SophiaDurableAgent/history",
-        "function_route_sophia_delete": runtime_settings.function_route_sophia_delete or "/api/agents/SophiaDurableAgent/threads",
-        "function_route_victor": runtime_settings.function_route_victor or "/api/agents/VictorDurableAgent/run",
+        "function_base_url": "",
+        "function_route_sophia": global_sophia,
+        "function_route_sophia_history": global_history,
+        "function_route_sophia_delete": global_delete,
+        "function_route_victor": global_victor,
     }
 
 
