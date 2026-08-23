@@ -16,6 +16,7 @@ module.exports = buildService({
       needsVpc: true,
       include: [
         'src/handlers/domains/chat_agents.py',
+        'src/handlers/domains/tickets_dynamo.py',
         'src/handlers/routes/chat.py',
         'src/handlers/routes/live_voice.py',
         'src/handlers/routes/agents.py',
