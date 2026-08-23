@@ -173,12 +173,23 @@ def handler(event: dict, context) -> dict:
     if phase == "execute":
         all_success = bool(data.get("all_success", False))
         if all_success:
+            step_results = data.get("step_results", [])
+            summary_parts = []
+            for r in (step_results if isinstance(step_results, list) else []):
+                if isinstance(r, dict):
+                    tool = r.get("tool", r.get("action", "?"))
+                    ok = "OK" if r.get("success", True) else "FAIL"
+                    detail = (r.get("output") or r.get("result") or "")[:100]
+                    summary_parts.append(f"{tool}: {ok}" + (f" ({detail})" if detail else ""))
+                else:
+                    summary_parts.append(str(r)[:100])
+            execution_summary = "; ".join(summary_parts)[:500] or str(data)[:500]
             try:
                 from src.shared.tickets_store import update_ticket_fields
                 update_ticket_fields(int(tenant_id), ticket_id, {
                     "status": "RESUELTO",
                     "execution_status": "EXECUTED",
-                    "execution_summary": str(data.get("step_results", data))[:500],
+                    "execution_summary": execution_summary,
                 })
                 logger.info("Ticket %s marked as RESUELTO after successful execution", ticket_id)
             except Exception as exc:
@@ -192,6 +203,11 @@ def handler(event: dict, context) -> dict:
 
     plan = data.get("plan", data)
     requirement = approval_requirement(plan)
+    try:
+        from src.shared.tickets_store import update_ticket_fields
+        update_ticket_fields(int(tenant_id), ticket_id, {"action_plan": plan})
+    except Exception as exc:
+        logger.warning("Failed to save action_plan for ticket %s: %s", ticket_id, exc)
     return {
         "plan": plan,
         "planSource": "victor_azure" if endpoint_source == "global" else "victor_on_premise",

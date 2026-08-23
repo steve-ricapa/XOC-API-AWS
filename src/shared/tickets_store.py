@@ -302,7 +302,7 @@ def update_ticket_fields(tenant_id: int, ticket_id: str, payload: dict) -> dict:
         expr_values[f":{attr}"] = value
         expr_names[f"#{attr}"] = attr
 
-    if payload.get("status") and normalize_status(payload["status"]) == "EXECUTED":
+    if payload.get("status") and normalize_status(payload["status"]) in ("EXECUTED", "RESUELTO"):
         updates.append("#executed_at = :executed_at")
         expr_values[":executed_at"] = now
         expr_names["#executed_at"] = "executed_at"
