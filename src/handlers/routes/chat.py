@@ -199,7 +199,7 @@ def _maybe_create_ticket_from_action_plan(
         return cleaned_payload
 
     try:
-        from src.handlers.domains.tickets_dynamo import create_ticket_from_agent
+        from src.shared.tickets_store import create_ticket_from_agent
 
         result = create_ticket_from_agent(
             tenant_id=tenant_id,
@@ -286,7 +286,7 @@ def _maybe_create_ticket_from_intent(
     if server_name:
         metadata["server_name"] = server_name
     try:
-        from src.handlers.domains.tickets_dynamo import create_ticket_from_agent
+        from src.shared.tickets_store import create_ticket_from_agent
         result = create_ticket_from_agent(
             tenant_id=int(tenant_id),
             subject=intent["subject"],

@@ -8,6 +8,7 @@ import boto3
 from boto3.dynamodb.conditions import Key
 
 from src.shared.errors import NotFoundError, ValidationError
+from src.shared.logging import logger
 
 
 VALID_STATUSES = {
@@ -328,3 +329,52 @@ def update_ticket_fields(tenant_id: int, ticket_id: str, payload: dict) -> dict:
         ExpressionAttributeNames=expr_names,
     )
     return get_tenant_ticket_or_404(tenant_id, ticket_id)
+
+
+def _emit_ticket_event(event_name: str, tenant_id: int, ticket_id: str, payload: dict):
+    try:
+        import boto3 as _boto3
+        from src.shared.config import get_settings as _get_settings
+        _settings = _get_settings()
+        _eb = _boto3.client("events")
+        _eb.put_events(
+            Entries=[
+                {
+                    "Source": "xoc.ticket",
+                    "DetailType": event_name,
+                    "Detail": __import__("json").dumps(
+                        {"tenant_id": tenant_id, "ticket_id": ticket_id, **payload}, default=str
+                    ),
+                    "EventBusName": _settings.event_bus_name,
+                }
+            ]
+        )
+    except Exception as exc:
+        logger.warning("Failed to emit ticket event %s: %s", event_name, exc)
+
+
+def create_ticket_from_agent(
+    tenant_id: int,
+    subject: str,
+    description: str | None = None,
+    status: str | None = "PENDING",
+    severity: str | None = "medium",
+    metadata: dict | None = None,
+    user_id: int | None = None,
+) -> dict:
+    """Create a ticket from an agent (SOPHIA/VICTOR) and emit ticket.created event."""
+    ticket_payload = {
+        "subject": subject,
+        "description": description or "",
+        "status": status or "PENDING",
+        "priority": severity or "medium",
+        "metadata": {
+            "source": "agent",
+            **(metadata or {}),
+        },
+    }
+    ticket_id, item = build_new_ticket_item(ticket_payload, tenant_id, user_id)
+    table.put_item(Item=item)
+    _emit_ticket_event("ticket.created", tenant_id, ticket_id, {"subject": subject, "status": item["status"]})
+    logger.info("Ticket created from agent: tenant=%s ticket=%s subject=%s", tenant_id, ticket_id, subject)
+    return {"ticket_id": ticket_id, "ticket": serialize_ticket(item)}
