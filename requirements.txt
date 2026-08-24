@@ -1,6 +1,5 @@
 aws-lambda-powertools>=3.10.0
 bcrypt>=5.0.0
-cryptography==38.0.4
 docxtpl>=0.16.7
 fastapi>=0.115.0
 Jinja2>=3.1.4
