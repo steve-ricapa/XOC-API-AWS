@@ -28,6 +28,7 @@ module.exports = buildService({
       events: [
         protectedRoute(stage, 'GET', '/tickets'),
         protectedRoute(stage, 'POST', '/tickets'),
+        protectedRoute(stage, 'POST', '/tickets/agent'),
         protectedRoute(stage, 'GET', '/tickets/{ticketId}'),
         protectedRoute(stage, 'PUT', '/tickets/{ticketId}'),
         protectedRoute(stage, 'DELETE', '/tickets/{ticketId}'),
