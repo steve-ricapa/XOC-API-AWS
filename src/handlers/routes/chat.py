@@ -212,10 +212,9 @@ def _maybe_create_ticket_from_action_plan(
         cleaned_payload["ticket_created"] = True
         cleaned_payload["ticket_id"] = result["ticket_id"]
         cleaned_payload["text"] = (
-            f"He creado el ticket **#{result['ticket_id'][:8]}** para atender este caso.\n\n"
-            f"**Asunto:** {subject}\n"
-            f"**Estado:** Pendiente de revision por Victor On-Premise\n\n"
-            f"Victor analizara el caso, generara un plan de accion y te solicitara aprobacion antes de ejecutar."
+            f"Ticket **#{result['ticket_id'][:8]}** creado.\n\n"
+            f"**{subject}**\n"
+            f"Victor analizara y ejecutara el plan."
         )
         logger.info(
             "Auto-created ticket from SOPHIA action_plan: tenant=%s ticket=%s",
@@ -236,6 +235,16 @@ _TICKET_CREATION_TRIGGERS = [
     "limpiar servidor", "clean server", "fix server", "arreglar servidor",
     "malicious", "malware", "virus", "trojan", "backdoor", "ransomware",
     "sospechoso", "suspicious", "amenaza", "threat", "compromiso", "compromised",
+    "desinstalar", "uninstall", "instalar", "install",
+    "revisar", "check", "analizar", "analyze", "escanear", "scan",
+    "proteger", "protect", "bloquear", "block", "aislar", "isolate",
+    "amenaza detectada", "threat detected", "alerta", "alert",
+    "incursion", "breach", "intrusion", "intruso",
+    "script malicioso", "malicious script", "codigo malicioso", "malicious code",
+    "archivo infectado", "infected file", "archivo corrupto", "corrupted file",
+    "puerta trasera", "rootkit", "keylogger", "spyware", "adware",
+    "actualizar", "update", "patch", "parche",
+    "configurar", "configure", "setup", "config",
 ]
 
 
@@ -243,8 +252,9 @@ def _extract_filename(message: str) -> str | None:
     """Try to extract a filename from the user message."""
     patterns = [
         r"(?:archivo|file)\s+(?:llamado?|named?|called?)?\s*[`:]*\s*[\"']?([^\s\"']+)[\"']?",
-        r"([\/\w\-\.]+\.(?:sh|py|exe|bat|ps1|js|php|pl|rb|c|cpp|java|tmp|bak|log))",
-        r"suspicious[_\w]*\.\w+",
+        r"([\/\w\-\.]+\.(?:sh|py|exe|bat|ps1|js|php|pl|rb|c|cpp|java|tmp|bak|log|elf|deb|rpm|tar|gz|zip))",
+        r"(?:suspicious|malicioso|infected|compromised)[_\w]*\.\w+",
+        r"\b([\/\w\-\.]*(?:malware|virus|trojan|backdoor|ransomware|keylogger|spyware)[\/\w\-\.]*)\b",
     ]
     for pattern in patterns:
         match = re.search(pattern, message, re.IGNORECASE)
@@ -255,17 +265,20 @@ def _extract_filename(message: str) -> str | None:
 
 def _detect_ticket_creation_intent(message: str) -> dict | None:
     lower = (message or "").strip().lower()
-    if not lower or len(lower) < 10:
+    if not lower or len(lower) < 5:
         return None
     if not any(t in lower for t in _TICKET_CREATION_TRIGGERS):
         return None
     filename = _extract_filename(message)
     if filename:
-        subject = f"Eliminación de archivo sospechoso: {filename}"
+        subject = f"Eliminacion de archivo sospechoso: {filename}"
     else:
         subject = "Incidente de seguridad reportado"
     description = message.strip()
-    return {"subject": subject, "description": description, "severity": "high"}
+    severity = "high"
+    if any(w in lower for w in ["instalar", "install", "actualizar", "update", "configurar", "configure", "setup"]):
+        severity = "medium"
+    return {"subject": subject, "description": description, "severity": severity}
 
 
 def _maybe_create_ticket_from_intent(
@@ -304,10 +317,9 @@ def _maybe_create_ticket_from_intent(
         cleaned_payload["ticket_created"] = True
         cleaned_payload["ticket_id"] = result["ticket_id"]
         cleaned_payload["text"] = (
-            f"He creado el ticket **#{result['ticket_id'][:8]}** para atender este caso.\n\n"
-            f"**Asunto:** {intent['subject']}\n"
-            f"**Estado:** Pendiente de revision por Victor On-Premise\n\n"
-            f"Victor analizara el caso, generara un plan de accion y te solicitara aprobacion antes de ejecutar."
+            f"Ticket **#{result['ticket_id'][:8]}** creado.\n\n"
+            f"**{intent['subject']}**\n"
+            f"Victor analizara y ejecutara el plan."
         )
         logger.info(
             "Auto-created ticket from intent detection: tenant=%s ticket=%s server=%s",
