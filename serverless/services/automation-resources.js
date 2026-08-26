@@ -94,7 +94,7 @@ module.exports = function automationResources(stage) {
                     Resource: '${AssessTicketAutomationArn}',
                     Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', phase: 'plan' },
                     ResultPath: '$.plan',
-                    Next: 'InitializeAttemptCounter',
+                    Next: 'CheckSimilarCaseForInit',
                     Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
                   },
                   AssessTicketPlanWithSimilar: {
@@ -102,12 +102,23 @@ module.exports = function automationResources(stage) {
                     Resource: '${AssessTicketAutomationArn}',
                     Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', 'similarCasePlan.$': '$.similarCases.similarCase.plan_used', 'similarCaseSolution.$': '$.similarCases.similarCase.solution_applied', phase: 'plan' },
                     ResultPath: '$.plan',
-                    Next: 'InitializeAttemptCounter',
+                    Next: 'CheckSimilarCaseForInit',
                     Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
                   },
-                  InitializeAttemptCounter: {
+                  CheckSimilarCaseForInit: {
+                    Type: 'Choice',
+                    Choices: [{ Variable: '$.similarCases.similarCaseFound', BooleanEquals: true, Next: 'InitializeAttemptCounterWithSimilar' }],
+                    Default: 'InitializeAttemptCounterNoSimilar',
+                  },
+                  InitializeAttemptCounterWithSimilar: {
                     Type: 'Pass',
                     Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', attemptCount: 1, solutionApplied: null, attemptsLog: [], 'maxRiskLevel.$': '$.plan.maxRiskLevel', 'similarCaseId.$': '$.similarCases.similarCase.case_id' },
+                    ResultPath: '$.state',
+                    Next: 'CheckAttemptsRemaining',
+                  },
+                  InitializeAttemptCounterNoSimilar: {
+                    Type: 'Pass',
+                    Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', attemptCount: 1, solutionApplied: null, attemptsLog: [], 'maxRiskLevel.$': '$.plan.maxRiskLevel', similarCaseId: null },
                     ResultPath: '$.state',
                     Next: 'CheckAttemptsRemaining',
                   },
