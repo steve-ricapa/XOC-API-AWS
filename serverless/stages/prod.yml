@@ -16,7 +16,7 @@ jwtSecretKeySsmPath: ""
 jwtSecretArn: ${cf:xoc-api-shared-prod.JwtSecretArn}
 agentKeyEncryptionKeyArn: ${cf:xoc-api-shared-prod.AgentKeyEncryptionKeySecretArn}
 agentsFunctionBaseUrl: https://prod-a-xoc-cons-g9hvargsfqeafeap.centralus-01.azurewebsites.net
-agentsFunctionBaseUrlVictor: https://plenty-sandra-july-diagnosis.trycloudflare.com
+agentsFunctionBaseUrlVictor: https://ground-cables-endangered-membership.trycloudflare.com
 agentsFunctionRouteSophia: /api/agents/SophiaDurableAgent/run
 agentsFunctionRouteSophiaHistory: /api/agents/SophiaDurableAgent/history
 agentsFunctionRouteSophiaDelete: /api/agents/SophiaDurableAgent/threads
