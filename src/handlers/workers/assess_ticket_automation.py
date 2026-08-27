@@ -8,6 +8,7 @@ from src.shared.auth import create_access_token
 from src.shared.config import get_settings
 from src.shared.errors import ValidationError
 from src.shared.risk_config import approval_requirement, DEFAULT_RISK_LEVEL
+from src.notifications.tickets import publish_ticket_status_notification
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +198,11 @@ def handler(event: dict, context) -> dict:
                     "execution_status": "EXECUTED",
                     "execution_summary": execution_summary,
                 })
+                publish_ticket_status_notification(
+                    tenant_id=int(tenant_id),
+                    ticket_id=ticket_id,
+                    status="RESUELTO",
+                )
                 logger.info("Ticket %s marked as RESUELTO after successful execution", ticket_id)
             except Exception as exc:
                 logger.error("Failed to update ticket %s to RESUELTO: %s", ticket_id, exc)

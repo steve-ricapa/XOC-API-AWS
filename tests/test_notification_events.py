@@ -78,6 +78,29 @@ class NotificationEventsTests(unittest.TestCase):
         self.assertEqual("TENANT_ALL", event["audienceType"])
         self.assertEqual("critical", event["priority"])
 
+    def test_ticket_approval_builder_targets_only_the_creator(self) -> None:
+        event = events.build_notification_event_for_ticket_status(
+            tenant_id="8",
+            ticket_id="123e4567-e89b-42d3-a456-426614174000",
+            recipient_user_id="18",
+            status="PREAPROBADO",
+            attempt_count=2,
+        )
+        self.assertIsNotNone(event)
+        assert event is not None
+        self.assertEqual("SELF", event["audienceType"])
+        self.assertEqual("18", event["recipientUserId"])
+        self.assertEqual("ticket.approval_required", event["eventType"])
+        self.assertEqual(
+            "xoc://ticket/123e4567-e89b-42d3-a456-426614174000",
+            event["deepLink"],
+        )
+        self.assertEqual(
+            "ticket.approval_required:8:123e4567-e89b-42d3-a456-426614174000:attempt:2",
+            event["dedupeKey"],
+        )
+        self.assertEqual(2, event["metadata"]["attemptCount"])
+
     def test_duplicate_event_is_ignored_without_sending(self) -> None:
         with patch.object(notification_events, "claim_notification_event", return_value=False), patch.object(
             notification_events, "_resolve_notification_audience"

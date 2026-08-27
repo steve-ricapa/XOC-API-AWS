@@ -10,6 +10,7 @@ from src.shared.dependencies import require_access_claims
 from src.shared.errors import AppError, ForbiddenError, NotFoundError, ValidationError
 from src.shared.logging import logger
 from src.shared.risk_config import is_role_sufficient
+from src.notifications.tickets import publish_ticket_status_notification
 from src.shared.tickets_store import (
     build_new_ticket_item,
     build_secondary_index_fields,
@@ -180,6 +181,12 @@ def update_ticket(ticket_id: str, payload: dict, claims: dict = Depends(require_
     updated = update_ticket_fields(tenant_id, ticket_id, payload)
     event_name = "ticket.status_changed" if "status" in payload else "ticket.updated"
     _emit_event(event_name, tenant_id, ticket_id, {"status": updated.get("status")})
+    if "status" in payload:
+        publish_ticket_status_notification(
+            tenant_id=tenant_id,
+            ticket_id=ticket_id,
+            status=str(updated.get("status") or ""),
+        )
     return {"message": "Ticket updated successfully", "ticket": serialize_ticket(updated)}
 
 
@@ -235,6 +242,11 @@ def approve_ticket(ticket_id: str, claims: dict = Depends(require_access_claims)
     )
     updated = get_tenant_ticket_or_404(tenant_id, ticket_id)
     _emit_event("ticket.status_changed", tenant_id, ticket_id, {"status": "APROBADO"})
+    publish_ticket_status_notification(
+        tenant_id=tenant_id,
+        ticket_id=ticket_id,
+        status="APROBADO",
+    )
     return {"message": "Ticket approved successfully", "ticket": serialize_ticket(updated)}
 
 
@@ -281,6 +293,11 @@ def reject_ticket(ticket_id: str, claims: dict = Depends(require_access_claims))
     )
     updated = get_tenant_ticket_or_404(tenant_id, ticket_id)
     _emit_event("ticket.status_changed", tenant_id, ticket_id, {"status": "RECHAZADO"})
+    publish_ticket_status_notification(
+        tenant_id=tenant_id,
+        ticket_id=ticket_id,
+        status="RECHAZADO",
+    )
     return {"message": "Ticket rejected successfully", "ticket": serialize_ticket(updated)}
 
 

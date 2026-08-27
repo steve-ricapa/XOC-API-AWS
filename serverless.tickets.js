@@ -1,11 +1,20 @@
-const { buildService, lambdaConfig, protectedRoute } = require('./serverless/services/lib/common');
+const { buildService, commonEnvironment, lambdaConfig, protectedRoute } = require('./serverless/services/lib/common');
 const ticketsResources = require('./serverless/services/tickets-resources');
 
 module.exports = buildService({
   service: 'xoc-api-tickets',
   attachToSharedHttpApi: true,
   iam: { dynamo: true, events: true },
+  environment: (stage) => ({
+    ...commonEnvironment(stage),
+    NOTIFICATION_EVENT_BUS_NAME: `xoc-api-ops-${stage}-notifications-bus`,
+  }),
   additionalIamStatements: (stage) => [
+    {
+      Effect: 'Allow',
+      Action: ['events:PutEvents'],
+      Resource: `arn:aws:events:${'${aws:region}'}:${'${aws:accountId}'}:event-bus/xoc-api-ops-${stage}-notifications-bus`,
+    },
     {
       Effect: 'Allow',
       Action: ['states:StartExecution', 'states:SendTaskSuccess'],
@@ -21,6 +30,7 @@ module.exports = buildService({
       description: 'Tickets domain API (DynamoDB-backed)',
       include: [
         'src/handlers/domains/tickets_dynamo.py',
+        'src/notifications/**',
         'src/shared/**',
         'src/persistence/**',
         'requirements.txt',

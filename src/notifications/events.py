@@ -21,6 +21,12 @@ SUPPORTED_EVENT_TYPES = {
     "vulnerability.critical_detected",
     "attack.detected",
     "ticket.critical_created",
+    "ticket.approval_required",
+    "ticket.approved",
+    "ticket.rejected",
+    "ticket.resolved",
+    "ticket.failed",
+    "ticket.derived",
     "integration.down",
     "agent.disconnected",
     "sla.breached",
@@ -259,12 +265,111 @@ def build_notification_event_for_ticket_critical_created(*, tenant_id: str | int
         audience_type="TENANT_ALL",
         title="Ticket crítico creado",
         body="Se creó un ticket crítico que requiere atención.",
-        deep_link=f"xoc://tickets/{ticket_id}",
+        deep_link=f"xoc://ticket/{ticket_id}",
         priority="critical",
         resource_type="ticket",
         resource_id=ticket_id,
         dedupe_key=f"ticket.critical_created:{tenant_id}:{ticket_id}",
         metadata={"ticketId": ticket_id},
+    )
+
+
+def build_notification_event_for_ticket_status(
+    *,
+    tenant_id: str | int,
+    ticket_id: str,
+    recipient_user_id: str | int,
+    status: str,
+    attempt_count: int | None = None,
+) -> dict[str, Any] | None:
+    """Build a creator-only notification for a meaningful ticket state change.
+
+    A ticket can move through several internal operations.  This builder only
+    represents states that require an action or communicate a final outcome to
+    the person that originally created the ticket.
+    """
+    normalized_ticket_id = str(ticket_id).strip()
+    normalized_status = str(status).strip().upper()
+    if not normalized_ticket_id:
+        raise NotificationEventValidationError("ticket_id is required")
+
+    event_config = {
+        "APROBADO": (
+            "ticket.approved",
+            "Ticket aprobado",
+            "Tu ticket fue aprobado y la automatizaciÃ³n continuarÃ¡.",
+            "normal",
+        ),
+        "RECHAZADO": (
+            "ticket.rejected",
+            "Ticket rechazado",
+            "Tu ticket fue rechazado. Revisa el detalle para conocer el estado final.",
+            "normal",
+        ),
+        "RESUELTO": (
+            "ticket.resolved",
+            "Ticket resuelto",
+            "La automatizaciÃ³n resolviÃ³ tu ticket correctamente.",
+            "high",
+        ),
+        "FALLIDO": (
+            "ticket.failed",
+            "Ticket no resuelto",
+            "La automatizaciÃ³n no pudo resolver tu ticket. Revisa el detalle.",
+            "high",
+        ),
+        "FAILED": (
+            "ticket.failed",
+            "Ticket no resuelto",
+            "La automatizaciÃ³n no pudo resolver tu ticket. Revisa el detalle.",
+            "high",
+        ),
+        "DERIVADO": (
+            "ticket.derived",
+            "Ticket derivado",
+            "El tiempo de aprobaciÃ³n expirÃ³ y tu ticket fue derivado para atenciÃ³n manual.",
+            "high",
+        ),
+    }.get(normalized_status)
+
+    if normalized_status == "PREAPROBADO":
+        normalized_attempt = int(attempt_count or 1)
+        if normalized_attempt < 1:
+            normalized_attempt = 1
+        event_type = "ticket.approval_required"
+        title = "Tu ticket estÃ¡ listo para aprobaciÃ³n"
+        body = (
+            "Revisa y aprueba el plan para continuar con la automatizaciÃ³n."
+            if normalized_attempt == 1
+            else f"El intento {normalized_attempt} requiere una nueva aprobaciÃ³n para continuar."
+        )
+        priority = "high"
+        dedupe_suffix = f"attempt:{normalized_attempt}"
+    elif event_config:
+        event_type, title, body, priority = event_config
+        dedupe_suffix = "status"
+    else:
+        return None
+
+    return build_notification_event(
+        event_type=event_type,
+        tenant_id=tenant_id,
+        audience_type="SELF",
+        recipient_user_id=recipient_user_id,
+        title=title,
+        body=body,
+        # The Expo Router screen is src/app/ticket/[id].tsx.  The identifier
+        # is encoded and no sensitive ticket data is included in the push.
+        deep_link=f"xoc://ticket/{quote(normalized_ticket_id, safe='')}",
+        priority=priority,
+        resource_type="ticket",
+        resource_id=normalized_ticket_id,
+        dedupe_key=f"{event_type}:{tenant_id}:{normalized_ticket_id}:{dedupe_suffix}",
+        metadata={
+            "ticketId": normalized_ticket_id,
+            "status": normalized_status,
+            **({"attemptCount": normalized_attempt} if normalized_status == "PREAPROBADO" else {}),
+        },
     )
 
 

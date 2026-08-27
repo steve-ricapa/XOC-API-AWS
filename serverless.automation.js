@@ -5,9 +5,17 @@ module.exports = buildService({
   service: 'xoc-api-automation',
   attachToSharedHttpApi: true,
   iam: { automation: true, database: true, jwt: true, vpc: true },
+  additionalIamStatements: (stage) => [
+    {
+      Effect: 'Allow',
+      Action: ['events:PutEvents'],
+      Resource: `arn:aws:events:${'${aws:region}'}:${'${aws:accountId}'}:event-bus/xoc-api-ops-${stage}-notifications-bus`,
+    },
+  ],
   pythonRequirements: { dockerizePip: true },
   environment: (stage) => {
     const env = commonEnvironment(stage);
+    env.NOTIFICATION_EVENT_BUS_NAME = `xoc-api-ops-${stage}-notifications-bus`;
     delete env.XOC_DOCUMENTS_BUCKET_NAME;
     delete env.TXDX_DOCUMENTS_BUCKET_NAME;
     return env;

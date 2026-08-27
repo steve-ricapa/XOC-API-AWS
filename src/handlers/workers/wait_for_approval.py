@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from src.shared.errors import ValidationError
 from src.shared.risk_config import approval_requirement, DEFAULT_RISK_LEVEL
 from src.shared.tickets_store import get_tenant_ticket_or_none, update_ticket_fields
+from src.notifications.tickets import publish_ticket_status_notification
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,12 @@ def handler(event: dict, context) -> dict:
             "execution_status": "AWAITING_APPROVAL",
             "pending_decision": pending_decision,
         })
+        publish_ticket_status_notification(
+            tenant_id=tenant_id,
+            ticket_id=ticket_id,
+            status="PREAPROBADO",
+            attempt_count=event.get("attemptCount"),
+        )
         logger.info(
             "Updated pending_decision for ticket %s: risk=%s role=%s",
             ticket_id,

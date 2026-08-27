@@ -12,6 +12,7 @@ os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 from src.handlers.domains import tickets_dynamo
 from src.handlers.workers import generate_case, register_timeout_case, wait_for_approval
+from src.notifications import tickets as ticket_notifications
 from src.shared.errors import AppError, ValidationError
 from src.shared.tickets_store import normalize_status
 
@@ -21,7 +22,7 @@ class WaitForApprovalTests(unittest.TestCase):
         item = {"tenant_id": 7, "ticket_id": "t1", "pending_decision": {}}
         with patch.object(wait_for_approval, "get_tenant_ticket_or_none", return_value=item) as mock_get, patch.object(
             wait_for_approval, "update_ticket_fields"
-        ) as mock_update:
+        ) as mock_update, patch.object(wait_for_approval, "publish_ticket_status_notification") as publish_notification:
             result = wait_for_approval.handler(
                 {"ticketId": "t1", "tenantId": "7", "taskToken": "tok-1", "maxRiskLevel": "risky"},
                 None,
@@ -36,6 +37,12 @@ class WaitForApprovalTests(unittest.TestCase):
         self.assertEqual("ADMIN_XOC", pending["required_approver_role"])
         self.assertTrue(pending["requested_at"])
         self.assertTrue(pending["approval_deadline"])
+        publish_notification.assert_called_once_with(
+            tenant_id=7,
+            ticket_id="t1",
+            status="PREAPROBADO",
+            attempt_count=None,
+        )
 
     def test_missing_task_token_raises(self) -> None:
         with patch.object(wait_for_approval, "get_tenant_ticket_or_none", return_value={"pending_decision": {}}):
@@ -130,13 +137,16 @@ class GenerateCaseTests(unittest.TestCase):
         with patch(
             "src.handlers.workers.generate_case.create_case",
             return_value={"case_id": "c1", "status": "NO_RESUELTO", "created_at": "x"},
-        ) as mock_create:
+        ) as mock_create, patch.object(generate_case, "get_tenant_ticket_or_none", return_value={"status": "RECHAZADO"}), patch.object(
+            generate_case, "publish_ticket_status_notification"
+        ) as publish_notification:
             result = generate_case.handler(
                 {"ticket_id": "t1", "tenant_id": 7, "subject": "s", "action": "rejected"}, None
             )
         self.assertEqual("c1", result["caseId"])
         mock_create.assert_called_once()
         self.assertEqual("rejected", mock_create.call_args.kwargs["action"])
+        publish_notification.assert_called_once_with(tenant_id=7, ticket_id="t1", status="RECHAZADO")
 
     def test_derivado_action_is_accepted(self) -> None:
         with patch(
@@ -149,6 +159,19 @@ class GenerateCaseTests(unittest.TestCase):
         self.assertEqual("c2", result["caseId"])
         self.assertEqual("derivado", mock_create.call_args.kwargs["action"])
 
+    def test_failed_after_attempts_updates_ticket_and_notifies_creator(self) -> None:
+        with patch(
+            "src.handlers.workers.generate_case.create_case",
+            return_value={"case_id": "c3", "status": "NO_RESUELTO", "created_at": "x"},
+        ), patch.object(generate_case, "get_tenant_ticket_or_none", return_value={"status": "PENDING"}), patch.object(
+            generate_case, "update_ticket_fields"
+        ) as update_ticket, patch.object(generate_case, "publish_ticket_status_notification") as publish_notification:
+            generate_case.handler(
+                {"ticket_id": "t1", "tenant_id": 7, "subject": "s", "action": "failed_after_attempts"}, None
+            )
+        update_ticket.assert_called_once_with(7, "t1", {"status": "FALLIDO", "execution_status": "FAILED"})
+        publish_notification.assert_called_once_with(tenant_id=7, ticket_id="t1", status="FALLIDO")
+
     def test_invalid_action_raises(self) -> None:
         with self.assertRaises(ValidationError):
             generate_case.handler({"ticket_id": "t1", "tenant_id": 7, "action": "bogus"}, None)
@@ -159,11 +182,40 @@ class RegisterTimeoutCaseTests(unittest.TestCase):
         with patch("src.handlers.workers.register_timeout_case.update_ticket_fields") as mock_update, patch(
             "src.handlers.workers.register_timeout_case.create_case",
             return_value={"case_id": "c1", "status": "NO_RESUELTO", "created_at": "x"},
-        ) as mock_create:
+        ) as mock_create, patch.object(register_timeout_case, "publish_ticket_status_notification") as publish_notification:
             result = register_timeout_case.handler({"ticketId": "t1", "tenantId": 7, "subject": "s"}, None)
         mock_update.assert_called_once_with(7, "t1", {"status": "DERIVADO", "execution_status": "TIMED_OUT"})
         self.assertEqual("c1", result["caseId"])
         self.assertEqual("derivado", mock_create.call_args.kwargs["action"])
+        publish_notification.assert_called_once_with(tenant_id=7, ticket_id="t1", status="DERIVADO")
+
+
+class TicketNotificationPublisherTests(unittest.TestCase):
+    def test_uses_ticket_creator_and_publishes_self_event(self) -> None:
+        ticket = {"created_by_user_id": 18}
+        with patch.object(ticket_notifications, "_get_ticket", return_value=ticket), patch.object(
+            ticket_notifications, "publish_notification_requested"
+        ) as publish_event:
+            result = ticket_notifications.publish_ticket_status_notification(
+                tenant_id=7,
+                ticket_id="123e4567-e89b-42d3-a456-426614174000",
+                status="RESUELTO",
+            )
+        self.assertTrue(result)
+        event = publish_event.call_args.args[0]
+        self.assertEqual("SELF", event["audienceType"])
+        self.assertEqual("18", event["recipientUserId"])
+
+    def test_publish_failure_is_best_effort(self) -> None:
+        with patch.object(ticket_notifications, "_get_ticket", return_value={"created_by_user_id": 18}), patch.object(
+            ticket_notifications, "publish_notification_requested", side_effect=RuntimeError("event bridge unavailable")
+        ):
+            result = ticket_notifications.publish_ticket_status_notification(
+                tenant_id=7,
+                ticket_id="123e4567-e89b-42d3-a456-426614174000",
+                status="RESUELTO",
+            )
+        self.assertFalse(result)
 
 
 if __name__ == "__main__":

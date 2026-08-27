@@ -2,6 +2,8 @@ import logging
 
 from src.shared.cases_store import create_case
 from src.shared.errors import ValidationError
+from src.shared.tickets_store import get_tenant_ticket_or_none, update_ticket_fields
+from src.notifications.tickets import publish_ticket_status_notification
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,28 @@ def handler(event: dict, context) -> dict:
         attempts_log=attempts_log,
         similar_case_id=similar_case_id,
     )
+
+    final_status = {
+        "success": "RESUELTO",
+        "failed_after_attempts": "FALLIDO",
+        "rejected": "RECHAZADO",
+    }.get(action)
+    if final_status:
+        ticket = get_tenant_ticket_or_none(int(tenant_id), ticket_id)
+        # Keep the DynamoDB ticket detail aligned with the terminal Case
+        # result. This does not access or modify RDS.
+        if ticket and ticket.get("status") != final_status:
+            update_ticket_fields(int(tenant_id), ticket_id, {
+                "status": final_status,
+                "execution_status": "EXECUTED" if final_status == "RESUELTO" else "FAILED",
+            })
+        # The F3 inbox uses a deterministic key, so an already-published
+        # RESUELTO/RECHAZADO event is a no-op for duplicate deliveries.
+        publish_ticket_status_notification(
+            tenant_id=int(tenant_id),
+            ticket_id=ticket_id,
+            status=final_status,
+        )
 
     logger.info("Case created: %s for ticket %s (action=%s)", item["case_id"], ticket_id, action)
 

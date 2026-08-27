@@ -136,7 +136,7 @@ module.exports = function automationResources(stage) {
                     TimeoutSeconds: 604800,
                     Parameters: {
                       FunctionName: '${WaitForApprovalArn}',
-                      Payload: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'taskToken.$': '$$.Task.Token', 'maxRiskLevel.$': '$.state.maxRiskLevel' },
+                      Payload: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'taskToken.$': '$$.Task.Token', 'maxRiskLevel.$': '$.state.maxRiskLevel', 'attemptCount.$': '$.state.attemptCount' },
                     },
                     ResultPath: '$.approval',
                     Next: 'CheckApproval',
