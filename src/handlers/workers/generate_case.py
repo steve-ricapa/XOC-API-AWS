@@ -7,7 +7,6 @@ from src.notifications.tickets import publish_ticket_status_notification
 
 logger = logging.getLogger(__name__)
 
-
 def handler(event: dict, context) -> dict:
     ticket_id = event.get("ticket_id") or event.get("ticketId")
     tenant_id = event.get("tenant_id") or event.get("tenantId")
@@ -46,10 +45,15 @@ def handler(event: dict, context) -> dict:
         # Keep the DynamoDB ticket detail aligned with the terminal Case
         # result. This does not access or modify RDS.
         if ticket and ticket.get("status") != final_status:
-            update_ticket_fields(int(tenant_id), ticket_id, {
+            fields = {
                 "status": final_status,
                 "execution_status": "EXECUTED" if final_status == "RESUELTO" else "FAILED",
-            })
+            }
+            if action == "success" and solution_applied:
+                fields["execution_summary"] = solution_applied
+            elif action == "failed_after_attempts":
+                fields["execution_summary"] = f"Failed after {total_attempts} attempts"
+            update_ticket_fields(int(tenant_id), ticket_id, fields)
         # The F3 inbox uses a deterministic key, so an already-published
         # RESUELTO/RECHAZADO event is a no-op for duplicate deliveries.
         publish_ticket_status_notification(

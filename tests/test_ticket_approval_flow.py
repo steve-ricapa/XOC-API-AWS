@@ -169,7 +169,15 @@ class GenerateCaseTests(unittest.TestCase):
             generate_case.handler(
                 {"ticket_id": "t1", "tenant_id": 7, "subject": "s", "action": "failed_after_attempts"}, None
             )
-        update_ticket.assert_called_once_with(7, "t1", {"status": "FALLIDO", "execution_status": "FAILED"})
+        update_ticket.assert_called_once_with(
+            7,
+            "t1",
+            {
+                "status": "FALLIDO",
+                "execution_status": "FAILED",
+                "execution_summary": "Failed after 0 attempts",
+            },
+        )
         publish_notification.assert_called_once_with(tenant_id=7, ticket_id="t1", status="FALLIDO")
 
     def test_invalid_action_raises(self) -> None:
