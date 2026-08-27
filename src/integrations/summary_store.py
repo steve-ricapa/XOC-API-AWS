@@ -98,11 +98,12 @@ def _scan_counts(scan) -> dict:
 def _base_status(session: Session, tenant_id: int, provider: str, integration_type: str) -> dict:
     integration = _pick_integration(session, tenant_id, provider)
     agent_key = _pick_agent_key(session, tenant_id, integration_type)
+    configured = integration is not None or agent_key is not None
     return {
         "integration": integration,
         "agent_key": agent_key,
-        "configured": integration is not None,
-        "active": integration is not None and agent_key is not None,
+        "configured": configured,
+        "active": agent_key is not None,
     }
 
 
