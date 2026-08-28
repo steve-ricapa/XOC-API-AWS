@@ -82,6 +82,25 @@ def _payload_for(phase: str, subject: str, description: str, ticket_id: str, ten
     return payload
 
 
+def _plan_has_steps(plan) -> bool:
+    """True si el plan trae al menos un paso accionable.
+
+    Acepta {"steps": [...]}, [ {...} ], {"plan": {"steps": [...]}, ...}.
+    """
+    steps = []
+    if isinstance(plan, dict):
+        nested = plan.get("plan")
+        if isinstance(nested, dict):
+            steps = nested.get("steps", [])
+        elif isinstance(nested, list):
+            steps = nested
+        else:
+            steps = plan.get("steps", [])
+    elif isinstance(plan, list):
+        steps = plan
+    return isinstance(steps, list) and len(steps) > 0
+
+
 def _fallback_response(phase: str, ticket_id: str, tenant_id: int, subject: str, description: str, source: str) -> dict:
     if phase == "assessment":
         return {
@@ -178,6 +197,9 @@ def handler(event: dict, context) -> dict:
         }
 
     if phase == "execute":
+        if not _plan_has_steps(plan_from_event):
+            logger.error("Execute phase reached with empty plan for ticket %s", ticket_id)
+            raise ValidationError("Cannot execute: no action plan steps present for this ticket")
         all_success = bool(data.get("all_success", False))
         if all_success:
             step_results = data.get("step_results", [])
@@ -214,6 +236,9 @@ def handler(event: dict, context) -> dict:
         }
 
     plan = data.get("plan", data)
+    if not _plan_has_steps(plan):
+        logger.error("Victor returned an empty plan for ticket %s (ticket will not be executable)", ticket_id)
+        raise ValidationError("Victor returned an empty plan - no steps to execute")
     requirement = approval_requirement(plan)
     try:
         from src.shared.tickets_store import update_ticket_fields
