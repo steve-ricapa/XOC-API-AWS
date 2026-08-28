@@ -101,7 +101,7 @@ class AssessTicketAutomationTests(unittest.TestCase):
         self.assertTrue(call_url.startswith("http://on-premise-victor.local:9000"))
         self.assertEqual("victor_on_premise", result["planSource"])
         self.assertEqual("risky", result["maxRiskLevel"])
-        self.assertEqual("ADMIN_XOC", result["approval"]["required_approver_role"])
+        self.assertEqual("ADMIN", result["approval"]["required_approver_role"])
 
 
 if __name__ == "__main__":

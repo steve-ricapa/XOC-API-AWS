@@ -40,7 +40,7 @@ class RiskConfigTests(unittest.TestCase):
     def test_required_role_contract(self) -> None:
         self.assertEqual("USER", required_role_for_risk("basic"))
         self.assertEqual("ADMIN", required_role_for_risk("controlled"))
-        self.assertEqual("ADMIN_XOC", required_role_for_risk("risky"))
+        self.assertEqual("ADMIN", required_role_for_risk("risky"))
         self.assertEqual("SUPERADMIN", required_role_for_risk("critical"))
 
     def test_role_hierarchy_is_sufficient(self) -> None:
@@ -96,8 +96,8 @@ class RiskConfigTests(unittest.TestCase):
     def test_approval_requirement_exposes_contract(self) -> None:
         requirement = approval_requirement({"steps": [{"action_type": "delete"}]})
         self.assertEqual("risky", requirement["max_risk_level"])
-        self.assertEqual("ADMIN_XOC", requirement["required_approver_role"])
-        self.assertEqual("Admin XOC", requirement["approver_label"])
+        self.assertEqual("ADMIN", requirement["required_approver_role"])
+        self.assertEqual("Admin del tenant", requirement["approver_label"])
         self.assertFalse(requirement["publicly_approvable"])
 
         basic = approval_requirement({"steps": [{"action_type": "install"}]})
@@ -107,7 +107,7 @@ class RiskConfigTests(unittest.TestCase):
     def test_approver_labels(self) -> None:
         self.assertEqual("Usuario", approver_label_for_risk("basic"))
         self.assertEqual("Admin del tenant", approver_label_for_risk("controlled"))
-        self.assertEqual("Admin XOC", approver_label_for_risk("risky"))
+        self.assertEqual("Admin del tenant", approver_label_for_risk("risky"))
         self.assertEqual("Superadmin XOC", approver_label_for_risk("critical"))
 
 

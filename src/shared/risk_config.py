@@ -4,7 +4,7 @@
 # ese nivel:
 #   - basic      -> USER       (instalaciones, consultas y cosas simples)
 #   - controlled -> ADMIN      (cambios de configuracion, reinicios y cosas menos graves)
-#   - risky      -> ADMIN_XOC  (eliminacion o modificacion de cosas importantes)
+#   - risky      -> ADMIN      (eliminacion de archivos / modificacion de cosas importantes; techo = admin tenant)
 #   - critical   -> SUPERADMIN (purga / wipe / destruccion irreversible)
 RISK_LEVELS = ["basic", "controlled", "risky", "critical"]
 
@@ -20,14 +20,14 @@ ROLE_HIERARCHY = {
 REQUIRED_ROLE_FOR_RISK = {
     "basic": "USER",
     "controlled": "ADMIN",
-    "risky": "ADMIN_XOC",
+    "risky": "ADMIN",
     "critical": "SUPERADMIN",
 }
 
 APPROVER_LABEL_FOR_RISK = {
     "basic": "Usuario",
     "controlled": "Admin del tenant",
-    "risky": "Admin XOC",
+    "risky": "Admin del tenant",
     "critical": "Superadmin XOC",
 }
 
@@ -54,7 +54,7 @@ ACTION_TYPE_RISK_MAP = {
     "uninstall": "controlled",
     "scale": "controlled",
     "backup": "controlled",
-    # risky -> ADMIN_XOC: eliminacion o modificacion de cosas importantes
+    # risky -> ADMIN: eliminacion de archivos (techo de gobernanza = admin tenant)
     "delete": "risky",
     "remove": "risky",
     "destroy": "risky",

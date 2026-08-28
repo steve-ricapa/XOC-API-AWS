@@ -34,7 +34,7 @@ class WaitForApprovalTests(unittest.TestCase):
         self.assertEqual("AWAITING_APPROVAL", updates["execution_status"])
         pending = updates["pending_decision"]
         self.assertEqual("tok-1", pending["task_token"])
-        self.assertEqual("ADMIN_XOC", pending["required_approver_role"])
+        self.assertEqual("ADMIN", pending["required_approver_role"])
         self.assertTrue(pending["requested_at"])
         self.assertTrue(pending["approval_deadline"])
         publish_notification.assert_called_once_with(
