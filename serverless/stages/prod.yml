@@ -16,7 +16,7 @@ jwtSecretKeySsmPath: ""
 jwtSecretArn: ${cf:xoc-api-shared-prod.JwtSecretArn}
 agentKeyEncryptionKeyArn: ${cf:xoc-api-shared-prod.AgentKeyEncryptionKeySecretArn}
 agentsFunctionBaseUrl: https://prod-a-xoc-cons-g9hvargsfqeafeap.centralus-01.azurewebsites.net
-agentsFunctionBaseUrlVictor: https://beer-drawings-dad-posing.trycloudflare.com
+agentsFunctionBaseUrlVictor: http://10.20.0.22:8000
 agentsFunctionRouteSophia: /api/agents/SophiaDurableAgent/run
 agentsFunctionRouteSophiaHistory: /api/agents/SophiaDurableAgent/history
 agentsFunctionRouteSophiaDelete: /api/agents/SophiaDurableAgent/threads
