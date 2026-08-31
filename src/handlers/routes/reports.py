@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
 from src.reports.schemas import build_document_preview_response, build_document_response, validate_document_request
+from src.reports.authorization import validate_report_type_for_role
 from src.reports.store import (
     create_document_job,
     get_document_job_or_404,
@@ -36,13 +37,6 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 # Este registro sólo existe para descargar un documento generado durante una
 # sesión local. No se usa ni se carga en Lambda/producción.
 _local_demo_documents: dict[str, Path] = {}
-
-DOCUMENT_ROLE_ALLOWLIST = {
-    "minority_report": {"ADMIN", "USER", "ADMIN_XOC", "SUPERADMIN"},
-    "small_report": {"ADMIN", "USER", "ADMIN_XOC", "SUPERADMIN"},
-    "informe_soporte": {"ADMIN", "USER", "ADMIN_XOC", "SUPERADMIN"},
-}
-
 
 def _publish_event(event_name: str, tenant_id: int, document_id: str, payload: dict) -> None:
     event_bus_name = os.environ.get("REPORT_EVENT_BUS_NAME", "")
@@ -72,13 +66,6 @@ def _publish_event(event_name: str, tenant_id: int, document_id: str, payload: d
 def _compute_request_hash(payload: dict) -> str:
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(raw.encode()).hexdigest()
-
-
-def _assert_document_permissions(document_type: str, current_user: User) -> None:
-    allowed_roles = DOCUMENT_ROLE_ALLOWLIST.get(document_type, set())
-    role = normalize_role(current_user.role)
-    if allowed_roles and role not in allowed_roles:
-        raise ForbiddenError("User role is not allowed to request this document type")
 
 
 def _minority_variant_for_role(role: str, parameters: dict | None) -> str:
@@ -338,11 +325,45 @@ def request_document(payload: dict, claims: dict = Depends(require_access_claims
         raise ValidationError("; ".join(validation["errors"]))
 
     require_tenant_read_access(current_user)
-    _assert_document_permissions(payload["document_type"], current_user)
-    if payload["document_type"] == "minority_report":
-        payload = _normalize_minority_parameters(dict(payload), current_user)
     tenant_id = effective_tenant_id_of(current_user)
     user_id = claims.get("userId") or claims.get("sub")
+    role = normalize_role(current_user.role)
+    authorization_context = {
+        "tenantId": tenant_id,
+        "userId": str(user_id) if user_id is not None else None,
+        "delegationActive": bool(getattr(current_user, "delegation_active", False)),
+    }
+    try:
+        validate_report_type_for_role(payload["document_type"], role, authorization_context)
+    except (ForbiddenError, ValidationError) as exc:
+        logger.warning(
+            "document_request_denied",
+            extra={
+                "event": "document_request_denied",
+                "tenantId": tenant_id,
+                "userId": authorization_context["userId"],
+                "role": role or "UNKNOWN",
+                "requestedReportType": payload.get("document_type"),
+                "allowed": False,
+                "reason": exc.code,
+                "delegationActive": authorization_context["delegationActive"],
+            },
+        )
+        raise
+    logger.info(
+        "document_request_authorized",
+        extra={
+            "event": "document_request_authorized",
+            "tenantId": tenant_id,
+            "userId": authorization_context["userId"],
+            "role": role,
+            "requestedReportType": payload["document_type"],
+            "allowed": True,
+            "delegationActive": authorization_context["delegationActive"],
+        },
+    )
+    if payload["document_type"] == "minority_report":
+        payload = _normalize_minority_parameters(dict(payload), current_user)
 
     request_hash = _compute_request_hash(payload)
     document_id, item = create_document_job(
