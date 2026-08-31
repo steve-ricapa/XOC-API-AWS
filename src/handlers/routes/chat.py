@@ -3,20 +3,24 @@ import logging
 import os
 import re
 import time
-from datetime import datetime, timedelta
+import uuid
+from datetime import datetime, timedelta, timezone
 
+import jwt
 import requests
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
 from src.persistence.models import AgentSession, Tenant, TenantRuntimeSettings
 from src.shared.auth import create_access_token
-from src.shared.config import get_settings
-from src.shared.context import effective_tenant_id_of, require_tenant_read_access
+from src.shared.config import get_jwt_secret_key, get_settings
+from src.shared.context import effective_tenant_id_of, normalize_role, require_tenant_read_access
 from src.shared.dependencies import get_current_user
-from src.shared.errors import AppError, UnauthorizedError, ValidationError
+from src.shared.errors import AppError, ForbiddenError, UnauthorizedError, ValidationError
+from src.tool_gateway.executor import ToolExecutor
+from src.tool_gateway.schemas import ToolContext, ToolRequest
 
 
 logger = logging.getLogger(__name__)
@@ -30,6 +34,9 @@ _RUN_ACTIVE_MESSAGE = "Can't add messages to thread"
 _THREAD_ID_PATTERN = re.compile(r"(thread_[A-Za-z0-9]+)")
 _RUN_ID_PATTERN = re.compile(r"(run_[A-Za-z0-9]+)")
 _RUNTIME_SETTINGS_MISSING_MESSAGE = "Runtime settings not configured for this company"
+_TICKET_CONFIRMATION_SCOPE = "ai:ticket:confirm"
+_TICKET_CONFIRMATION_TYPE = "ai_ticket_confirmation"
+_TICKET_CONFIRMATION_SECONDS = 300
 
 
 def _get_runtime_settings(session: Session, tenant_id: int) -> TenantRuntimeSettings:
@@ -181,15 +188,124 @@ def _clean_agent_response(payload: dict) -> dict:
     metadata = payload.get("metadata")
     if isinstance(metadata, dict) and metadata:
         cleaned["metadata"] = metadata
+    for field in ("tool_request", "toolRequest", "tool_call", "toolCall"):
+        if isinstance(payload.get(field), dict):
+            cleaned["tool_request"] = payload[field]
+            break
     return cleaned or payload
+
+
+def _chat_tool_context(current_user, tenant_id: int, request_id: str | None) -> ToolContext:
+    return ToolContext(
+        tenant_id=getattr(current_user, "tenant_id", None),
+        effective_tenant_id=int(tenant_id),
+        user_id=getattr(current_user, "id", None),
+        role=getattr(current_user, "role", None),
+        delegation_active=bool(getattr(current_user, "delegation_active", False)),
+        request_id=request_id,
+        source="sophia_chat",
+    )
+
+
+def _maybe_execute_chat_tool_request(cleaned_payload: dict, current_user, tenant_id: int, request_id: str | None) -> dict:
+    """Execute only an explicit, structured read tool through the gateway.
+
+    The external SOPHIA runtime does not yet use this contract.  Supporting it
+    here makes a future runtime integration policy-first without giving the
+    model any direct route to XOC services.
+    """
+    raw_request = cleaned_payload.pop("tool_request", None)
+    if not isinstance(raw_request, dict):
+        return cleaned_payload
+    tool_name = raw_request.get("tool_name") or raw_request.get("toolName") or raw_request.get("name")
+    arguments = raw_request.get("arguments") or {}
+    if not isinstance(arguments, dict):
+        arguments = {"_invalid": True}
+    result = ToolExecutor().execute(
+        _chat_tool_context(current_user, tenant_id, request_id),
+        ToolRequest(tool_name=str(tool_name or ""), arguments=arguments, request_id=request_id),
+    )
+    metadata = dict(cleaned_payload.get("metadata") or {})
+    metadata["toolGateway"] = {
+        "toolName": str(tool_name or ""),
+        "status": result.status.value,
+        "code": result.code,
+        "auditId": result.audit_id,
+    }
+    if result.data is not None:
+        metadata["toolGateway"]["data"] = result.data
+    cleaned_payload["metadata"] = metadata
+    return cleaned_payload
+
+
+def _ticket_confirmation_token(*, action_plan: dict, tenant_id: int, current_user, request_id: str | None) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(current_user.id),
+        "type": _TICKET_CONFIRMATION_TYPE,
+        "scope": _TICKET_CONFIRMATION_SCOPE,
+        "actor_user_id": int(current_user.id),
+        "actor_role": normalize_role(current_user.role),
+        "effective_tenant_id": int(tenant_id),
+        "delegation_active": bool(getattr(current_user, "delegation_active", False)),
+        "request_id": request_id or str(uuid.uuid4()),
+        "action_plan": action_plan,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(seconds=_TICKET_CONFIRMATION_SECONDS)).timestamp()),
+    }
+    return jwt.encode(payload, get_jwt_secret_key(), algorithm="HS256")
+
+
+def _can_confirm_chat_ticket(current_user) -> bool:
+    role = normalize_role(getattr(current_user, "role", None))
+    return role == "ADMIN" or (role == "ADMIN_XOC" and bool(getattr(current_user, "delegation_active", False)))
+
+
+def _prepare_ticket_proposal(
+    cleaned_payload: dict,
+    *,
+    action_plan: dict,
+    tenant_id: int,
+    current_user,
+    request_id: str | None,
+) -> dict:
+    """Replace model-triggered writes with a short-lived explicit proposal."""
+    subject = str(action_plan.get("subject") or "").strip()
+    if not subject:
+        return cleaned_payload
+    proposal = {
+        "subject": subject[:240],
+        "description": str(action_plan.get("description") or "")[:4000],
+        "severity": str(action_plan.get("severity") or "medium")[:32],
+        "status": "NEEDS_CONFIRMATION",
+    }
+    cleaned_payload["ticket_proposal"] = proposal
+    if _can_confirm_chat_ticket(current_user):
+        cleaned_payload["ticket_proposal"]["confirmation_token"] = _ticket_confirmation_token(
+            action_plan=proposal,
+            tenant_id=tenant_id,
+            current_user=current_user,
+            request_id=request_id,
+        )
+        cleaned_payload["text"] = (
+            f"SOPHIA propone crear un ticket: **{proposal['subject']}**. "
+            "Requiere tu confirmacion explicita antes de crearlo."
+        )
+    else:
+        cleaned_payload["text"] = (
+            f"SOPHIA propone un ticket: **{proposal['subject']}**. "
+            "Un administrador del tenant debe confirmarlo."
+        )
+    return cleaned_payload
 
 
 def _maybe_create_ticket_from_action_plan(
     cleaned_payload: dict,
     tenant_id: int,
-    user_id: int | None,
+    current_user,
+    request_id: str | None,
 ) -> dict:
-    """If SOPHIA returned an action_plan with a subject, auto-create a ticket."""
+    """Prepare, but never auto-create, a ticket proposed by SOPHIA."""
     action_plan = cleaned_payload.get("action_plan")
     if not action_plan or not isinstance(action_plan, dict):
         return cleaned_payload
@@ -198,33 +314,13 @@ def _maybe_create_ticket_from_action_plan(
     if not subject:
         return cleaned_payload
 
-    try:
-        from src.shared.tickets_store import create_ticket_from_agent
-
-        result = create_ticket_from_agent(
-            tenant_id=tenant_id,
-            subject=subject,
-            description=action_plan.get("description", ""),
-            severity=action_plan.get("severity", "medium"),
-            metadata={"source": "sophia_chat", "action_plan": action_plan},
-            user_id=user_id,
-        )
-        cleaned_payload["ticket_created"] = True
-        cleaned_payload["ticket_id"] = result["ticket_id"]
-        cleaned_payload["text"] = (
-            f"Ticket **#{result['ticket_id'][:8]}** creado.\n\n"
-            f"**{subject}**\n"
-            f"Victor analizara y ejecutara el plan."
-        )
-        logger.info(
-            "Auto-created ticket from SOPHIA action_plan: tenant=%s ticket=%s",
-            tenant_id,
-            result["ticket_id"],
-        )
-    except Exception as exc:
-        logger.warning("Failed to auto-create ticket from action_plan: %s", exc)
-
-    return cleaned_payload
+    return _prepare_ticket_proposal(
+        cleaned_payload,
+        action_plan=action_plan,
+        tenant_id=tenant_id,
+        current_user=current_user,
+        request_id=request_id,
+    )
 
 
 _TICKET_CREATION_TRIGGERS = [
@@ -285,10 +381,11 @@ def _maybe_create_ticket_from_intent(
     cleaned_payload: dict,
     user_message: str,
     tenant_id: int,
-    user_id: int | None,
+    current_user,
     tenant_extra: dict | None = None,
+    request_id: str | None = None,
 ) -> dict:
-    if cleaned_payload.get("ticket_created"):
+    if cleaned_payload.get("ticket_created") or cleaned_payload.get("ticket_proposal"):
         return cleaned_payload
     intent = _detect_ticket_creation_intent(user_message)
     if not intent:
@@ -304,32 +401,18 @@ def _maybe_create_ticket_from_intent(
         metadata["server_ip"] = server_ip
     if server_name:
         metadata["server_name"] = server_name
-    try:
-        from src.shared.tickets_store import create_ticket_from_agent
-        result = create_ticket_from_agent(
-            tenant_id=int(tenant_id),
-            subject=intent["subject"],
-            description=full_description,
-            severity=intent["severity"],
-            metadata=metadata,
-            user_id=user_id,
-        )
-        cleaned_payload["ticket_created"] = True
-        cleaned_payload["ticket_id"] = result["ticket_id"]
-        cleaned_payload["text"] = (
-            f"Ticket **#{result['ticket_id'][:8]}** creado.\n\n"
-            f"**{intent['subject']}**\n"
-            f"Victor analizara y ejecutara el plan."
-        )
-        logger.info(
-            "Auto-created ticket from intent detection: tenant=%s ticket=%s server=%s",
-            tenant_id,
-            result["ticket_id"],
-            server_ip or "unknown",
-        )
-    except Exception as exc:
-        logger.warning("Failed to auto-create ticket from intent detection: %s", exc)
-    return cleaned_payload
+    return _prepare_ticket_proposal(
+        cleaned_payload,
+        action_plan={
+            "subject": intent["subject"],
+            "description": full_description,
+            "severity": intent["severity"],
+            "metadata": metadata,
+        },
+        tenant_id=int(tenant_id),
+        current_user=current_user,
+        request_id=request_id,
+    )
 
 
 def _build_session_title(message: str, max_length: int = 160) -> str:
@@ -506,6 +589,7 @@ def proxy_chat(
     payload: dict,
     current_user=Depends(get_current_user),
     db_session: Session = Depends(get_db_session),
+    request: Request = None,
 ) -> dict:
     if not payload:
         raise ValidationError("Request body is required")
@@ -520,6 +604,7 @@ def proxy_chat(
     if int(tenant_id) != int(effective_tenant_id):
         raise ValidationError("Requested tenant does not match delegated tenant context")
     demo_mode = _is_demo_tenant(current_user, db_session)
+    request_id = request.headers.get("x-request-id") if request else None
 
     runtime_settings = _resolve_agent_routes(db_session, int(tenant_id))
 
@@ -625,12 +710,16 @@ def proxy_chat(
         if sophia_response.status_code == 200:
             response_payload = sophia_response.json()
             cleaned_payload = _clean_agent_response(response_payload)
+            cleaned_payload = _maybe_execute_chat_tool_request(
+                cleaned_payload, current_user, int(tenant_id), request_id
+            )
             cleaned_payload = _maybe_create_ticket_from_action_plan(
-                cleaned_payload, int(tenant_id), current_user.id
+                cleaned_payload, int(tenant_id), current_user, request_id
             )
             cleaned_payload = _maybe_create_ticket_from_intent(
-                cleaned_payload, message, int(tenant_id), current_user.id,
+                cleaned_payload, message, int(tenant_id), current_user,
                 tenant_extra=runtime_settings.get("extra_json"),
+                request_id=request_id,
             )
             response_thread_id = response_payload.get("thread_id") if isinstance(response_payload, dict) else None
 
@@ -706,3 +795,70 @@ def proxy_chat(
             "details": error_data,
             "status_code": sophia_response.status_code,
         }
+
+
+@router.post("/tickets/confirm")
+def confirm_chat_ticket_proposal(
+    payload: dict,
+    current_user=Depends(get_current_user),
+) -> dict:
+    """Create a Chat-proposed ticket only after the same user confirms it."""
+    token = str((payload or {}).get("confirmation_token") or (payload or {}).get("confirmationToken") or "").strip()
+    if not token:
+        raise ValidationError("confirmation_token is required")
+    if not _can_confirm_chat_ticket(current_user):
+        raise ForbiddenError("Role is not allowed to confirm AI ticket proposals")
+    try:
+        claims = jwt.decode(token, get_jwt_secret_key(), algorithms=["HS256"])
+    except jwt.PyJWTError as exc:
+        raise ValidationError("Ticket confirmation is invalid or expired") from exc
+
+    tenant_id = effective_tenant_id_of(current_user)
+    if (
+        claims.get("type") != _TICKET_CONFIRMATION_TYPE
+        or claims.get("scope") != _TICKET_CONFIRMATION_SCOPE
+        or str(claims.get("sub") or "") != str(current_user.id)
+        or int(claims.get("actor_user_id") or 0) != int(current_user.id)
+        or int(claims.get("effective_tenant_id") or 0) != int(tenant_id)
+        or normalize_role(claims.get("actor_role")) != normalize_role(current_user.role)
+        or bool(claims.get("delegation_active")) != bool(getattr(current_user, "delegation_active", False))
+    ):
+        raise ForbiddenError("Ticket confirmation does not match authenticated context")
+
+    action_plan = claims.get("action_plan")
+    if not isinstance(action_plan, dict):
+        raise ValidationError("Ticket confirmation proposal is invalid")
+    subject = str(action_plan.get("subject") or "").strip()
+    if not subject:
+        raise ValidationError("Ticket proposal subject is required")
+
+    result = _create_ticket_from_confirmed_proposal(
+        tenant_id=int(tenant_id),
+        subject=subject,
+        description=str(action_plan.get("description") or ""),
+        severity=str(action_plan.get("severity") or "medium"),
+        metadata={
+            "source": "sophia_chat_confirmed",
+            "proposal_request_id": claims.get("request_id"),
+        },
+        user_id=int(current_user.id),
+    )
+    logger.info(
+        "Confirmed SOPHIA ticket proposal: tenant=%s user=%s ticket=%s",
+        tenant_id,
+        current_user.id,
+        result["ticket_id"],
+    )
+    return {
+        "message": "Ticket created from confirmed SOPHIA proposal",
+        "ticket_created": True,
+        "ticket_id": result["ticket_id"],
+        "ticket": result["ticket"],
+    }
+
+
+def _create_ticket_from_confirmed_proposal(**kwargs) -> dict:
+    """Late import keeps the Chat route lightweight; use the existing ticket store only after approval."""
+    from src.shared.tickets_store import create_ticket_from_agent
+
+    return create_ticket_from_agent(**kwargs)

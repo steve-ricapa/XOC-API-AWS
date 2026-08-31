@@ -28,6 +28,7 @@ module.exports = buildService({
         protectedRoute(stage, 'GET', '/chat/history'),
         protectedRoute(stage, 'DELETE', '/chat/sessions/{sessionId}'),
         protectedRoute(stage, 'POST', '/chat'),
+        protectedRoute(stage, 'POST', '/chat/tickets/confirm'),
         protectedRoute(stage, 'POST', '/live-voice-sessions'),
         protectedRoute(stage, 'GET', '/live-voice-sessions'),
         protectedRoute(stage, 'GET', '/live-voice-sessions/{sessionId}'),
