@@ -24,6 +24,7 @@ from src.shared.notification_campaigns import (
 )
 from src.notifications.events import NotificationEventValidationError, normalize_notification_event
 from src.notifications.inbox import claim_notification_event, complete_notification_event, fail_notification_event
+from src.shared.user_notification_inbox import create_ticket_user_notification
 
 
 _MAX_DEVICES_DEFAULT = 500
@@ -181,6 +182,20 @@ def process_notification_event(event_detail: dict[str, Any], *, queue_message_id
 
     campaign_id: str | None = None
     try:
+        # Ticket notifications are durable user-facing records. Persist before
+        # resolving devices or attempting APNs/FCM, so a failed push is never
+        # the reason a creator loses the ticket state change.
+        user_notification, _created = create_ticket_user_notification(event)
+        notification_data = (
+            {
+                "notificationId": str(user_notification["notificationId"]),
+                "eventType": str(event["eventType"]),
+                "resourceType": str(event.get("resourceType") or ""),
+                "resourceId": str(event.get("resourceId") or ""),
+            }
+            if user_notification
+            else None
+        )
         max_devices = _positive_int_env("NOTIFICATION_MAX_DEVICES_PER_EVENT", _MAX_DEVICES_DEFAULT, 5_000)
         batch_size = _positive_int_env("NOTIFICATION_SEND_BATCH_SIZE", _SEND_BATCH_SIZE_DEFAULT, 100)
         recipient_user_id = event.get("recipientUserId") or ""
@@ -221,6 +236,7 @@ def process_notification_event(event_detail: dict[str, Any], *, queue_message_id
                         title=event["title"],
                         body=event["body"],
                         deep_link=event.get("deepLink"),
+                        notification_data=notification_data,
                     )
                 except (ConfigurationError, ValidationError):
                     failed_count += 1

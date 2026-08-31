@@ -28,6 +28,25 @@ def _report_event() -> dict:
     }
 
 
+def _ticket_event() -> dict:
+    return {
+        "version": 1,
+        "eventId": "evt-ticket-001",
+        "eventType": "ticket.approval_required",
+        "tenantId": "8",
+        "audienceType": "SELF",
+        "recipientUserId": "18",
+        "title": "Ticket requiere aprobacion",
+        "body": "Revisa tu ticket.",
+        "deepLink": "xoc://ticket/123e4567-e89b-42d3-a456-426614174000",
+        "priority": "high",
+        "resourceType": "ticket",
+        "resourceId": "123e4567-e89b-42d3-a456-426614174000",
+        "dedupeKey": "ticket.approval_required:8:123e4567-e89b-42d3-a456-426614174000:attempt:1",
+        "metadata": {"ticketId": "123e4567-e89b-42d3-a456-426614174000"},
+    }
+
+
 class NotificationEventsTests(unittest.TestCase):
     def setUp(self) -> None:
         self.previous_application_id = os.environ.get("END_USER_MESSAGING_APPLICATION_ID")
@@ -156,6 +175,40 @@ class NotificationEventsTests(unittest.TestCase):
         self.assertEqual("no_devices", result["status"])
         send_push.assert_not_called()
         self.assertEqual("NO_DEVICES", update_campaign.call_args.args[2]["status"])
+
+    def test_ticket_event_persists_user_inbox_and_sends_notification_id(self) -> None:
+        device = {
+            "deviceId": "ios-1",
+            "userId": "18",
+            "platform": "ios",
+            "pushProvider": "apns",
+            "apnsEnvironment": "production",
+            "status": "ACTIVE",
+            "notificationsEnabled": True,
+        }
+        inbox_item = {"notificationId": "a" * 64}
+        with patch.object(notification_events, "claim_notification_event", return_value=True), patch.object(
+            notification_events, "create_ticket_user_notification", return_value=(inbox_item, True)
+        ), patch.object(notification_events, "_resolve_notification_audience", return_value=[device]), patch.object(
+            notification_events, "create_notification_campaign"
+        ), patch.object(notification_events, "update_notification_campaign_result"), patch.object(
+            notification_events, "complete_notification_event"
+        ), patch.object(
+            notification_events, "_send_push_to_registered_device",
+            return_value={"deliveryStatus": "SUCCESSFUL", "invalidToken": False},
+        ) as send_push:
+            result = notification_events.process_notification_event(_ticket_event())
+
+        self.assertEqual("completed", result["status"])
+        self.assertEqual(
+            {
+                "notificationId": "a" * 64,
+                "eventType": "ticket.approval_required",
+                "resourceType": "ticket",
+                "resourceId": "123e4567-e89b-42d3-a456-426614174000",
+            },
+            send_push.call_args.kwargs["notification_data"],
+        )
 
     def test_permanent_schema_error_is_acknowledged_by_sqs_worker(self) -> None:
         result = notification_events.handler(

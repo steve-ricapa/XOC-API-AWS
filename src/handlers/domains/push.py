@@ -3,7 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from mangum import Mangum
 
-from src.handlers.routes.devices import router
+from src.handlers.routes.devices import router as devices_router
+from src.handlers.routes.notification_inbox import router as notification_inbox_router
 from src.shared.config import get_settings
 from src.shared.errors import AppError
 from src.shared.logging import logger
@@ -38,5 +39,6 @@ async def handle_unexpected_error(_: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=500, content={"error": "Internal server error", "code": "internal_error"})
 
 
-app.include_router(router)
+app.include_router(devices_router)
+app.include_router(notification_inbox_router)
 handler = Mangum(app)

@@ -270,6 +270,7 @@ def _send_push_to_registered_device(
     title: str,
     body: str,
     deep_link: str | None,
+    notification_data: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Send one registered-device push with Phase 1 channel and invalidation rules.
 
@@ -282,8 +283,14 @@ def _send_push_to_registered_device(
 
     channel_type, message_key, apns_environment = _channel_details(device)
     message: dict[str, Any] = {"Action": "OPEN_APP", "Title": title, "Body": body}
+    data: dict[str, str] = {}
     if deep_link:
-        message["Data"] = {"deepLink": deep_link}
+        data["deepLink"] = deep_link
+    for key, value in (notification_data or {}).items():
+        if key and value:
+            data[str(key)] = str(value)
+    if data:
+        message["Data"] = data
 
     logger.info(
         "push_send_requested",

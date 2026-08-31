@@ -23,6 +23,14 @@ module.exports = buildService({
     },
     {
       Effect: 'Allow',
+      Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:Query'],
+      Resource: [
+        `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-ops-${stage}-user-notification-inbox`,
+        `arn:aws:dynamodb:${'${aws:region}'}:${'${aws:accountId}'}:table/xoc-api-ops-${stage}-user-notification-inbox/index/*`,
+      ],
+    },
+    {
+      Effect: 'Allow',
       Action: ['events:PutEvents'],
       Resource: [`arn:aws:events:${'${aws:region}'}:${'${aws:accountId}'}:event-bus/xoc-api-ops-${stage}-notifications-bus`],
     },
@@ -52,6 +60,7 @@ module.exports = buildService({
     DEVICE_REGISTRY_TABLE_NAME: `xoc-api-ops-${stage}-device-registry`,
     NOTIFICATION_CAMPAIGNS_TABLE_NAME: `xoc-api-ops-${stage}-notification-campaigns`,
     NOTIFICATION_EVENT_INBOX_TABLE_NAME: `xoc-api-ops-${stage}-notification-event-inbox`,
+    USER_NOTIFICATION_INBOX_TABLE_NAME: `xoc-api-ops-${stage}-user-notification-inbox`,
     NOTIFICATION_EVENT_BUS_NAME: `xoc-api-ops-${stage}-notifications-bus`,
     NOTIFICATION_EVENTS_QUEUE_URL: `https://sqs.${'${aws:region}'}.amazonaws.com/${'${aws:accountId}'}/xoc-api-ops-${stage}-notification-events`,
     NOTIFICATION_MAX_DEVICES_PER_EVENT: '500',
@@ -65,6 +74,7 @@ module.exports = buildService({
       include: [
         'src/handlers/domains/push.py',
         'src/handlers/routes/devices.py',
+        'src/handlers/routes/notification_inbox.py',
         'src/notifications/**',
         'src/shared/**',
         'requirements.crypto.txt',
@@ -75,6 +85,10 @@ module.exports = buildService({
         protectedRoute(stage, 'POST', '/notifications/test'),
         protectedRoute(stage, 'POST', '/notifications/send'),
         protectedRoute(stage, 'POST', '/notifications/events/test'),
+        protectedRoute(stage, 'GET', '/notifications/inbox'),
+        protectedRoute(stage, 'GET', '/notifications/inbox/unread-count'),
+        protectedRoute(stage, 'PATCH', '/notifications/inbox/{notificationId}/read'),
+        protectedRoute(stage, 'PATCH', '/notifications/inbox/{notificationId}/archive'),
       ],
     }),
     notificationEventsWorker: lambdaConfig(stage, {
