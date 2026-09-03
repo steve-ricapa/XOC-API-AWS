@@ -272,6 +272,7 @@ def build_new_ticket_item(payload: dict, tenant_id: int, user_id: int | None) ->
         "execution_summary": None,
         "execution_arn": None,
         "pending_decision": None,
+        "action_plans": None,
     }
     item.update(build_secondary_index_fields(tenant_id, ticket_id, status, now))
     return ticket_id, item
@@ -299,6 +300,7 @@ def update_ticket_fields(tenant_id: int, ticket_id: str, payload: dict) -> dict:
         "execution_arn": "execution_arn",
         "pending_decision": "pending_decision",
         "action_plan": "action_plan",
+        "action_plans": "action_plans",
     }
 
     for key, attr in updatable.items():

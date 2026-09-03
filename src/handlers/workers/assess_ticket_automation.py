@@ -64,7 +64,19 @@ def _resolve_victor_endpoint(tenant_id: int) -> tuple[str | None, str, str]:
     return None, default_route, "fallback"
 
 
-def _payload_for(phase: str, subject: str, description: str, ticket_id: str, tenant_id: int, plan_from_event, similar_case_plan=None, similar_case_solution=None) -> dict:
+def _payload_for(
+    phase: str,
+    subject: str,
+    description: str,
+    ticket_id: str,
+    tenant_id: int,
+    plan_from_event,
+    similar_case_plan=None,
+    similar_case_solution=None,
+    generate_plans: bool = False,
+    custom_instructions=None,
+    custom_plan_steps=None,
+) -> dict:
     payload = {
         "message": f"[{phase}] Ticket: {subject}. {description}",
         "subject": subject,
@@ -73,13 +85,71 @@ def _payload_for(phase: str, subject: str, description: str, ticket_id: str, ten
         "ticket_id": ticket_id,
         "tenant_id": int(tenant_id),
     }
+    if phase == "plan" and generate_plans:
+        payload["generate_plans"] = True
     if plan_from_event is not None:
         payload["plan"] = plan_from_event
     if similar_case_plan is not None:
         payload["similar_case_plan"] = similar_case_plan
     if similar_case_solution is not None:
         payload["similar_case_solution"] = similar_case_solution
+    if custom_instructions is not None:
+        payload["custom_instructions"] = custom_instructions
+    if custom_plan_steps is not None:
+        payload["custom_plan_steps"] = custom_plan_steps
     return payload
+
+
+def _normalize_plans(data) -> list:
+    """Convierte la respuesta de Victor en una lista de planes.
+
+    Acepta:
+      - {"plans": [ {...plan...} ]}          (nuevo formato multi-plan)
+      - {"plan": [...]} / {"plan": {...}}    (formato legacy, un solo plan)
+      - {"plan": [...], "plan_summary": ...}
+    Cada plan normalizado queda como:
+      {"plan_id", "title", "plan_summary", "total_steps", "risk_level", "plan": [...]}
+    """
+    if not isinstance(data, dict):
+        data = {}
+
+    plans = data.get("plans")
+    if isinstance(plans, list) and len(plans) > 0:
+        normalized = []
+        for idx, raw in enumerate(plans):
+            if not isinstance(raw, dict):
+                continue
+            inner = raw.get("plan", raw)
+            steps = inner.get("steps", []) if isinstance(inner, dict) else inner if isinstance(inner, list) else []
+            if not isinstance(steps, list):
+                steps = []
+            if len(steps) == 0:
+                continue
+            normalized.append({
+                "plan_id": raw.get("plan_id") or f"plan-{idx + 1}",
+                "title": raw.get("title") or f"Plan {idx + 1}",
+                "plan_summary": raw.get("plan_summary") or raw.get("summary") or "",
+                "total_steps": raw.get("total_steps") or len(steps),
+                "risk_level": raw.get("risk_level") or "",
+                "plan": steps,
+            })
+        if normalized:
+            return normalized
+
+    single = data.get("plan", data)
+    steps = single.get("steps", []) if isinstance(single, dict) else single if isinstance(single, list) else []
+    if not isinstance(steps, list):
+        steps = []
+    if len(steps) == 0:
+        return []
+    return [{
+        "plan_id": "plan-1",
+        "title": "Plan de remediacion",
+        "plan_summary": data.get("plan_summary") or data.get("summary") or "",
+        "total_steps": data.get("total_steps") or len(steps),
+        "risk_level": data.get("risk_level") or "",
+        "plan": steps,
+    }]
 
 
 def _plan_has_steps(plan) -> bool:
@@ -114,6 +184,8 @@ def _fallback_response(phase: str, ticket_id: str, tenant_id: int, subject: str,
     requirement = approval_requirement(None)
     return {
         "plan": {"steps": [], "source": "fallback"},
+        "plans": [],
+        "plansCount": 0,
         "planSource": "fallback",
         "maxRiskLevel": DEFAULT_RISK_LEVEL,
         "approval": requirement,
@@ -146,7 +218,22 @@ def handler(event: dict, context) -> dict:
     plan_from_event = event.get("plan")
     similar_case_plan = event.get("similarCasePlan")
     similar_case_solution = event.get("similarCaseSolution")
-    payload = _payload_for(phase, subject, description, ticket_id, tenant_id, plan_from_event, similar_case_plan, similar_case_solution)
+    custom_instructions = event.get("customInstructions")
+    custom_plan_steps = event.get("customPlanSteps")
+    generate_plans = bool(event.get("generatePlans", phase == "plan"))
+    payload = _payload_for(
+        phase,
+        subject,
+        description,
+        ticket_id,
+        tenant_id,
+        plan_from_event,
+        similar_case_plan,
+        similar_case_solution,
+        generate_plans=generate_plans,
+        custom_instructions=custom_instructions,
+        custom_plan_steps=custom_plan_steps,
+    )
 
     try:
         response = requests.post(
@@ -197,9 +284,13 @@ def handler(event: dict, context) -> dict:
         }
 
     if phase == "execute":
-        if not _plan_has_steps(plan_from_event):
+        execute_plan = plan_from_event
+        if not _plan_has_steps(execute_plan):
+            execute_plan = event.get("recommendedPlan")
+        if not _plan_has_steps(execute_plan):
             logger.error("Execute phase reached with empty plan for ticket %s", ticket_id)
             raise ValidationError("Cannot execute: no action plan steps present for this ticket")
+        plan_from_event = execute_plan
         all_success = bool(data.get("all_success", False))
         if all_success:
             step_results = data.get("step_results", [])
@@ -235,18 +326,32 @@ def handler(event: dict, context) -> dict:
             "victorSource": endpoint_source,
         }
 
-    plan = data.get("plan", data)
-    if not _plan_has_steps(plan):
-        logger.error("Victor returned an empty plan for ticket %s (ticket will not be executable)", ticket_id)
+    plans = _normalize_plans(data)
+    if not plans:
+        logger.error("Victor returned no valid plans for ticket %s (ticket will not be executable)", ticket_id)
         raise ValidationError("Victor returned an empty plan - no steps to execute")
-    requirement = approval_requirement(plan)
+
+    recommended = plans[0]
+    recommended_plan = {"steps": recommended["plan"]}
+    if recommended.get("plan_summary"):
+        recommended_plan["summary"] = recommended["plan_summary"]
+    if recommended.get("risk_level"):
+        recommended_plan["risk_level"] = recommended["risk_level"]
+
+    requirement = approval_requirement(recommended_plan)
     try:
         from src.shared.tickets_store import update_ticket_fields
-        update_ticket_fields(int(tenant_id), ticket_id, {"action_plan": plan})
+        update_ticket_fields(int(tenant_id), ticket_id, {
+            "action_plan": recommended_plan,
+            "action_plans": plans,
+        })
     except Exception as exc:
         logger.warning("Failed to save action_plan for ticket %s: %s", ticket_id, exc)
+
     return {
-        "plan": plan,
+        "plan": recommended_plan,
+        "plans": plans,
+        "plansCount": len(plans),
         "planSource": "victor_azure" if endpoint_source == "global" else "victor_on_premise",
         "maxRiskLevel": requirement["max_risk_level"],
         "approval": requirement,

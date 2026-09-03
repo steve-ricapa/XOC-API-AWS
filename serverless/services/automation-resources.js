@@ -112,13 +112,13 @@ module.exports = function automationResources(stage) {
                   },
                   InitializeAttemptCounterWithSimilar: {
                     Type: 'Pass',
-                    Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', attemptCount: 1, solutionApplied: null, attemptsLog: [], 'maxRiskLevel.$': '$.plan.maxRiskLevel', 'similarCaseId.$': '$.similarCases.similarCase.case_id' },
+                    Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', attemptCount: 1, solutionApplied: null, attemptsLog: [], 'maxRiskLevel.$': '$.plan.maxRiskLevel', 'plans.$': '$.plan.plans', 'similarCaseId.$': '$.similarCases.similarCase.case_id' },
                     ResultPath: '$.state',
                     Next: 'CheckAttemptsRemaining',
                   },
                   InitializeAttemptCounterNoSimilar: {
                     Type: 'Pass',
-                    Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', attemptCount: 1, solutionApplied: null, attemptsLog: [], 'maxRiskLevel.$': '$.plan.maxRiskLevel', similarCaseId: null },
+                    Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', attemptCount: 1, solutionApplied: null, attemptsLog: [], 'maxRiskLevel.$': '$.plan.maxRiskLevel', 'plans.$': '$.plan.plans', similarCaseId: null },
                     ResultPath: '$.state',
                     Next: 'CheckAttemptsRemaining',
                   },
@@ -136,7 +136,7 @@ module.exports = function automationResources(stage) {
                     TimeoutSeconds: 604800,
                     Parameters: {
                       FunctionName: '${WaitForApprovalArn}',
-                      Payload: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'taskToken.$': '$$.Task.Token', 'maxRiskLevel.$': '$.state.maxRiskLevel', 'attemptCount.$': '$.state.attemptCount' },
+                      Payload: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'taskToken.$': '$$.Task.Token', 'maxRiskLevel.$': '$.state.maxRiskLevel', 'attemptCount.$': '$.state.attemptCount', 'plans.$': '$.state.plans' },
                     },
                     ResultPath: '$.approval',
                     Next: 'CheckApproval',
@@ -151,7 +151,7 @@ module.exports = function automationResources(stage) {
                   ExecuteTicketPlan: {
                     Type: 'Task',
                     Resource: '${AssessTicketAutomationArn}',
-                    Parameters: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'subject.$': '$.state.subject', 'description.$': '$.state.description', 'plan.$': '$.plan.plan', phase: 'execute' },
+                    Parameters: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'subject.$': '$.state.subject', 'description.$': '$.state.description', 'plan.$': '$.approval.selected_plan', 'recommendedPlan.$': '$.plan.plan', phase: 'execute' },
                     ResultPath: '$.execution',
                     Next: 'CheckTicketStatus',
                     Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],

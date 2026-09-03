@@ -103,6 +103,85 @@ class AssessTicketAutomationTests(unittest.TestCase):
         self.assertEqual("risky", result["maxRiskLevel"])
         self.assertEqual("ADMIN", result["approval"]["required_approver_role"])
 
+    def test_normalize_plans_accepts_multi_plan_format(self) -> None:
+        data = {
+            "plans": [
+                {"plan_id": "p1", "title": "A", "plan_summary": "sum", "risk_level": "basic",
+                 "plan": [{"order": 1, "action": "shell", "command": "ls"}]},
+                {"plan_id": "p2", "title": "B", "plan_summary": "s2", "risk_level": "risky",
+                 "plan": [{"order": 1, "action": "shell", "command": "rm"}]},
+            ],
+            "plans_count": 2,
+        }
+        plans = assess_ticket_automation._normalize_plans(data)
+        self.assertEqual(2, len(plans))
+        self.assertEqual("p1", plans[0]["plan_id"])
+        self.assertEqual("risky", plans[1]["risk_level"])
+        self.assertEqual([{"order": 1, "action": "shell", "command": "rm"}], plans[1]["plan"])
+
+    def test_normalize_plans_skips_empty_and_keeps_legacy(self) -> None:
+        data = {"plans": [{"plan_id": "empty", "plan": []}, "garbage"], "plan": {"steps": [{"cmd": "x"}]}}
+        plans = assess_ticket_automation._normalize_plans(data)
+        self.assertEqual([], plans)
+
+        legacy = {"plan": {"steps": [{"cmd": "x"}]}, "plan_summary": "legacy"}
+        plans = assess_ticket_automation._normalize_plans(legacy)
+        self.assertEqual(1, len(plans))
+        self.assertEqual("plan-1", plans[0]["plan_id"])
+        self.assertEqual([{"cmd": "x"}], plans[0]["plan"])
+
+    def test_handler_passes_generate_plans_to_victor(self) -> None:
+        runtime = MagicMock()
+        runtime.function_base_url = "http://on-premise-victor.local:9000"
+        runtime.function_route_victor = "/api/agents/VictorDurableAgent/run"
+        runtime.is_active = True
+
+        fake_response = MagicMock()
+        fake_response.json.return_value = {
+            "plans": [{"plan_id": "p1", "title": "A", "risk_level": "basic",
+                       "plan": [{"order": 1, "action": "shell", "command": "ls"}]}],
+            "plans_count": 1,
+        }
+        fake_response.raise_for_status.return_value = None
+
+        with patch("src.persistence.db.session_scope", _fake_db_session(runtime)), patch(
+            "src.handlers.workers.assess_ticket_automation.requests.post", return_value=fake_response
+        ) as mock_post:
+            result = assess_ticket_automation.handler(
+                {"ticketId": "t3", "tenantId": 7, "subject": "instalar htop", "description": "desc", "phase": "plan"},
+                None,
+            )
+        sent_payload = mock_post.call_args.kwargs["json"]
+        self.assertTrue(sent_payload["generate_plans"])
+        self.assertEqual(1, result["plansCount"])
+        self.assertEqual("basic", result["maxRiskLevel"])
+
+    def test_handler_custom_plan_steps_forwarded(self) -> None:
+        runtime = MagicMock()
+        runtime.function_base_url = "http://on-premise-victor.local:9000"
+        runtime.function_route_victor = "/api/agents/VictorDurableAgent/run"
+        runtime.is_active = True
+
+        fake_response = MagicMock()
+        fake_response.json.return_value = {
+            "plans": [{"plan_id": "plan-custom", "title": "Custom", "risk_level": "controlled",
+                       "plan": [{"order": 1, "command": "echo hi"}]}],
+            "plans_count": 1,
+        }
+        fake_response.raise_for_status.return_value = None
+
+        with patch("src.persistence.db.session_scope", _fake_db_session(runtime)), patch(
+            "src.handlers.workers.assess_ticket_automation.requests.post", return_value=fake_response
+        ) as mock_post:
+            result = assess_ticket_automation.handler(
+                {"ticketId": "t4", "tenantId": 7, "subject": "x", "description": "y", "phase": "plan",
+                 "customPlanSteps": [{"command": "echo hi"}]},
+                None,
+            )
+        sent_payload = mock_post.call_args.kwargs["json"]
+        self.assertEqual([{"command": "echo hi"}], sent_payload["custom_plan_steps"])
+        self.assertEqual("controlled", result["maxRiskLevel"])
+
 
 if __name__ == "__main__":
     unittest.main()

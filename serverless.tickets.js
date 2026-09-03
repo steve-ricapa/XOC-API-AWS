@@ -45,6 +45,7 @@ module.exports = buildService({
         protectedRoute(stage, 'PATCH', '/tickets/{ticketId}/approve'),
         protectedRoute(stage, 'PATCH', '/tickets/{ticketId}/reject'),
         protectedRoute(stage, 'PATCH', '/tickets/{ticketId}/decision/select'),
+        protectedRoute(stage, 'PATCH', '/tickets/{ticketId}/decision/custom'),
       ],
     }),
     startAutomation: lambdaConfig(stage, {

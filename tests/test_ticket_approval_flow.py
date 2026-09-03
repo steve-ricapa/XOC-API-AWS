@@ -44,6 +44,70 @@ class WaitForApprovalTests(unittest.TestCase):
             attempt_count=None,
         )
 
+    def test_builds_plan_options_from_plans(self) -> None:
+        plans = [
+            {
+                "plan_id": "plan-1",
+                "title": "Plan A",
+                "plan_summary": "Enfoque directo",
+                "total_steps": 2,
+                "risk_level": "controlled",
+                "plan": [{"order": 1, "command": "cmd1"}, {"order": 2, "command": "cmd2"}],
+            },
+            {
+                "plan_id": "plan-2",
+                "title": "Plan B",
+                "plan_summary": "Enfoque backup",
+                "total_steps": 1,
+                "risk_level": "risky",
+                "plan": [{"order": 1, "command": "restore"}],
+            },
+        ]
+        options = wait_for_approval._build_plan_options(plans)
+        self.assertEqual(2, len(options))
+        self.assertEqual("plan-1", options[0]["option_id"])
+        self.assertTrue(options[0]["is_recommended"])
+        self.assertFalse(options[1]["is_recommended"])
+        self.assertEqual(2, options[0]["total_steps"])
+        self.assertEqual([{"order": 1, "command": "cmd1"}, {"order": 2, "command": "cmd2"}], options[0]["plan"])
+
+    def test_build_plan_options_skips_empty_plans(self) -> None:
+        plans = [
+            {"plan_id": "empty", "title": "Vacio", "plan": []},
+            {"plan_id": "ok", "title": "Ok", "plan": [{"command": "x"}]},
+            "not-a-dict",
+        ]
+        options = wait_for_approval._build_plan_options(plans)
+        self.assertEqual(1, len(options))
+        self.assertEqual("ok", options[0]["option_id"])
+
+    def test_build_plan_options_empty_when_no_plans(self) -> None:
+        self.assertEqual([], wait_for_approval._build_plan_options([]))
+        self.assertEqual([], wait_for_approval._build_plan_options("nope"))
+
+    def test_plan_phase_populates_options(self) -> None:
+        item = {"tenant_id": 7, "ticket_id": "t1", "pending_decision": {}}
+        plans = [{
+            "plan_id": "p1",
+            "title": "P1",
+            "plan_summary": "sum",
+            "total_steps": 1,
+            "risk_level": "basic",
+            "plan": [{"order": 1, "command": "ls"}],
+        }]
+        with patch.object(wait_for_approval, "get_tenant_ticket_or_none", return_value=item), patch.object(
+            wait_for_approval, "update_ticket_fields"
+        ) as mock_update, patch.object(wait_for_approval, "publish_ticket_status_notification"):
+            wait_for_approval.handler(
+                {"ticketId": "t1", "tenantId": "7", "taskToken": "tok-1", "maxRiskLevel": "basic", "plans": plans},
+                None,
+            )
+        pending = mock_update.call_args.args[2]["pending_decision"]
+        self.assertEqual("plan-selection", pending["decision_id"])
+        self.assertEqual("p1", pending["recommended_option_id"])
+        self.assertEqual(1, len(pending["options"]))
+        self.assertEqual([{"order": 1, "command": "ls"}], pending["options"][0]["plan"])
+
     def test_missing_task_token_raises(self) -> None:
         with patch.object(wait_for_approval, "get_tenant_ticket_or_none", return_value={"pending_decision": {}}):
             with self.assertRaises(ValidationError):
@@ -130,6 +194,52 @@ class TicketApprovalFlowTests(unittest.TestCase):
 
     def test_derivado_is_a_valid_ticket_status(self) -> None:
         self.assertEqual("DERIVADO", normalize_status("derivado"))
+
+    def test_resume_workflow_passes_selected_plan(self) -> None:
+        item = self._preaprobado_ticket()
+        selected_plan = {"steps": [{"order": 1, "command": "x"}]}
+        with patch.object(tickets_dynamo.stepfunctions, "send_task_success") as mock_send:
+            tickets_dynamo._resume_workflow(item, approved=True, selected_plan=selected_plan)
+        mock_send.assert_called_once_with(taskToken="tok-123", output='{"approved": true, "selected_plan": {"steps": [{"order": 1, "command": "x"}]}}')
+
+    def test_plan_steps_for_option_returns_selected_steps(self) -> None:
+        item = {
+            "pending_decision": {
+                "options": [
+                    {"option_id": "p1", "plan": [{"order": 1, "command": "a"}]},
+                    {"option_id": "p2", "plan": [{"order": 1, "command": "b"}]},
+                ]
+            }
+        }
+        plan = tickets_dynamo._plan_steps_for_option(item, "p2")
+        self.assertEqual({"steps": [{"order": 1, "command": "b"}], "source": "plan-selection"}, plan)
+
+    def test_plan_steps_for_option_unknown_returns_none(self) -> None:
+        item = {"pending_decision": {"options": [{"option_id": "p1", "plan": [{"command": "a"}]}]}}
+        self.assertIsNone(tickets_dynamo._plan_steps_for_option(item, "nope"))
+
+    def test_select_decision_resumes_with_selected_plan(self) -> None:
+        item = self._preaprobado_ticket()
+        item["pending_decision"]["options"] = [
+            {"option_id": "p1", "plan": [{"order": 1, "command": "sel"}]},
+        ]
+        with patch.object(tickets_dynamo, "_get_ticket_or_404", return_value=item), patch.object(
+            tickets_dynamo, "update_ticket_fields"
+        ) as mock_update, patch.object(tickets_dynamo, "table") as mock_table, patch.object(
+            tickets_dynamo, "_emit_event"
+        ):
+            mock_table.update_item.return_value = None
+            with patch.object(tickets_dynamo.stepfunctions, "send_task_success") as mock_send:
+                tickets_dynamo.select_ticket_decision(
+                    "t1",
+                    {"selected_option_id": "p1"},
+                    {"role": "USER", "tenantId": 7},
+                )
+        mock_send.assert_called_once_with(
+            taskToken="tok-123",
+            output='{"approved": true, "selected_plan": {"steps": [{"order": 1, "command": "sel"}], "source": "plan-selection"}}',
+        )
+        mock_update.assert_called_once_with(7, "t1", {"action_plan": {"steps": [{"order": 1, "command": "sel"}], "source": "plan-selection"}})
 
 
 class GenerateCaseTests(unittest.TestCase):

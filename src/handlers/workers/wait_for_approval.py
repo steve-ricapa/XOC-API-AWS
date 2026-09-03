@@ -11,10 +11,43 @@ logger = logging.getLogger(__name__)
 APPROVAL_TIMEOUT_DAYS = 7
 
 
+def _build_plan_options(plans) -> list:
+    """Convierte la lista de planes de Victor en opciones de seleccion.
+
+    Cada opcion contiene el plan completo con sus pasos para que el frontend lo
+    muestre y para que el workflow pueda ejecutar el plan elegido.
+    Si no hay planes se devuelve una lista vacia (comportamiento anterior).
+    """
+    if not isinstance(plans, list):
+        return []
+
+    options = []
+    for idx, plan in enumerate(plans):
+        if not isinstance(plan, dict):
+            continue
+        steps = plan.get("plan", [])
+        if not isinstance(steps, list):
+            steps = []
+        if len(steps) == 0:
+            continue
+        option_id = plan.get("plan_id") or f"plan-{idx + 1}"
+        options.append({
+            "option_id": option_id,
+            "title": plan.get("title") or f"Plan {idx + 1}",
+            "summary": plan.get("plan_summary") or "",
+            "risk_level": plan.get("risk_level") or "",
+            "total_steps": plan.get("total_steps") or len(steps),
+            "is_recommended": idx == 0,
+            "plan": steps,
+        })
+    return options
+
+
 def handler(event: dict, context) -> dict:
     ticket_id = event.get("ticketId")
     tenant_id = event.get("tenantId")
     max_risk_level = (event.get("maxRiskLevel") or DEFAULT_RISK_LEVEL).lower()
+    plans = event.get("plans") or []
 
     if not ticket_id or not tenant_id:
         raise ValidationError("ticketId and tenantId are required")
@@ -35,7 +68,13 @@ def handler(event: dict, context) -> dict:
         pending_decision = item.get("pending_decision") or {}
         if not isinstance(pending_decision, dict):
             pending_decision = {}
+        options = _build_plan_options(plans)
+        recommended_option_id = options[0]["option_id"] if options else None
         pending_decision.update({
+            "decision_id": "plan-selection",
+            "question": "Selecciona un plan de resolucion o escribe el tuyo.",
+            "options": options,
+            "recommended_option_id": recommended_option_id,
             "max_risk_level": max_risk_level,
             "required_approver_role": requirement["required_approver_role"],
             "approver_label": requirement["approver_label"],
@@ -56,10 +95,11 @@ def handler(event: dict, context) -> dict:
             attempt_count=event.get("attemptCount"),
         )
         logger.info(
-            "Updated pending_decision for ticket %s: risk=%s role=%s",
+            "Updated pending_decision for ticket %s: risk=%s role=%s options=%d",
             ticket_id,
             max_risk_level,
             requirement["required_approver_role"],
+            len(options),
         )
 
     return {

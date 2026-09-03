@@ -206,6 +206,7 @@ class UpdateTicketRequest(BaseModel):
     execution_status: str | None = None
     execution_summary: str | None = None
     action_plan: dict[str, Any] | None = None
+    action_plans: list[dict[str, Any]] | None = None
 
 
 class UpdateTicketResponse(BaseModel):
@@ -221,6 +222,11 @@ class SelectDecisionRequest(BaseModel):
     selected_option_id: str
     decision_id: str | None = None
     selection_note: str | None = None
+
+
+class CustomPlanRequest(BaseModel):
+    custom_instructions: str | None = None
+    custom_plan_steps: list[dict[str, Any]] | None = None
 
 
 class AgentCreateTicketRequest(BaseModel):
