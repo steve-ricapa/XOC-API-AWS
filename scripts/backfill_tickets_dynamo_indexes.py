@@ -24,6 +24,15 @@ def main() -> None:
             if not ticket_id or tenant_id is None or not status or not created_at:
                 continue
 
+            # The table also contains confirmation receipts, not just tickets.
+            # Match the ticket's own identity, including historical items without entity_type.
+            if (
+                item.get("entity_type") == "SOPHIA_TICKET_CONFIRMATION"
+                or item.get("pk") != f"TICKET#{tenant_id}"
+                or item.get("sk") != f"TICKET#{ticket_id}"
+            ):
+                continue
+
             secondary = build_secondary_index_fields(int(tenant_id), str(ticket_id), str(status).strip().upper(), created_at)
             needs_update = any(item.get(key) != value for key, value in secondary.items())
             if not needs_update:
