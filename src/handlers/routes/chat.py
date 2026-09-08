@@ -36,6 +36,7 @@ _RUN_ID_PATTERN = re.compile(r"(run_[A-Za-z0-9]+)")
 _RUNTIME_SETTINGS_MISSING_MESSAGE = "Runtime settings not configured for this company"
 _TICKET_CONFIRMATION_SCOPE = "ai:ticket:confirm"
 _TICKET_CONFIRMATION_TYPE = "ai_ticket_confirmation"
+_TICKET_CONFIRMATION_AUDIENCE = "xoc-chat-ticket-confirmation"
 _TICKET_CONFIRMATION_SECONDS = 300
 
 
@@ -238,12 +239,14 @@ def _maybe_execute_chat_tool_request(cleaned_payload: dict, current_user, tenant
     return cleaned_payload
 
 
-def _ticket_confirmation_token(*, action_plan: dict, tenant_id: int, current_user, request_id: str | None) -> str:
+def _ticket_confirmation_token(*, action_plan: dict, tenant_id: int, current_user, request_id: str | None, proposal_id: str | None = None) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": str(current_user.id),
         "type": _TICKET_CONFIRMATION_TYPE,
         "scope": _TICKET_CONFIRMATION_SCOPE,
+        "aud": _TICKET_CONFIRMATION_AUDIENCE,
+        "proposal_id": proposal_id or str(uuid.uuid4()),
         "actor_user_id": int(current_user.id),
         "actor_role": normalize_role(current_user.role),
         "effective_tenant_id": int(tenant_id),
@@ -274,6 +277,7 @@ def _prepare_ticket_proposal(
     if not subject:
         return cleaned_payload
     proposal = {
+        "proposal_id": str(uuid.uuid4()),
         "subject": subject[:240],
         "description": str(action_plan.get("description") or "")[:4000],
         "severity": str(action_plan.get("severity") or "medium")[:32],
@@ -286,6 +290,7 @@ def _prepare_ticket_proposal(
             tenant_id=tenant_id,
             current_user=current_user,
             request_id=request_id,
+            proposal_id=proposal["proposal_id"],
         )
         cleaned_payload["text"] = (
             f"SOPHIA propone crear un ticket: **{proposal['subject']}**. "
@@ -809,19 +814,31 @@ def confirm_chat_ticket_proposal(
     if not _can_confirm_chat_ticket(current_user):
         raise ForbiddenError("Role is not allowed to confirm AI ticket proposals")
     try:
-        claims = jwt.decode(token, get_jwt_secret_key(), algorithms=["HS256"])
+        claims = jwt.decode(
+            token, get_jwt_secret_key(), algorithms=["HS256"],
+            audience=_TICKET_CONFIRMATION_AUDIENCE,
+            options={"require": ["sub", "type", "scope", "aud", "proposal_id", "actor_user_id",
+                                 "actor_role", "effective_tenant_id", "delegation_active", "iat", "exp"]},
+        )
     except jwt.PyJWTError as exc:
         raise ValidationError("Ticket confirmation is invalid or expired") from exc
 
     tenant_id = effective_tenant_id_of(current_user)
+    try:
+        proposal_id = str(uuid.UUID(claims["proposal_id"], version=None))
+        actor_id = int(claims["actor_user_id"])
+        proposal_tenant_id = int(claims["effective_tenant_id"])
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ValidationError("Ticket confirmation claims are invalid") from exc
     if (
         claims.get("type") != _TICKET_CONFIRMATION_TYPE
         or claims.get("scope") != _TICKET_CONFIRMATION_SCOPE
         or str(claims.get("sub") or "") != str(current_user.id)
-        or int(claims.get("actor_user_id") or 0) != int(current_user.id)
-        or int(claims.get("effective_tenant_id") or 0) != int(tenant_id)
+        or actor_id != int(current_user.id)
+        or proposal_tenant_id != int(tenant_id)
         or normalize_role(claims.get("actor_role")) != normalize_role(current_user.role)
-        or bool(claims.get("delegation_active")) != bool(getattr(current_user, "delegation_active", False))
+        or not isinstance(claims["delegation_active"], bool)
+        or claims["delegation_active"] != bool(getattr(current_user, "delegation_active", False))
     ):
         raise ForbiddenError("Ticket confirmation does not match authenticated context")
 
@@ -837,10 +854,10 @@ def confirm_chat_ticket_proposal(
         subject=subject,
         description=str(action_plan.get("description") or ""),
         severity=str(action_plan.get("severity") or "medium"),
-        metadata={
-            "source": "sophia_chat_confirmed",
-            "proposal_request_id": claims.get("request_id"),
-        },
+        proposal_id=proposal_id,
+        proposal_request_id=claims.get("request_id"),
+        actor_role=normalize_role(current_user.role),
+        delegation_active=bool(getattr(current_user, "delegation_active", False)),
         user_id=int(current_user.id),
     )
     logger.info(
@@ -852,13 +869,14 @@ def confirm_chat_ticket_proposal(
     return {
         "message": "Ticket created from confirmed SOPHIA proposal",
         "ticket_created": True,
+        "already_confirmed": result.get("already_confirmed", False),
         "ticket_id": result["ticket_id"],
         "ticket": result["ticket"],
     }
 
 
 def _create_ticket_from_confirmed_proposal(**kwargs) -> dict:
-    """Late import keeps the Chat route lightweight; use the existing ticket store only after approval."""
-    from src.shared.tickets_store import create_ticket_from_agent
+    """Only validated, authenticated proposals reach the atomic confirmation store."""
+    from src.shared.chat_ticket_confirmations import confirm_ticket
 
-    return create_ticket_from_agent(**kwargs)
+    return confirm_ticket(**kwargs)
