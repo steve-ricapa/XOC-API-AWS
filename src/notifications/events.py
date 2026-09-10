@@ -294,6 +294,12 @@ def build_notification_event_for_ticket_status(
         raise NotificationEventValidationError("ticket_id is required")
 
     event_config = {
+        "DERIVED": (
+            "ticket.derived",
+            "Tu ticket requiere revisión manual",
+            "La evaluación automática terminó sin pasar a ejecución. Revisa el detalle del ticket.",
+            "high",
+        ),
         "APROBADO": (
             "ticket.approved",
             "Ticket aprobado",
