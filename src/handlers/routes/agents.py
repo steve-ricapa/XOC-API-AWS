@@ -8,10 +8,26 @@ from src.persistence.models import User
 from src.shared.auth import create_access_token
 from src.shared.context import effective_tenant_id_of, log_audit, require_tenant_read_access
 from src.shared.dependencies import get_current_user
-from src.shared.errors import AppError
+from src.shared.errors import AppError, ValidationError
 
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+
+# User-facing exchange only. VICTOR is invoked by backend workers, not by
+# granting a user-selected operational identity through this endpoint.
+_USER_EXCHANGE_AGENT_TYPES = frozenset({"SOPHIA"})
+
+
+def _user_exchange_agent_type(payload: dict | None) -> str:
+    if payload is not None and not isinstance(payload, dict):
+        raise ValidationError("Request body must be an object")
+    value = (payload or {}).get("agentType", "SOPHIA")
+    if not isinstance(value, str):
+        raise ValidationError("Unsupported agentType")
+    agent_type = value.strip().upper()
+    if agent_type not in _USER_EXCHANGE_AGENT_TYPES:
+        raise ValidationError("Unsupported agentType")
+    return agent_type
 
 
 @router.post("/auth/token")
@@ -25,13 +41,13 @@ def authenticate_agent_legacy() -> None:
 
 @router.post("/auth/token-from-user")
 def authenticate_agent_from_user(
-    payload: dict,
+    payload: dict | None = None,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> dict:
-    agent_type = (payload or {}).get("agentType", "SOPHIA")
     require_tenant_read_access(current_user)
     tenant_id = effective_tenant_id_of(current_user)
+    agent_type = _user_exchange_agent_type(payload)
 
     additional_claims = {
         "scopes": ["agent:invoke"],

@@ -135,11 +135,16 @@ It must not receive a capability for arbitrary XOC APIs.
 
 ## Hardening backlog from Fase A
 
-1. Add a fixed allowlist for `agentType` in `/agents/auth/token-from-user`.
-2. Verify `thread_id` locally belongs to the current tenant/user before Chat or
-   History forwards it to the external runtime.
-3. Add web/mobile UI for the existing protected ticket-proposal confirmation
-   contract; keep the model unable to confirm on the user's behalf.
+Implementation update, 2026-09-10 (local code, not a new production deployment):
+
+1. Implemented: fixed `SOPHIA` allowlist for `agentType` in
+   `/agents/auth/token-from-user`. Backend VICTOR service tokens are unchanged.
+2. Implemented: Chat/History resolve explicit `thread_id` through the existing
+   `AgentSession` binding for the authenticated actor and effective tenant;
+   a session/thread pair must refer to the same row. See
+   [access hardening and compatibility notes](sophia-chat-access-hardening.md).
+3. Web/mobile now have the protected proposal confirmation UI. Keep the model
+   unable to confirm on the user's behalf; C.3 adds persistent idempotency.
 4. Replace current generic SOPHIA service tokens with scoped, audience-bound
    tool capabilities when the external Function is ready.
 5. Audit and reconfigure the external Voice proxy before any Voice integration.
