@@ -9,6 +9,7 @@ from src.shared.config import get_settings
 from src.shared.errors import ValidationError
 from src.shared.risk_config import approval_requirement, DEFAULT_RISK_LEVEL
 from src.notifications.tickets import publish_ticket_status_notification
+from src.shared.ticket_automation_sync import sync_unresolvable_assessment
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +138,8 @@ def handler(event: dict, context) -> dict:
 
     if not base_url:
         logger.warning("Victor endpoint not configured for tenant %s (source=%s), returning default response", tenant_id, endpoint_source)
+        if phase == "assessment":
+            sync_unresolvable_assessment(int(tenant_id), ticket_id, "VICTOR_NOT_CONFIGURED")
         return _fallback_response(phase, ticket_id, tenant_id, subject, description, endpoint_source)
 
     full_url = f"{base_url}{victor_route}"
@@ -163,6 +166,7 @@ def handler(event: dict, context) -> dict:
     except requests.exceptions.Timeout:
         logger.error("Victor timed out for ticket %s (source=%s)", ticket_id, endpoint_source)
         if phase == "assessment":
+            sync_unresolvable_assessment(int(tenant_id), ticket_id, "VICTOR_TIMEOUT")
             return {
                 "canResolve": False,
                 "ticketId": ticket_id,
@@ -173,8 +177,12 @@ def handler(event: dict, context) -> dict:
             }
         raise ValidationError("Victor timed out during plan generation")
     except requests.exceptions.RequestException as exc:
-        logger.error("Error calling Victor: %s (source=%s)", exc, endpoint_source)
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        logger.error("Error calling Victor errorType=%s statusCode=%s (source=%s)",
+                     type(exc).__name__, status_code, endpoint_source)
         if phase == "assessment":
+            reason_code = "VICTOR_ACCESS_DENIED" if status_code in (401, 403) else "VICTOR_UNAVAILABLE"
+            sync_unresolvable_assessment(int(tenant_id), ticket_id, reason_code)
             return {
                 "canResolve": False,
                 "ticketId": ticket_id,
@@ -187,6 +195,8 @@ def handler(event: dict, context) -> dict:
 
     if phase == "assessment":
         can_resolve = bool(data.get("can_resolve", data.get("canResolve", False)))
+        if not can_resolve:
+            sync_unresolvable_assessment(int(tenant_id), ticket_id, "CANNOT_RESOLVE")
         return {
             "canResolve": can_resolve,
             "ticketId": ticket_id,
