@@ -118,10 +118,81 @@ def _build_agent_invoke_token(tenant_id: int, agent_type: str) -> str:
 
 
 def _normalize_session_id(value):
-    try:
-        return int(value)
-    except (TypeError, ValueError):
+    if value is None:
         return None
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValidationError("Invalid session_id")
+    try:
+        session_id = int(value)
+    except (TypeError, ValueError):
+        raise ValidationError("Invalid session_id") from None
+    if session_id <= 0 or session_id > 2147483647:
+        raise ValidationError("Invalid session_id")
+    return session_id
+
+
+def _normalize_thread_id(value):
+    if value is None:
+        return None
+    # Opaque provider identifier: do not assume an OpenAI-specific prefix.
+    if (not isinstance(value, str) or not value.strip() or len(value) > 500
+            or value != value.strip() or any(ord(char) < 32 for char in value)):
+        raise ValidationError("Invalid thread_id")
+    return value
+
+
+def _resolve_identifier_alias(primary, alias, normalize):
+    primary, alias = normalize(primary), normalize(alias)
+    if primary is not None and alias is not None and primary != alias:
+        raise ValidationError("Conflicting conversation identifiers")
+    return primary if primary is not None else alias
+
+
+def _owned_chat_session(db_session, *, tenant_id, user_id, session_id=None, thread_id=None):
+    """Use the existing session binding, never the caller's thread as authority.
+
+    Unknown IDs and foreign IDs intentionally have the same response. When both
+    IDs are supplied they must identify the same row, even for the same owner.
+    """
+    query = select(AgentSession).where(
+        AgentSession.tenant_id == tenant_id,
+        AgentSession.user_id == user_id,
+    )
+    if session_id is not None:
+        query = query.where(AgentSession.id == session_id)
+    if thread_id is not None:
+        query = query.where(AgentSession.external_thread_id == thread_id)
+    if session_id is None and thread_id is None:
+        raise ValidationError("thread_id or session_id is required")
+    chat_session = db_session.execute(
+        query.order_by(AgentSession.last_activity_at.desc(), AgentSession.id.desc()).limit(1)
+    ).scalars().first()
+    if chat_session is None:
+        raise ValidationError("Agent session not found")
+    return chat_session
+
+
+def _validate_response_thread_binding(db_session, response_thread_id, *, thread_id, tenant_id, user_id):
+    """Do not rebind a conversation or adopt a known foreign runtime thread."""
+    try:
+        response_thread_id = _normalize_thread_id(response_thread_id)
+    except ValidationError:
+        raise AppError("Invalid SOPHIA conversation response", status_code=502,
+                       code="sophia_thread_mismatch") from None
+    if response_thread_id is None:
+        return
+    if thread_id is not None and response_thread_id != thread_id:
+        raise AppError("Invalid SOPHIA conversation response", status_code=502,
+                       code="sophia_thread_mismatch")
+    foreign_binding = db_session.execute(
+        select(AgentSession.id).where(
+            AgentSession.external_thread_id == response_thread_id,
+            (AgentSession.tenant_id != tenant_id) | (AgentSession.user_id != user_id),
+        ).limit(1)
+    ).first()
+    if foreign_binding is not None:
+        raise AppError("Invalid SOPHIA conversation response", status_code=502,
+                       code="sophia_thread_mismatch")
 
 
 def _extract_affinity_cookies(cookie_jar):
@@ -471,8 +542,8 @@ def chat_history(
     tenant_id = tenantId or effective_tenant_id
     if int(tenant_id) != int(effective_tenant_id):
         raise ValidationError("Requested tenant does not match delegated tenant context")
-    resolved_session_id = session_id or sessionId
-    resolved_thread_id = thread_id or threadId
+    session_key = _resolve_identifier_alias(session_id, sessionId, _normalize_session_id)
+    requested_thread_id = _resolve_identifier_alias(thread_id, threadId, _normalize_thread_id)
 
     if not limit:
         limit = 20
@@ -480,20 +551,11 @@ def chat_history(
     if order not in ("asc", "desc"):
         order = "desc"
 
-    chat_session = None
-    session_key = _normalize_session_id(resolved_session_id)
-    if session_key:
-        chat_session = db_session.execute(
-            select(AgentSession).where(
-                AgentSession.id == session_key,
-                AgentSession.tenant_id == tenant_id,
-                AgentSession.user_id == current_user.id,
-            )
-        ).scalar_one_or_none()
-        if not chat_session:
-            raise ValidationError("Agent session not found")
-        if not resolved_thread_id:
-            resolved_thread_id = chat_session.external_thread_id
+    chat_session = _owned_chat_session(
+        db_session, tenant_id=effective_tenant_id, user_id=current_user.id,
+        session_id=session_key, thread_id=requested_thread_id,
+    )
+    resolved_thread_id = chat_session.external_thread_id
 
     if not resolved_thread_id:
         raise ValidationError("thread_id or session_id is required")
@@ -611,12 +673,8 @@ def proxy_chat(
     demo_mode = _is_demo_tenant(current_user, db_session)
     request_id = request.headers.get("x-request-id") if request else None
 
-    runtime_settings = _resolve_agent_routes(db_session, int(tenant_id))
-
     chat_session = None
-    session_id = payload.get("sessionId") or payload.get("session_id")
     force_new_session = bool(payload.get("new_session") or payload.get("newSession"))
-    session_key = _normalize_session_id(session_id)
 
     if demo_mode:
         force_new_session = False
@@ -629,25 +687,28 @@ def proxy_chat(
         ).scalars().first()
     elif force_new_session:
         pass
-    elif session_key:
-        chat_session = db_session.execute(
-            select(AgentSession).where(
-                AgentSession.id == session_key,
-                AgentSession.tenant_id == tenant_id,
-                AgentSession.user_id == current_user.id,
-            )
-        ).scalar_one_or_none()
-        if not chat_session:
-            raise ValidationError("Agent session not found")
     else:
-        chat_session = db_session.execute(
-            select(AgentSession).where(
-                AgentSession.tenant_id == tenant_id,
-                AgentSession.user_id == current_user.id,
-                AgentSession.purpose == "sophia_chat",
-            ).order_by(AgentSession.last_activity_at.desc())
-        ).scalars().first()
+        session_key = _resolve_identifier_alias(
+            payload.get("session_id"), payload.get("sessionId"), _normalize_session_id,
+        )
+        requested_thread_id = _resolve_identifier_alias(
+            payload.get("thread_id"), payload.get("threadId"), _normalize_thread_id,
+        )
+        if session_key is not None or requested_thread_id is not None:
+            chat_session = _owned_chat_session(
+                db_session, tenant_id=effective_tenant_id, user_id=current_user.id,
+                session_id=session_key, thread_id=requested_thread_id,
+            )
+        else:
+            chat_session = db_session.execute(
+                select(AgentSession).where(
+                    AgentSession.tenant_id == effective_tenant_id,
+                    AgentSession.user_id == current_user.id,
+                    AgentSession.purpose == "sophia_chat",
+                ).order_by(AgentSession.last_activity_at.desc())
+            ).scalars().first()
 
+    runtime_settings = _resolve_agent_routes(db_session, int(effective_tenant_id))
     function_base_url = runtime_settings["function_base_url"]
     function_route = runtime_settings["function_route_sophia"]
 
@@ -657,13 +718,9 @@ def proxy_chat(
     service_token = _build_agent_invoke_token(int(tenant_id), "SOPHIA")
 
     params = {}
-    thread_id = None
-    if not demo_mode:
-        thread_id = payload.get("threadId") or payload.get("thread_id")
-    if force_new_session:
-        thread_id = None
-    if not thread_id and chat_session and chat_session.external_thread_id:
-        thread_id = chat_session.external_thread_id
+    # Demo and new_session keep their existing server-owned behavior. No
+    # client-supplied thread is ever forwarded without a local owner binding.
+    thread_id = chat_session.external_thread_id if chat_session is not None else None
     if thread_id:
         params["thread_id"] = thread_id
 
@@ -677,8 +734,8 @@ def proxy_chat(
         sophia_payload["thread_id"] = thread_id
 
     affinity_cookies = None
-    if session_key:
-        affinity_cookies = _SESSION_AFFINITY.get(session_key)
+    if chat_session is not None:
+        affinity_cookies = _SESSION_AFFINITY.get(chat_session.id)
 
     retry_attempts, retry_delay = _get_run_active_retry_config()
     attempt = 0
@@ -714,6 +771,11 @@ def proxy_chat(
 
         if sophia_response.status_code == 200:
             response_payload = sophia_response.json()
+            response_thread_id = response_payload.get("thread_id") if isinstance(response_payload, dict) else None
+            _validate_response_thread_binding(
+                db_session, response_thread_id, thread_id=thread_id,
+                tenant_id=effective_tenant_id, user_id=current_user.id,
+            )
             cleaned_payload = _clean_agent_response(response_payload)
             cleaned_payload = _maybe_execute_chat_tool_request(
                 cleaned_payload, current_user, int(tenant_id), request_id
@@ -726,8 +788,6 @@ def proxy_chat(
                 tenant_extra=runtime_settings.get("extra_json"),
                 request_id=request_id,
             )
-            response_thread_id = response_payload.get("thread_id") if isinstance(response_payload, dict) else None
-
             if response_thread_id:
                 if chat_session is None:
                     chat_session = AgentSession(
