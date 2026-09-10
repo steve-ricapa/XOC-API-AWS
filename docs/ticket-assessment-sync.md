@@ -1,6 +1,8 @@
 # Sincronización del resultado inicial de VICTOR
 
-Fecha: 2026-09-10. Implementación local; no desplegada ni probada todavía en un teléfono contra AWS.
+Fecha: 2026-09-10. Desplegado en PROD desde un release aislado sobre la versión
+vigente; pendiente la prueba funcional en un teléfono con un ticket nuevo.
+Ver [reporte del despliegue y verificaciones](deploy-ticket-assessment-sync-20260910.md).
 
 ## Alcance y garantías del cambio
 
@@ -110,7 +112,10 @@ npm.cmd run typecheck
 node --test tests/chat-confirmation.test.cjs tests/ticket-sync.test.cjs
 ```
 
-## Activación y prueba posterior (requiere autorización de deploy)
+## Procedimiento de activación y prueba posterior
+
+El despliegue autorizado ya se realizó; no repetirlo a ciegas. El reporte enlazado
+arriba identifica el release y los paquetes code-only usados para preservar PROD.
 
 Los handlers modificados pertenecen a **tickets** (`startAutomation`) y
 **automation** (`assessTicketAutomation`), no a ops. Los scripts existentes son
