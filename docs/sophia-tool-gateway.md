@@ -135,7 +135,9 @@ It must not receive a capability for arbitrary XOC APIs.
 
 ## Hardening backlog from Fase A
 
-Implementation update, 2026-09-10 (local code, not a new production deployment):
+Implementation update, 2026-09-10: items 1 and 2 are deployed through isolated
+release `fe3b25f`; see the [deployment verification](deploy-sophia-chat-hardening-20260910.md).
+Real authenticated conversation smoke remains pending with the user.
 
 1. Implemented: fixed `SOPHIA` allowlist for `agentType` in
    `/agents/auth/token-from-user`. Backend VICTOR service tokens are unchanged.

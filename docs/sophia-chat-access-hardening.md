@@ -1,7 +1,10 @@
 # SOPHIA: controles previos a la integración MCP
 
-Fecha: 2026-09-10. Estado: implementado y probado localmente sobre `70f140b`.
-Sin commit, push, despliegue ni consultas a servicios remotos en esta tarea.
+Fecha: 2026-09-10. Implementación original probada localmente sobre `70f140b`.
+Actualización: publicado en main como `997cddd` y desplegado en PROD mediante
+el release aislado `fe3b25f`, después de autorización explícita.
+Ver [reporte del despliegue y verificaciones](deploy-sophia-chat-hardening-20260910.md).
+Las secciones de implementación describen la fase local, sin consultas remotas.
 
 ## Alcance
 
@@ -144,11 +147,10 @@ como parte de estos controles. El arnés permite loopback para el event loop de
 Windows y TestClient, pero bloquea conexiones externas; algunos tests legacy
 intentan acceder a AWS sin mock y sus excepciones se capturan por el código existente.
 
-## 6. Próximos pasos, sin ejecución automática
+## 6. Seguimiento
 
-1. Revisar/autorizar commit y despliegue acotado del stack Chat, comprobando qué
-   código está realmente desplegado. No desplegar `main` completo de forma ciega:
-   existen releases de producción aislados para cambios anteriores.
+1. Completado: commit/push y despliegue acotado del stack Chat, con versión de
+   producción comprobada y dependencias preservadas. No se desplegó main completo.
 2. Smoke con dos usuarios y dos tenants: abrir/continuar/historial, nueva
    conversación, demo, delegación y rechazos cruzados sin llamadas externas.
 3. Repetir propuesta -> confirmar -> mismo ticket ante replay; comprobar que el
