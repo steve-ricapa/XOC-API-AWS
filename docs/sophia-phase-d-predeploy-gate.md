@@ -13,16 +13,17 @@ del protocolo opt-in con ausencia de accesos legacy.
 
 | Acción | Gate actual | Motivo / evidencia necesaria para levantarlo |
 | --- | --- | --- |
-| Deploy runtime Azure a PROD | **NO-GO** | Falta trazabilidad del deployment Azure y auditoría de su configuración; el candidato conserva un bypass legacy HIGH. |
+| Deploy runtime Azure a PROD | **NO-GO** | Recurso, slot, configuración y agente Foundry acreditados por CLI. Siguen sin acreditarse SHA/bytes/script del deployment; el candidato conserva un bypass legacy HIGH. |
 | Deploy Chat con flag false | **NO-GO operativo por ahora** | La base de código PROD está acreditada y el diff aplica, pero aún no existe paquete/release aislado validado ni comparación final CloudFormation/artefacto. Esto no implica que el flag false necesite Azure D para funcionar. |
-| Activación coordinada flag=true | **NO-GO** | Legacy sigue disponible y puede saltarse gateway; además faltan evidencia Azure, releases revisados y validación de presupuestos reales. |
+| Activación coordinada flag=true | **NO-GO** | Legacy sigue disponible en el candidato y puede saltarse gateway; faltan bytes/script Azure, releases revisados y validación de presupuestos reales. La configuración pública de Azure no constituye una barrera adicional al JWT. |
 | Smoke real de Fase D ahora | **NO-GO** | D no está desplegada; primero resolver gates y autorizar una ventana acotada. Los diagnósticos de sólo lectura sí pueden continuar. |
 | Inicio de MCP-1 | **NO-GO** | Requiere D publicada y smoke funcional/de seguridad aprobado. No se inicia automáticamente. |
 
-**El bypass legacy NO es todavía el único ni el último gate.** También faltan
-identidad/revisión/configuración verificadas de Azure y el paquete aislado de
-Chat. La latencia y la firma compartida tienen riesgos explícitos abajo. Sólo
-cuando esos puntos estén acreditados podrá decirse si legacy es el último gate.
+**El bypass legacy NO es todavía el único ni el último gate.** Ya se acreditaron
+identidad/configuración de Azure y Foundry, pero faltan revisión/bytes/script del
+deployment y el paquete aislado de Chat. La latencia y la firma compartida tienen
+riesgos explícitos abajo. Sólo cuando esos puntos estén acreditados podrá decirse
+si legacy es el último gate.
 
 ## 2. Git y alcance de los commits
 
@@ -33,14 +34,16 @@ Estado inicial, antes de crear commits:
 | XOC-API-AWS | main | `10e3908f199340253241b6d475277f6dd7e3f0c5` | D: Chat, policy, transporte, IAM/env, tests y documentación. |
 | XOC_MICROSERVICIO_AGENTES | main | `cc9e8a8fee9a2adcab54c9a2ebff5897f39f7931` | D: dispatcher, FoundryClient, protocolo/runtime, tests y documentación. |
 
-Se preparan commits separados con estos asuntos, usando la identidad Git local
+Commits de implementación preparados localmente, usando la identidad Git
 existente, sin cambiar autor/configuración:
 
-- Backend: `feat: prepare opt-in Sophia phase D with predeploy gate`.
-- Runtime: `feat: prepare bounded Sophia gateway protocol with legacy gate`.
+- Backend: `b41683b4c39ae0d43ada91b4f24a2dbcc3f77e07`,
+  `feat: prepare opt-in Sophia phase D with predeploy gate`.
+- Runtime: `e0d537977ceba8282326d8bcd11d2bdd4a08e6e3`,
+  `feat: prepare bounded Sophia gateway protocol with legacy gate`.
 
-Sus hashes finales se entregan en el cierre de la tarea; pueden recuperarse con
-`git log -1 --format=fuller` en cada repo. **No son commits desplegados**.
+**No son commits desplegados ni pusheados**. La actualización posterior de este
+gate con lecturas Azure sólo modifica documentación, en commits separados.
 El commit backend en main no debe convertirse en un deploy directo de main.
 No se mezclan árboles Git ni se incluyen secretos, entornos virtuales o artefactos.
 
@@ -64,42 +67,126 @@ hace pull y despliega con un script propio. Esa confirmación identifica el repo
 | --- | --- |
 | Repo fuente | `https://github.com/steve-ricapa/XOC_MICROSERVICIO_AGENTES.git`, confirmado por responsable. |
 | Branch declarada | main; revisión usada por el último deploy no comprobada. |
-| Commit desplegado Azure | **Desconocido**; `cc9e8a8...` es HEAD local base, no evidencia del deployment. |
-| Recurso / suscripción / resource group / slot | Nombre declarado `prod-a-xoc-cons`; ARM resource ID y slot exacto **no comprobados**. No deducir slot a partir del hostname. |
+| Commit desplegado Azure | **Desconocido**; `cc9e8a8...` es HEAD local base, no evidencia del deployment. Historial estándar y ARM de deployments devolvieron `[]`. |
+| Recurso / suscripción / resource group / slot | Verificados: `prod-a-xoc-cons`, suscripción `XOC-AZURE` / `884feb5e-8492-4d88-8777-6391393372f5`, RG `rg-sophia-poc`, sitio de producción sin slot adicional (lista de slots `[]`). |
 | Script/comando | Script propio del responsable, no entregado ni localizado en el repo. No sustituirlo por `func publish`, ZIP deploy u otro comando supuesto. |
 | URL global usada por Chat PROD | Verificada en AWS: `https://prod-a-xoc-cons-g9hvargsfqeafeap.centralus-01.azurewebsites.net/api/agents/SophiaDurableAgent/run`. |
 | URLs por tenant | Pueden existir overrides en TenantRuntimeSettings; no se consultó RDS ni se acredita inventario por tenant. |
-| Agent Foundry / tools remotas | No acreditados: falta SOPHIA_AGENT_ID efectivo, endpoint/proyecto, versión/modelo, instrucciones y tipos/nombres de tools/tool_resources/conexiones. |
-| Bytes remotos Azure versus Git | Pendiente de acceso a deployment/artefacto fuente autorizado. No se invocó Azure para crear runs. |
+| Agent Foundry / tools remotas | Verificados por GET: `asst_FO9aZMTL3B2epnJ363Rcn6nM` / Sophia, deployment `gpt-4.1-mini`, `tools: []`, `tool_resources: {}`. Detalle y limitaciones debajo. |
+| Bytes remotos Azure versus Git | **No comparados**: lectura Entra del contenedor de artefactos rechazada por permisos. No se usaron claves de Storage como alternativa ni se descargó el paquete. |
 
-Intento local: `az account show` fuera del sandbox devolvió
-`ERROR: Please run 'az login' to setup account.` El usuario informó después que
-su compañero habilitará Azure CLI; esa habilitación está pendiente de confirmar.
-El intento inicial en sandbox falló al leer azureProfile.json; se repitió con
-permiso y se distinguió correctamente falta de sesión de falta de permisos locales.
+### 3.1 Sesión y recurso acreditados, 11-sep-2026
 
-La información mínima para cerrar este bloque es:
+El intento inicial sin sesión quedó resuelto: después del login/MFA realizado
+por el usuario, `az account show` confirmó suscripción Enabled y tenant
+`50ac7fef-2120-437f-ad31-6beb036a3723`. Las consultas usaron esa suscripción
+explícitamente. No se pidieron contraseñas ni códigos MFA al asistente.
 
-1. Sesión local de lectura del recurso Function y del proyecto/agente Foundry;
-   no compartir contraseñas, Function keys, API keys, JWT ni publish profiles.
-2. ARM ID/slot y deployment ID/fecha/build SHA; script exacto, hash/revisión del
-   script y revisión de Git que realmente publica. Si publica desde un árbol
-   sucio, inventariar ese diff: el HEAD por sí solo no prueba los bytes.
-3. Si existe ZIP/package vigente, leerlo en memoria o en almacenamiento privado
-   autorizado y comparar hashes por archivo con Git. Comparar fuentes de
-   `function_app.py`, `sophia_agent/`, `shared/`, `domain/`, configuración de host
-   y manifests de dependencias; no publicar settings ni URLs de descarga firmadas.
-4. Registrar por separado cambios de build/dependencias generadas. Si sólo hay
-   historial de deploy sin artefacto, declarar esa limitación, no afirmar igualdad.
-5. Obtener metadata de agente y su configuración mediante lectura, sin crear
-   threads/runs ni ejecutar tools. Clasificar herramientas built-in, funciones,
-   OpenAPI/MCP/conexiones si aparecen y verificar qué se sobreescribe por run.
+ARM ID de la Function:
 
-El repo local usa Foundry REST, `SOPHIA_AGENT_ID`, endpoint con aliases existentes,
-API version default `2025-05-01`, y API key o DefaultAzureCredential. D envía las
-cuatro funciones READ_ONLY y `parallel_tool_calls=false` por run; eso no acredita
-la configuración actual del agente remoto. El README legado menciona DTS y
-ejemplos sin Bearer; no se usa como contrato real ni como script de publicación.
+```text
+/subscriptions/884feb5e-8492-4d88-8777-6391393372f5/resourceGroups/rg-sophia-poc/providers/Microsoft.Web/sites/prod-a-xoc-cons
+```
+
+- Única Function App devuelta por el inventario de esa suscripción; Running,
+  Linux Consumption Y1 / Dynamic, plan `ASP-rgsophiapoc-ab94`, Python 3.12,
+  Functions `~4`, `alwaysOn=false`.
+- Hostname coincide exactamente con la URL global de Chat PROD ya verificada.
+  No se consultaron overrides de tenant ni otros tenants/directorios Azure.
+- `publicNetworkAccess=Enabled`, HTTPS obligatorio, TLS mínimo 1.2,
+  IP restrictions de sitio y SCM con `Allow all`; Easy Auth
+  `platform.enabled=false`; certificado de cliente no requerido.
+- Metadata de triggers publicada: health GET, SOPHIA run POST, history GET,
+  delete thread DELETE y VICTOR run POST; todos `authLevel=ANONYMOUS` en host,
+  `scriptFile=function_app.py`. Eso **no significa ausencia del JWT del handler**.
+  No se invocaron esos endpoints. VICTOR comparte este sitio: preservar su código
+  no evita que un futuro redeploy del sitio afecte también su proceso.
+- Identidad SystemAssigned `131a8f1e-7246-461a-9aac-f0bc08ecfe31`.
+  Asignaciones encontradas para ese principal en la suscripción: Cognitive
+  Services OpenAI User y Foundry User sobre `aoai-sophia-xoc-eus2`.
+  No es una certificación de ausencia de permisos por grupos/otros scopes.
+- Settings no secretos: `SCM_DO_BUILD_DURING_DEPLOYMENT=true`,
+  `BACKEND_TIMEOUT_SECONDS=10`, `JWT_ALGORITHM=HS256`, backend
+  `https://xvwg3cvl6b.execute-api.us-east-1.amazonaws.com`.
+  No aparecen `JWT_ISSUER` ni `JWT_AUDIENCE` en los app settings.
+- Existen valores configurados para `AGENT_JWT_SECRET` y `JWT_SECRET_KEY`;
+  no se imprimieron, compararon ni rotaron. No hay project API key en los dos
+  nombres que consulta el código: éste usaría DefaultAzureCredential, compatible
+  con la identidad administrada observada. No se trazó una ejecución real.
+
+### 3.2 Configuración efectiva Foundry leída, sin runs
+
+- Recurso `aoai-sophia-xoc-eus2` (AIServices), RG `rg-sophia-poc`, East US 2;
+  proyecto `sophia-project`.
+- Endpoint efectivo:
+  `https://aoai-sophia-xoc-eus2.services.ai.azure.com/api/projects/sophia-project`.
+- `SOPHIA_AGENT_ID=asst_FO9aZMTL3B2epnJ363Rcn6nM`, nombre Sophia,
+  API version efectiva `2025-05-01`.
+- Deployment `gpt-4.1-mini`, modelo OpenAI `gpt-4.1-mini`, versión `2025-04-14`,
+  GlobalStandard, provisioning Succeeded. Agente: temperature 1.0, top_p 1.0,
+  response_format auto.
+- GET del agente devolvió **cero tools y cero tool_resources**: no hay funciones,
+  code interpreter, file search, OpenAPI o MCP configurados en ese objeto. Esto
+  no inventaría un inventario de conexiones de todo el proyecto.
+- Instrucciones: 2101 caracteres; SHA256 UTF-8
+  `7f116f105f15ef21174094e40b6ca2abbd2425e1a7c5febda42e1266e5fb9a17`.
+  Contienen referencia a `ticket_create`; no se copian completas en el reporte.
+- **Tools vacías en el agente NO cierran legacy**: el código local real de
+  `FoundryClient.create_run` envía `tools=tool_definitions` por petición, y
+  `run_threaded`/`handle_tool_calls` ejecutan el registry legacy. D también
+  especifica su allowlist de cuatro READ_ONLY por run y desactiva parallel calls.
+  El SHA del runtime desplegado continúa sin comprobar: no afirmar que la lectura
+  del objeto Foundry demuestra qué llamadas emitió PROD.
+
+La lectura se hizo con Azure CLI/REST existentes, sin instalar dependencias de
+la guía Foundry, crear proyectos, cambiar el agente o invocar modelos. El recurso
+Foundry permite red pública (defaultAction Allow); no se cambiaron controles.
+
+### 3.3 Trazabilidad todavía bloqueada
+
+`deployment source show` devolvió branch null / scmType None; historial estándar
+y ARM de deployments devolvieron `[]`. No demuestra que nunca se haya desplegado:
+no ofrece un Git SHA ni prueba del script externo del responsable. El Activity
+Log consultado tampoco identificó un commit; un evento `publishxml/action` es
+lectura de perfil, **no evidencia de publicación de código**.
+
+La configuración apunta al storage `rgsophiapoc8952`; no están presentes
+`WEBSITE_RUN_FROM_PACKAGE` ni `SCM_RUN_FROM_PACKAGE`. En Linux Consumption el
+contenedor `scm-releases` del host storage es la ubicación estándar que se intentó
+leer, conforme a la [guía oficial de artefactos Linux Consumption](https://learn.microsoft.com/en-us/azure/azure-functions/migration/migrate-plan-consumption-to-flex).
+No se confirmó el nombre, formato, ETag ni fecha del blob vigente.
+
+Consulta: `az storage blob list --account-name rgsophiapoc8952
+--container-name scm-releases --auth-mode login`. Error exacto relevante:
+
+```text
+You do not have the required permissions needed to perform this operation.
+```
+
+El CLI recomendó roles de datos, incluyendo Storage Blob Data Reader. Red del
+storage: pública Enabled/defaultAction Allow; causa probable, permisos de datos
+insuficientes para la sesión. No se cambió RBAC ni se recurrió a `--auth-mode key`,
+SAS o claves del connection string. El rol de administración de un recurso no
+acredita por sí solo esta lectura de datos.
+
+Para cerrar este bloque, pedir al responsable:
+
+1. Script real de deploy (archivo, ruta/repo y revisión/hash, sin secretos),
+   comando con argumentos no secretos, branch y SHA que publicó la última vez.
+   Si el árbol estaba sucio, incluir el diff; no basta el HEAD actual del agente.
+2. Lectura mínima Storage Blob Data Reader sobre
+   `/subscriptions/884feb5e-8492-4d88-8777-6391393372f5/resourceGroups/rg-sophia-poc/providers/Microsoft.Storage/storageAccounts/rgsophiapoc8952/blobServices/default/containers/scm-releases`,
+   o entrega privada del artefacto efectivo con su ETag/fecha/hash y referencia al
+   deployment. No compartir claves, SAS, publish profiles ni local.settings.json.
+3. Comparar después las fuentes por archivo contra Git y separar dependencias
+   generadas. Si sólo coinciden algunos archivos, registrar exactamente cuáles;
+   no declarar igualdad completa ni asumir que `main` es PROD.
+
+El comando estándar de logs de deployment puede autenticar SCM con credenciales
+de publicación internamente según la configuración del CLI/sitio. No se guardó
+ni mostró un perfil o credencial; las siguientes lecturas utilizaron ARM/Entra.
+Las respuestas de app settings se filtraron a nombres y whitelist no secreta;
+valores sensibles no se persistieron ni se incluyeron en salidas/documentación.
 
 ## 4. Base REAL de AWS Chat PROD
 
@@ -166,10 +253,10 @@ suprime tools sólo en esa petición; no es una barrera de autorización general
 | Pregunta | Respuesta |
 | --- | --- |
 | ¿Puede invocar ticket_create, ticket_patch, scans/BackendClient fuera del gateway? | **Sí** en el código candidato, y reproducido offline con JWT ficticio válido y proveedores simulados. No es ejecución anónima ni una prueba de escritura remota. |
-| ¿Qué autenticación? | Bearer firmado con `_get_jwt_secret()`, algoritmo configurado (default HS256), exp requerido/vigente, scopes lista con agent:invoke, tenant_id presente, agent_type SOPHIA si viene. agent_type ausente se admite. No exige actor/role/delegación/request_id; no comprueba type=access en el verificador Azure. Issuer/audience sólo si se configuran; configuración remota desconocida. |
+| ¿Qué autenticación? | En el código auditado: Bearer firmado con `_get_jwt_secret()`, HS256, exp requerido/vigente, scopes lista con agent:invoke, tenant_id presente, agent_type SOPHIA si viene. agent_type ausente se admite. No exige actor/role/delegación/request_id; no comprueba type=access. Issuer/audience sólo si se configuran; no aparecen JWT_ISSUER/JWT_AUDIENCE en los app settings remotos leídos. |
 | ¿Quién puede obtenerla? | POST /agents/auth/token-from-user en XOC requiere usuario válido y require_tenant_read_access: USER/ADMIN con tenant, ADMIN_XOC y también SUPERADMIN con delegación. Emite SOPHIA por 1 hora, sin actor/role/delegación dentro del JWT. Chat/history/delete emiten internamente tokens SOPHIA de 15 min. Poseedores del token vigente pueden reutilizarlo. |
 | ¿Está disponible con flag=true? | **Sí.** El flag selecciona transporte en XOC; no es un cierre del dispatcher legacy en Azure ni del endpoint de intercambio. |
-| ¿Sirve una llamada directa a Azure? | El código sí la acepta con ese Bearer y configuración válida. FunctionApp usa AuthLevel.ANONYMOUS a nivel de host, pero el handler exige JWT. No se acreditaron Easy Auth, restricciones de red o slot remoto, por lo que no se declara comprobado el acceso público efectivo. |
+| ¿Sirve una llamada directa a Azure? | El código candidato sí la acepta con ese Bearer y configuración válida. El sitio PROD permite red pública, Allow all, sin Easy Auth ni certificado de cliente, y el trigger run publicado es ANONYMOUS. No existe una barrera adicional de plataforma acreditada que impida esa llamada. El handler exige JWT; no se invocó /run ni se acreditaron aún sus bytes PROD. |
 | ¿La API-key legacy de XOC sigue activa? | No: /agents/auth/token devuelve 410. Eso NO cierra token-from-user ni el dispatcher Azure. |
 
 Casos de autorización downstream distinguidos:
@@ -226,10 +313,12 @@ eliminaron datos. Preservar funcionalidad no equivale a certificar ese acceso di
 
 ## 7. HIGH — alcance del material HS256 compartido
 
-Inspección de fuentes y referencias, sin leer/comparar/rotar valores de claves.
+Inspección de fuentes, referencias y presencia de settings, sin imprimir,
+persistir, comparar ni rotar valores de claves.
 AWS firma/verifica con get_jwt_secret_key (prioriza Secrets Manager, luego env,
 luego SSM). Azure usa AGENT_JWT_SECRET / JWT_SECRET_KEY / SESSION_SECRET; el mismo
-helper es compartido. La igualdad del valor Azure/AWS no está comprobada aquí;
+helper es compartido. Azure tiene AGENT_JWT_SECRET y JWT_SECRET_KEY configurados;
+la precedencia del helper elegiría el primero. La igualdad Azure/AWS no se comparó;
 si funciona ese intercambio debe existir material compatible para esos JWT.
 
 HMAC es simétrico: quien conoce la clave de verificación puede firmar. aud/type/
@@ -358,6 +447,15 @@ el archivo editado se llama Chat para garantizar ausencia de regresiones.
   código antes/después de documentar/commitear. Sin hooks locales activos encontrados.
 - Lecturas AWS: STS, get-function/ZIP, CloudFormation e IAM. Sin Lambda invoke,
   put/update/delete, logs de conversaciones, Secrets Manager GetSecretValue ni RDS.
+- Continuación Azure después del login: account/site/slots/config/triggers,
+  roles del principal de la Function, metadata de deployments/Activity Log,
+  GET de agente Foundry y metadata de su modelo. Sin crear threads/runs,
+  ejecutar tools, history/delete, modificar recursos, activar flags ni desplegar.
+  Falló la lectura Entra del contenedor del paquete; no se eludió usando keys.
+- La actualización con evidencia Azure sólo modifica este informe y PHASE_D.md
+  del runtime; no se repitieron suites por un cambio exclusivamente documental.
+  Los resultados anteriores siguen siendo la evidencia de los commits de código
+  arriba citados, no un smoke contra PROD.
 
 Comandos de referencia para repetir tests en entorno offline:
 
@@ -373,9 +471,11 @@ XOC_API_SOURCE apuntando al repo backend local. No usar secretos reales en tests
 
 ## 11. Próximo paso permitido
 
-Continuar sólo la lectura de Azure cuando el responsable habilite CLI y acceso
-de datos Foundry. Actualizar esta matriz con evidencia del recurso/slot/deployment,
-script y tools. Después presentar para aprobación el cierre focalizado de legacy
-y la estrategia de firma/consumidores, sin implementarlos automáticamente.
+La sesión CLI y la lectura Foundry ya funcionan. Falta el script/commit de deploy
+del responsable y acceso de lectura al artefacto para comparar bytes. Con esa
+evidencia se actualizará la matriz; después presentar para aprobación el cierre
+focalizado de legacy y la estrategia de firma/consumidores, sin implementarlos
+automáticamente. Continúan pendientes el release aislado de Chat y los criterios
+de latencia/seguridad. **No es todavía un caso de único blocker legacy**.
 
 No hay autorización en esta tarea para desplegar aunque el gate futuro cambie a GO.
