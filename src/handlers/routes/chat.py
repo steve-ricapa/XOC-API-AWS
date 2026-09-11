@@ -19,6 +19,7 @@ from src.shared.config import get_jwt_secret_key, get_settings
 from src.shared.context import effective_tenant_id_of, normalize_role, require_tenant_read_access
 from src.shared.dependencies import get_current_user
 from src.shared.errors import AppError, ForbiddenError, UnauthorizedError, ValidationError
+from src.shared import sophia_tool_chat
 from src.tool_gateway.executor import ToolExecutor
 from src.tool_gateway.schemas import ToolContext, ToolRequest
 
@@ -715,8 +716,6 @@ def proxy_chat(
     if not function_base_url:
         raise ValidationError("SVAFUNC function_base_url is not configured for this company")
 
-    service_token = _build_agent_invoke_token(int(tenant_id), "SOPHIA")
-
     params = {}
     # Demo and new_session keep their existing server-owned behavior. No
     # client-supplied thread is ever forwarded without a local owner binding.
@@ -733,6 +732,17 @@ def proxy_chat(
     if thread_id:
         sophia_payload["thread_id"] = thread_id
 
+    governed = sophia_tool_chat.enabled()
+    if governed:
+        # Correlation is server-generated; none of the client's tool/result or
+        # authority fields is forwarded. Only this request's trusted context.
+        request_id = str(uuid.uuid4())
+        tool_context = _chat_tool_context(current_user, int(effective_tenant_id), request_id)
+        sophia_payload.update(protocol=sophia_tool_chat.PROTOCOL, phase="request", request_id=request_id)
+        service_token = sophia_tool_chat.capability(tool_context, sophia_payload)
+    else:
+        service_token = _build_agent_invoke_token(int(tenant_id), "SOPHIA")
+
     affinity_cookies = None
     if chat_session is not None:
         affinity_cookies = _SESSION_AFFINITY.get(chat_session.id)
@@ -740,6 +750,11 @@ def proxy_chat(
     retry_attempts, retry_delay = _get_run_active_retry_config()
     attempt = 0
     timeout_seconds = int(os.environ.get("SOPHIA_CHAT_TIMEOUT_SECONDS", str(_DEFAULT_CHAT_TIMEOUT)))
+    # Stay within the existing shared Chat Lambda timeout; don't change Voice's
+    # execution envelope to accommodate this opt-in protocol.
+    governed_deadline = time.monotonic() + 18
+    if governed:
+        timeout_seconds = min(timeout_seconds, 9)
 
     while True:
         try:
@@ -753,6 +768,7 @@ def proxy_chat(
                 },
                 cookies=affinity_cookies,
                 timeout=timeout_seconds,
+                **({"allow_redirects": False} if governed else {}),
             )
         except requests.exceptions.Timeout:
             logger.warning("[chat] SOPHIA timeout after %ss", timeout_seconds)
@@ -764,30 +780,64 @@ def proxy_chat(
             if thread_id:
                 response_payload["thread_id"] = thread_id
             return response_payload
+        except requests.exceptions.RequestException:
+            if governed:
+                raise sophia_tool_chat.protocol_error("sophia_runtime_unavailable") from None
+            raise
 
         response_cookies = _extract_affinity_cookies(sophia_response.cookies)
         if response_cookies:
             affinity_cookies = response_cookies
 
         if sophia_response.status_code == 200:
-            response_payload = sophia_response.json()
+            try:
+                response_payload = sophia_response.json()
+            except ValueError:
+                if governed:
+                    raise sophia_tool_chat.protocol_error() from None
+                raise
             response_thread_id = response_payload.get("thread_id") if isinstance(response_payload, dict) else None
-            _validate_response_thread_binding(
-                db_session, response_thread_id, thread_id=thread_id,
-                tenant_id=effective_tenant_id, user_id=current_user.id,
-            )
-            cleaned_payload = _clean_agent_response(response_payload)
-            cleaned_payload = _maybe_execute_chat_tool_request(
-                cleaned_payload, current_user, int(tenant_id), request_id
-            )
+            if not governed:
+                _validate_response_thread_binding(
+                    db_session, response_thread_id, thread_id=thread_id,
+                    tenant_id=effective_tenant_id, user_id=current_user.id,
+                )
+            if governed:
+                def post_tool_result(body):
+                    remaining = governed_deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise sophia_tool_chat.protocol_error("sophia_runtime_timeout")
+                    final_response = requests.post(
+                        full_url, json=body, params={"thread_id": body["thread_id"]},
+                        headers={"Content-Type": "application/json",
+                                 "Authorization": f"Bearer {sophia_tool_chat.capability(tool_context, body)}"},
+                        cookies=affinity_cookies, timeout=min(9, remaining), allow_redirects=False,
+                    )
+                    if final_response.status_code != 200:
+                        raise sophia_tool_chat.protocol_error("sophia_runtime_unavailable")
+                    return final_response.json()
+
+                cleaned_payload = sophia_tool_chat.finish_turn(
+                    response_payload, context=tool_context, cleaner=_clean_agent_response,
+                    validate_thread=lambda value: _validate_response_thread_binding(
+                        db_session, value, thread_id=thread_id,
+                        tenant_id=effective_tenant_id, user_id=current_user.id),
+                    post_result=post_tool_result, allow_tools=not demo_mode,
+                )
+            else:
+                cleaned_payload = _clean_agent_response(response_payload)
+                cleaned_payload = _maybe_execute_chat_tool_request(
+                    cleaned_payload, current_user, int(tenant_id), request_id
+                )
             cleaned_payload = _maybe_create_ticket_from_action_plan(
                 cleaned_payload, int(tenant_id), current_user, request_id
             )
-            cleaned_payload = _maybe_create_ticket_from_intent(
-                cleaned_payload, message, int(tenant_id), current_user,
-                tenant_extra=runtime_settings.get("extra_json"),
-                request_id=request_id,
-            )
+            if not (governed and cleaned_payload.get("metadata", {}).get("toolGateway")):
+                cleaned_payload = _maybe_create_ticket_from_intent(
+                    cleaned_payload, message, int(tenant_id), current_user,
+                    tenant_extra=runtime_settings.get("extra_json"),
+                    request_id=request_id,
+                )
             if response_thread_id:
                 if chat_session is None:
                     chat_session = AgentSession(
@@ -822,6 +872,9 @@ def proxy_chat(
 
             return cleaned_payload
 
+        if governed:
+            # No raw provider errors, legacy retries or alternative execution.
+            raise sophia_tool_chat.protocol_error("sophia_runtime_unavailable")
         error_data = (
             sophia_response.json()
             if sophia_response.headers.get("content-type") == "application/json"

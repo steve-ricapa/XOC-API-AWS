@@ -24,6 +24,18 @@ _OWNERSHIP_ARGUMENTS = frozenset(
         "effective_tenant_id",
         "userid",
         "user_id",
+        "role",
+        "actor_role",
+        "actorrole",
+        "actor_user_id",
+        "actoruserid",
+        "delegation_active",
+        "delegationactive",
+        "access_token",
+        "accesstoken",
+        "refresh_token",
+        "refreshtoken",
+        "jwt",
     }
 )
 
