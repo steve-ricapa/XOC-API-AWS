@@ -102,6 +102,7 @@ process.stdout.write(JSON.stringify({
                 self.assertEqual(20, function['timeout'])
                 self.assertEqual({
                     'SOPHIA_TOOL_GATEWAY_ENABLED': "${env:SOPHIA_TOOL_GATEWAY_ENABLED, 'false'}",
+                    'SOPHIA_THREAD_CAPABILITIES_ENABLED': "${env:SOPHIA_THREAD_CAPABILITIES_ENABLED, 'false'}",
                     'USER_NOTIFICATION_INBOX_TABLE_NAME': f'xoc-api-ops-{stage}-user-notification-inbox',
                 }, function['environment'])
 

@@ -19,7 +19,7 @@ from src.shared.config import get_jwt_secret_key, get_settings
 from src.shared.context import effective_tenant_id_of, normalize_role, require_tenant_read_access
 from src.shared.dependencies import get_current_user
 from src.shared.errors import AppError, ForbiddenError, UnauthorizedError, ValidationError
-from src.shared import sophia_tool_chat
+from src.shared import sophia_tool_chat, sophia_thread_operations
 from src.tool_gateway.executor import ToolExecutor
 from src.tool_gateway.schemas import ToolContext, ToolRequest
 
@@ -570,17 +570,35 @@ def chat_history(
 
     params = {"thread_id": resolved_thread_id, "limit": str(limit), "order": order}
     full_url = f"{function_base_url.rstrip('/')}{history_route}"
-    service_token = _build_agent_invoke_token(int(tenant_id), "SOPHIA")
+    thread_capabilities = sophia_thread_operations.enabled()
+    if thread_capabilities:
+        headers = sophia_thread_operations.headers_for_owned_session(
+            current_user, chat_session, 'history', limit=limit, order=order)
+    else:
+        service_token = _build_agent_invoke_token(int(tenant_id), "SOPHIA")
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {service_token}"}
 
     try:
         response = requests.get(
             full_url,
             params=params,
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {service_token}"},
+            headers=headers,
             timeout=30,
+            **({'allow_redirects': False} if thread_capabilities else {}),
         )
     except Exception as exc:
+        if thread_capabilities:
+            raise sophia_thread_operations.unavailable() from None
         raise AppError(f"Error communicating with SOPHIA: {str(exc)}", status_code=500)
+
+    if thread_capabilities:
+        if response.status_code != 200:
+            raise sophia_thread_operations.unavailable()
+        try:
+            payload = sophia_thread_operations.history_payload(response.json(), resolved_thread_id)
+        except (ValueError, TypeError):
+            raise sophia_thread_operations.unavailable() from None
+        return {**payload, 'session_id': chat_session.id}
 
     if response.status_code != 200:
         error_data = response.json() if response.headers.get("content-type") == "application/json" else {"error": response.text}
@@ -621,24 +639,37 @@ def delete_chat_session(
     if not function_base_url:
         raise ValidationError("SVAFUNC function_base_url is not configured for this company")
 
-    service_token = _build_agent_invoke_token(tenant_id, "SOPHIA")
+    thread_capabilities = sophia_thread_operations.enabled()
+    if not thread_capabilities:
+        service_token = _build_agent_invoke_token(tenant_id, "SOPHIA")
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {service_token}"}
 
     remote_deleted = False
     remote_error = None
     if chat_session.external_thread_id:
         thread_id = chat_session.external_thread_id
+        if thread_capabilities:
+            headers = sophia_thread_operations.headers_for_owned_session(current_user, chat_session, 'delete')
         full_url = f"{function_base_url.rstrip('/')}{delete_route.rstrip('/')}/{thread_id}"
         try:
             response = requests.delete(
                 full_url,
-                headers={"Content-Type": "application/json", "Authorization": f"Bearer {service_token}"},
+                headers=headers,
                 timeout=30,
+                **({'allow_redirects': False} if thread_capabilities else {}),
             )
             remote_deleted = response.status_code in (200, 204)
+            if thread_capabilities and response.status_code == 200:
+                payload = response.json()
+                remote_deleted = (isinstance(payload, dict) and payload.get('thread_id') == thread_id
+                                  and payload.get('deleted') is True)
             if not remote_deleted:
-                remote_error = response.text
+                remote_error = 'SOPHIA thread operation failed' if thread_capabilities else response.text
         except Exception as exc:
-            remote_error = str(exc)
+            remote_error = 'SOPHIA thread operation failed' if thread_capabilities else str(exc)
+        if thread_capabilities and not remote_deleted:
+            # Keep ownership/affinity for a retry; never discard the binding on DENY.
+            raise sophia_thread_operations.unavailable()
 
     db_session.delete(chat_session)
     db_session.commit()

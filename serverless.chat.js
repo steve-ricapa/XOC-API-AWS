@@ -66,6 +66,7 @@ module.exports = buildService({
       // No changes to the provider-wide environment or any VICTOR function.
       environment: {
         SOPHIA_TOOL_GATEWAY_ENABLED: "${env:SOPHIA_TOOL_GATEWAY_ENABLED, 'false'}",
+        SOPHIA_THREAD_CAPABILITIES_ENABLED: "${env:SOPHIA_THREAD_CAPABILITIES_ENABLED, 'false'}",
         USER_NOTIFICATION_INBOX_TABLE_NAME: `xoc-api-ops-${stage}-user-notification-inbox`,
       },
     },
