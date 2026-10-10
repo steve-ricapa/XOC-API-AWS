@@ -1,4 +1,5 @@
-// AC-1 LOCAL: declarative only. AC-2 deploys DEV through the existing framework.
+// AC-2: separate AgentCore stack around existing XOC resources. Stage names
+// follow the live resource convention; they do not imply a second environment.
 const { buildService } = require('./serverless/services/lib/common');
 const resources = require('./serverless/services/agentcore-resources');
 
@@ -34,6 +35,14 @@ const config = buildService({
 delete config.provider.iam;
 config.provider.tracing = { lambda: false };
 config.provider.deploymentBucket = { blockPublicAccess: true };
+// The live account has only 10 total/unreserved executions. Do not reserve
+// capacity away from existing XOC functions. This is an explicit rollout option,
+// not a change to any existing function's concurrency or to the default cap.
+if (process.env.SOPHIA_AGENTCORE_RESERVED_CONCURRENCY === 'unreserved') {
+  delete config.functions.agentcoreReadTarget.reservedConcurrency;
+} else if (process.env.SOPHIA_AGENTCORE_RESERVED_CONCURRENCY) {
+  throw new Error('Unsupported AgentCore concurrency override');
+}
 config.package.patterns = ['!**', 'src/**', '!src/**/__pycache__/**', '!src/**/*.pyc', 'requirements.crypto.txt'];
 // Runs after python-requirements injection; scoped to this service only.
 config.plugins.push('./serverless/plugins/agentcore-posix-package.js');

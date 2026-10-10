@@ -61,6 +61,15 @@ class AgentCoreInfraTests(unittest.TestCase):
             self.assertEqual(20, chat['timeout'])
             self.assertEqual("${env:SOPHIA_TOOL_EXECUTION, 'disabled'}", chat['environment']['SOPHIA_TOOL_EXECUTION'])
 
+    def test_unreserved_rollout_is_explicit_and_scoped(self):
+        node = shutil.which('node')
+        config = json.loads(subprocess.check_output([node, '-e',
+            "console.log(JSON.stringify(require('./serverless.agentcore')))"] , cwd=ROOT,
+            env={**os.environ, 'STAGE': 'prod', 'SOPHIA_AGENTCORE_RESERVED_CONCURRENCY': 'unreserved'}, text=True))
+        self.assertNotIn('reservedConcurrency', config['functions']['agentcoreReadTarget'])
+        self.assertEqual(4, self.configs['prod']['agentcore']['functions']['agentcoreReadTarget']['reservedConcurrency'])
+        self.assertEqual('xoc-api-tickets-prod-tickets', config['provider']['environment']['TICKETS_TABLE_NAME'])
+
     def test_no_plaintext_credentials_or_laboratory_dependencies(self):
         for configs in self.configs.values():
             cfg = configs['agentcore']
