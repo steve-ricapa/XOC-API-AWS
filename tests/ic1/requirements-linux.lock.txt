@@ -1,0 +1,4 @@
+# Additional IC-1 harness dependencies ONLY. Baseline L6 env is not changed.
+fastapi==0.141.1 --hash=sha256:bfb91aa2d334c61cb35ba9a116fc123b3d3df31640b801cf57a7a78ec3f603b3
+annotated-doc==0.0.4 --hash=sha256:571ac1dc6991c450b25a9c2d84a3705e2ae7a53467b5d111c24fa8baabbed320
+bcrypt==5.0.0 --hash=sha256:7aeef54b60ceddb6f30ee3db090351ecf0d40ec6e2abf41430997407a46d2254

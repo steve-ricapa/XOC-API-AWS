@@ -153,7 +153,7 @@ def _public_reply(payload, *, allow_proposal):
     return result
 
 
-def finish_turn(payload, *, context, cleaner, validate_thread, post_result, allow_tools=True):
+def finish_turn(payload, *, context, cleaner, validate_thread, post_result, allow_tools=True, deadline=None):
     """One executor invocation and at most one model continuation. No fallback."""
     _validate_envelope(payload, context)
     validate_thread(payload.get("thread_id"))
@@ -166,8 +166,18 @@ def finish_turn(payload, *, context, cleaner, validate_thread, post_result, allo
     if not isinstance(continuation, str) or not 1 <= len(continuation) <= 8192 or not payload.get("thread_id"):
         raise protocol_error()
 
-    result = ToolExecutor().execute(context, ToolRequest(
-        tool_request.tool_name, tool_request.arguments, context.request_id))
+    from src.shared.sophia_tool_execution import selected_local_port
+    execution = selected_local_port()
+    request = ToolRequest(tool_request.tool_name, tool_request.arguments, context.request_id)
+    if execution is None:
+        result = ToolExecutor().execute(context, request)
+    else:
+        # MCP is explicitly composed by the LOCAL harness, never by model/body.
+        # A missing budget or execution error is fail-closed, never local fallback.
+        try:
+            result = execution.execute(context, request, deadline=deadline)
+        except Exception:
+            result = ToolResult(ToolDecision.DENIED, code="mcp_unavailable")
     sanitized = model_result(result, tool_request.tool_name, context)
     body = {"protocol": PROTOCOL, "phase": "result", "request_id": context.request_id,
             "thread_id": payload["thread_id"], "continuation": continuation, "tool_result": sanitized}

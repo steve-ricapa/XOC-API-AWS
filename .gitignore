@@ -1,5 +1,6 @@
 .serverless/
 .venv/
+tests/ic1/.build/
 __pycache__/
 .pytest_cache/
 .mypy_cache/
