@@ -72,3 +72,27 @@ module.exports = buildService({
     },
   }),
 });
+
+// AC-1 keeps the default Chat template byte-for-byte equivalent in behavior.
+// AC-2 can provision the separate stack first, then opt into these output refs.
+// Activation is separately controlled and defaults to unavailable, NOT fallback.
+if (process.env.SOPHIA_AGENTCORE_PROVISIONED === 'true') {
+  const stage = module.exports.provider.stage;
+  const output = (key) => `\${cf:xoc-api-agentcore-${stage}.${key}}`;
+  Object.assign(module.exports.functions.chatAgentsApi.environment, {
+    SOPHIA_TOOL_EXECUTION: "${env:SOPHIA_TOOL_EXECUTION, 'disabled'}",
+    SOPHIA_AGENTCORE_GATEWAY_ARN: output('GatewayArn'),
+    SOPHIA_AGENTCORE_GATEWAY_URL: output('GatewayUrl'),
+    SOPHIA_AGENTCORE_CONTEXT_KEY_ARN: output('ContextKeyArn'),
+  });
+  module.exports.resources = { Resources: { SophiaAgentCoreCallerPolicy: {
+    Type: 'AWS::IAM::Policy', Properties: {
+      PolicyName: `xoc-chat-agentcore-${stage}`,
+      Roles: [{ Ref: 'IamRoleLambdaExecution' }],
+      PolicyDocument: { Version: '2012-10-17', Statement: [
+        { Effect: 'Allow', Action: ['bedrock-agentcore:InvokeGateway'], Resource: output('GatewayArn') },
+        { Effect: 'Allow', Action: ['kms:GenerateMac'], Resource: output('ContextKeyArn') },
+      ] },
+    },
+  } } };
+}

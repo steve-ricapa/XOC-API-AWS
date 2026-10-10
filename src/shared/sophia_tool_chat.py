@@ -166,13 +166,13 @@ def finish_turn(payload, *, context, cleaner, validate_thread, post_result, allo
     if not isinstance(continuation, str) or not 1 <= len(continuation) <= 8192 or not payload.get("thread_id"):
         raise protocol_error()
 
-    from src.shared.sophia_tool_execution import selected_local_port
-    execution = selected_local_port()
+    from src.shared.sophia_tool_execution import selected_execution
+    execution = selected_execution()
     request = ToolRequest(tool_request.tool_name, tool_request.arguments, context.request_id)
     if execution is None:
         result = ToolExecutor().execute(context, request)
     else:
-        # MCP is explicitly composed by the LOCAL harness, never by model/body.
+        # Transport is selected by trusted composition/configuration, never body.
         # A missing budget or execution error is fail-closed, never local fallback.
         try:
             result = execution.execute(context, request, deadline=deadline)

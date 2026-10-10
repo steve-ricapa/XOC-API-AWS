@@ -764,8 +764,8 @@ def proxy_chat(
         sophia_payload["thread_id"] = thread_id
 
     governed = sophia_tool_chat.enabled()
-    from src.shared.sophia_tool_execution import selected_local_port
-    if selected_local_port() is not None and not governed:
+    from src.shared.sophia_tool_execution import requires_governed_execution
+    if requires_governed_execution() and not governed:
         raise sophia_tool_chat.protocol_error("sophia_mcp_requires_governed_chat")
     if governed:
         # Correlation is server-generated; none of the client's tool/result or

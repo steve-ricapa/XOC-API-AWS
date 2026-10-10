@@ -30,3 +30,28 @@ def local_execution(port: SophiaToolExecutionPort):
 
 def selected_local_port():
     return _local_port.get()
+
+
+def requires_governed_execution():
+    return selected_local_port() is not None or os.getenv("SOPHIA_TOOL_EXECUTION", "direct") != "direct"
+
+
+def selected_execution():
+    """Explicit deployment configuration, never a client/model parameter.
+
+    Invalid/disabled configurations return a denying port, not direct execution.
+    AgentCore takes precedence over the LOCAL-only test seam.
+    """
+    mode = os.getenv("SOPHIA_TOOL_EXECUTION", "direct")
+    if mode == "agentcore":
+        from src.shared.sophia_agentcore_client import AgentCoreExecution
+        return AgentCoreExecution()
+    if mode != "direct":
+        return UnavailableExecution()
+    return selected_local_port()
+
+
+class UnavailableExecution:
+    def execute(self, context, request, *, deadline):
+        from src.tool_gateway.schemas import ToolDecision
+        return ToolResult(ToolDecision.DENIED, code="tool_transport_unavailable")
