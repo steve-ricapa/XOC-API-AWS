@@ -1,5 +1,12 @@
 # SOPHIA AC-2 — DEV deployment gate and local artifact validation
 
+> HISTÓRICO SUPERADO. El usuario confirmó una única infraestructura XOC real;
+> no falta un ambiente DEV ni deben crearse duplicados. El discovery, despliegue
+> AgentCore real y los gates vigentes están en
+> [AC-2: infraestructura real](sophia-agentcore-ac2-infra-real.md).
+> Las conclusiones de naming y bloqueo por dependencias DEV de este archivo
+> no deben utilizarse como instrucciones actuales.
+
 Date: 2026-10-10. **AC2_STATUS = BLOCKED. READY_FOR_RELEASE_REVIEW = NO.**
 
 ## Latest resumption — identity resolved, DEV dependencies absent
