@@ -16,7 +16,10 @@ const config = buildService({
     AWS_MAX_ATTEMPTS: '1',
   }),
   pythonRequirements: { fileName: 'requirements.crypto.txt', dockerizePip: true,
-    dockerImage: 'public.ecr.aws/sam/build-python3.11:latest' },
+    dockerImage: 'public.ecr.aws/sam/build-python3.11:latest',
+    // Retain distribution metadata for runtime imports and artifact provenance.
+    slimPatternsAppendDefaults: false,
+    slimPatterns: ['**/*.py[c|o]', '**/__pycache__*', '**/tests/**', '**/testing/**'] },
   functions: (stage) => ({
     agentcoreReadTarget: {
       name: `xoc-api-agentcore-${stage}-read`,
@@ -30,5 +33,8 @@ const config = buildService({
 // The common DEV builder grants SSM '*'. This isolated target must not inherit it.
 delete config.provider.iam;
 config.provider.tracing = { lambda: false };
+config.provider.deploymentBucket = { blockPublicAccess: true };
 config.package.patterns = ['!**', 'src/**', '!src/**/__pycache__/**', '!src/**/*.pyc', 'requirements.crypto.txt'];
+// Runs after python-requirements injection; scoped to this service only.
+config.plugins.push('./serverless/plugins/agentcore-posix-package.js');
 module.exports = config;

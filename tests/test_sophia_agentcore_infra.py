@@ -67,6 +67,12 @@ class AgentCoreInfraTests(unittest.TestCase):
             self.assertNotIn('JWT_SECRET', json.dumps(cfg))
             self.assertNotIn('xoc_mcp_lab', json.dumps(cfg))
             self.assertEqual('!**', cfg['package']['patterns'][0])
+            self.assertTrue(cfg['provider']['deploymentBucket']['blockPublicAccess'])
+            self.assertEqual('./serverless/plugins/agentcore-posix-package.js', cfg['plugins'][-1])
+            requirements = cfg['custom']['pythonRequirements']
+            self.assertFalse(requirements['slimPatternsAppendDefaults'])
+            self.assertFalse(any('dist-info' in p for p in requirements['slimPatterns']))
+            self.assertNotIn('./serverless/plugins/agentcore-posix-package.js', configs['chat']['plugins'])
 
 
 if __name__ == '__main__': unittest.main()
