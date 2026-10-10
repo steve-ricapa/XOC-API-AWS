@@ -2,6 +2,114 @@
 
 Date: 2026-10-10. **AC2_STATUS = BLOCKED. READY_FOR_RELEASE_REVIEW = NO.**
 
+## Latest resumption — identity resolved, DEV dependencies absent
+
+This section supersedes the identity blocker in the historical first-attempt
+report below. Resumed from HEAD `5bd4444d4772ffcb312df2cdb82bf93ad94c186b` on
+`feature/sophia-agentcore-ac2`. Existing untracked files remain untouched.
+
+**AWS_IDENTITY_BLOCKER = RESOLVED.** Every AWS and Serverless operation in this
+resumption explicitly used `xoc-dev`, `us-east-1`. STS returned the requested
+account `8117****6524`, principal
+`arn:aws:iam::8117****6524:user/santiago.silva`. No other profile was used.
+
+**EXTERNAL_RESOURCE_BLOCKER = REQUIRED XOC DEV ENVIRONMENT ABSENT.**
+
+Verified via real, read-only AWS requests, not inferred from local naming:
+
+| Required resource | AWS result |
+|---|---|
+| `xoc-api-shared-dev` | DescribeStacks: ValidationError, stack does not exist |
+| `xoc-api-chat-dev` | DescribeStacks: ValidationError, stack does not exist |
+| `xoc-api-tickets-dev` | DescribeStacks: ValidationError, stack does not exist |
+| `xoc-api-reports-dev` | DescribeStacks: ValidationError, stack does not exist |
+| `xoc-api-ops-dev` | DescribeStacks: ValidationError, stack does not exist |
+| `xoc-api-agentcore-dev` | DescribeStacks: ValidationError, stack does not exist; expected for initial deploy |
+| `xoc-api-tickets-dev-tickets` | DescribeTable: ResourceNotFoundException |
+| `xoc-api-reports-dev-reports` | DescribeTable: ResourceNotFoundException |
+| `xoc-api-ops-dev-user-notification-inbox` | DescribeTable: ResourceNotFoundException |
+| `xoc-api-chat-dev-chatAgentsApi` | GetFunctionConfiguration: ResourceNotFoundException |
+| `/aws/lambda/xoc-api-chat-dev*` | No log groups |
+| DEV AgentCore gateways | None |
+
+Consequently there are no table indexes or actual Chat role to verify, no Chat
+DEV endpoint to smoke and no shared authentication outputs to resolve.
+These are resource-not-found responses, not AccessDenied responses.
+
+The only active stack with `dev` in its name was `xoc-reportes-dev`,
+UPDATE_COMPLETE. Its resource inventory contains analyticsMock, convertirDocx,
+generarreporte and transiaXml Lambdas, report REST API and S3 bucket. It does NOT
+contain the required XOC Chat or DynamoDB tables and was not substituted for them.
+DEV exports belong only to this separate report service. The broad initial table
+name search also matched a PROD `device-registry` because `device` contains `dev`;
+that was explicitly rejected as a DEV resource. No table items were read.
+
+The local DEV stage additionally has an empty `agentsFunctionBaseUrl` and refers
+to shared/data/network/storage/documents DEV outputs. ListStacks found none of
+those required infra stacks; bootstrap would be a separate scope, not an AgentCore
+packaging repair. No PROD URL, secret, table or data was borrowed.
+
+### Independent validation completed after resumption
+
+```powershell
+$env:AWS_PROFILE='xoc-dev'
+$env:AWS_REGION='us-east-1'
+$env:AWS_DEFAULT_REGION='us-east-1'
+$env:AWS_SDK_LOAD_CONFIG='1'
+npm.cmd run package:agentcore:dev -- --aws-profile xoc-dev --package tests/ic1/.build/ac2-20261010-resume/package
+```
+
+- Real Serverless package: PASS, 68 seconds.
+- Linux artifact import, static IAM, four-tool allowlist, no public bucket,
+  acyclic template graph and artifact secret-pattern scan: PASS.
+- ZIP is byte-identical to the previously validated artifact:
+  `cc5869f79a36ab2333f8a02581c3ada4bb300d803ba8b85ff48cdd5226a491ed`.
+- Dependency versions unchanged; no runtime/IaC/test code was modified.
+- New template SHA256:
+  `e3fd694ced47b24c6a422aed5d95fa83208439bddb56840192a1177dbac34412`.
+- Deep comparison: the ONLY template change is the generated timestamp prefix
+  in Lambda Code.S3Key. No new resources, permission or configuration drift.
+- Recursive CFN specification validation: PASS, previously fetched same-day
+  version 267.0.0 reused.
+- Real `aws cloudformation validate-template --profile xoc-dev --region us-east-1`
+  succeeded; reports CAPABILITY_IAM and no parameters. This does not prove
+  creation permissions, service acceptance of all properties or live IAM.
+- Ten planned resources, zero unexpected resources, zero resources created.
+- Closed local suites were NOT unnecessarily repeated: no relevant code changed.
+  Prior 32/32 AC-1, 27/27 Linux, 4/4 packaging, 32 HTTP, 120/120 focal and
+  285/287 full (two unchanged VICTOR failures) remain the latest regression evidence.
+
+### Stop decision and precise next dependency
+
+The existing AC-2 contract requires real existing DEV providers and forbids
+creating substitute business stores or using PROD. An absent table is not an
+empty authorized query result or controlled ticket-not-found. Deploying Chat
+would require bootstrapping missing shared/auth/data/network resources and a
+configured SOPHIA DEV endpoint. That is not an automatic IaC repair in this block.
+
+Therefore no deployment was attempted and no retained KMS key was created. The
+independent package and template gates were completed before stopping. This is
+not a rollback situation: nothing was activated or changed in AWS.
+
+To resume safely, provide the mapping to an existing isolated XOC DEV environment
+if it has different names, or explicitly authorize a separately planned bootstrap
+of the missing XOC DEV dependencies, with no PROD data/credentials reuse. A new
+region/account must not be assumed or chosen automatically. No AWS secret is
+needed in chat. Once prerequisites exist, repeat their inventory, then begin
+the previously authorized AgentCore deploy/direct-smoke/Chat-disabled sequence.
+
+All real smoke gates remain NOT RUN: KMS/transport, four providers, roles/tenant,
+negative security, C.3, no fallback, second-tool stop, log review, cold/warm and
+concurrent latency, errors/throttles, pagination, rollback and reactivation.
+No cloud PASS is claimed from prior local mocks or from ValidateTemplate.
+
+Evidence: ignored `tests/ic1/.build/ac2-20261010-resume/` with sanitized inventory,
+real package, dependency/import manifest and schema validation. Only this report
+is changed in Git during resumption. Feature push remains withheld because the
+user conditioned it on AC-2 PASS. PROD/Voice/VICTOR untouched.
+
+## Historical first attempt (before xoc-dev became available)
+
 No cloud deployment, activation, rollback, push or production change occurred.
 This report must not be interpreted as evidence that the live integration works.
 
