@@ -1,0 +1,76 @@
+{
+  "base": "fe3b25f13833fb300ad1049b0e7974b37be8e706",
+  "base_code_sha256": "H/uO4Z5cNLVyRGLy/CIBibwN/Gen8BXzvrvW+6niP2E=",
+  "base_source_matches": 120,
+  "overlay": {
+    "src/handlers/routes/chat.py": "883eccb795efb3615855a9fcc22aea47b5ccc5e7e75561557bbcdeaaaac923fe",
+    "src/shared/sophia_tool_chat.py": "e9f5c37409845e70a483182be4e9ebe13542f6ee4ccde1b1fbe829eec82351ce",
+    "src/shared/sophia_thread_operations.py": "1991275ed2e1115371853542579aa08011478ac0a975ad9454d7d0406f372bd1",
+    "src/shared/sophia_tool_execution.py": "cdb6ecd1c448967619bf16f038a301b199fed388c68fc6e065ce5515e0d30626",
+    "src/shared/sophia_agentcore_client.py": "144c742b8de1b5e4ec85016dbbf34d5d4f77e04730546098aef80e8c76438ace",
+    "src/shared/agentcore_context.py": "cdff728c322c648fe5247d71391e31051336e5f3ade82ad454abc95e562b7591",
+    "src/tool_gateway/policy.py": "1621177ca1de111a739e8db79712450d085944e18bc8d9009e5e363016eb2bde"
+  },
+  "unchanged_entries": 1675,
+  "artifact_sha256": "bbe8f62045e68473631552432afeb43c5be724375a545e6905ca58362426343c",
+  "release_commit": "a4751c10f104d667a08b678adf7a460fd619d9c7",
+  "source_commit": "b3544afa4dd12e39f0aa90c26016a2049b5dd337",
+  "inspection": {
+    "status": "PASS",
+    "resources": {
+      "ChatAgentsApiLambdaVersiono8fTIEmoakHUHrAbrhBXM70eJG9jJ03pbYnHnFeTw": {
+        "type": "AWS::Lambda::Version",
+        "change": "remove"
+      },
+      "SophiaAgentCoreCallerPolicy": {
+        "type": "AWS::IAM::Policy",
+        "change": "add"
+      },
+      "ChatAgentsApiLambdaVersionRDkV5FpJWapJ3sFFnKJKgQZOtLJdBzKcz7eyjn5pg": {
+        "type": "AWS::Lambda::Version",
+        "change": "add"
+      },
+      "ChatAgentsApiLambdaFunction": {
+        "type": "AWS::Lambda::Function",
+        "change": "modify"
+      }
+    },
+    "lambda_property_diff": [
+      "Environment",
+      "Code"
+    ],
+    "environment_diff": [
+      "SOPHIA_AGENTCORE_CONTEXT_KEY_ARN",
+      "SOPHIA_AGENTCORE_GATEWAY_ARN",
+      "SOPHIA_AGENTCORE_GATEWAY_URL",
+      "SOPHIA_GOVERNED_BASE_URL",
+      "SOPHIA_THREAD_CAPABILITIES_ENABLED",
+      "SOPHIA_TOOL_EXECUTION",
+      "SOPHIA_TOOL_GATEWAY_ENABLED"
+    ],
+    "IAM_added": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "bedrock-agentcore:InvokeGateway"
+          ],
+          "Resource": "arn:aws:bedrock-agentcore:us-east-1:811776156524:gateway/xoc-api-agentcore-prod-s6yz3iqnfj"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "kms:GenerateMac"
+          ],
+          "Resource": "arn:aws:kms:us-east-1:811776156524:key/99da0530-55f7-40b6-af2b-0166ca9d97de"
+        }
+      ]
+    },
+    "dependency_bytes_preserved": true,
+    "voice_bytes_and_config_preserved": true,
+    "victor_bytes_and_config_preserved": true,
+    "template_sha256": "a0873e32f524bb8de30fd2ed2757761332b654dabbe00f420ab5d0c6f7b4c6e0"
+  },
+  "status": "DEPLOYED_DISABLED_AUTHENTICATED_SMOKE_PENDING"
+}
