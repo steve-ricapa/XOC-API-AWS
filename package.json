@@ -4,6 +4,7 @@
   "private": true,
   "description": "XOC core API on AWS Serverless Framework",
   "scripts": {
+    "package:chat:prod": "serverless package --stage prod --config serverless.chat.js",
     "deploy:shared:dev": "serverless deploy --stage dev --config serverless.shared.js",
     "deploy:tickets:dev": "serverless deploy --stage dev --config serverless.tickets.js",
     "deploy:auth:dev": "serverless deploy --stage dev --config serverless.auth.js",
