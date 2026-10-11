@@ -1,4 +1,16 @@
-# AC-2R — SOPHIA aislada desplegada; Chat en disabled
+# AC-2R — SOPHIA aislada; AgentCore activado, E2E pendiente
+
+## Actualización: gate humano recibido y activación desplegada
+
+Esta actualización sucede al estado histórico descrito debajo. El usuario aportó las capturas reales de Postman: A2 HTTP 200, 12.59 s, mismo thread/sesión y recuerdo correcto del mensaje previo; A3 HTTP 200, 7.57 s, `NEEDS_CONFIRMATION` y confirmación humana explícitamente requerida. No se llamó al endpoint de confirmación. A1 conserva la respuesta normal observada y la confirmación del usuario; su captura no mostraba el status HTTP.
+
+`AUTHENTICATED_DISABLED_GATE=PASS` conforme a la continuación autorizada. La evidencia sanitizada está en `tests/ic1/.build/ac2r/authenticated-disabled-smoke.json`, ignorada por Git. No contiene JWT, confirmation_token ni identificadores del usuario/thread. La captura A3 incluía un confirmation_token: no se copió ni utilizó y se advirtió al usuario que lo oculte.
+
+Revalidación antes de activar: cuenta `811776156524` con `xoc-dev`; mismo SHA Chat acreditado; ejecución disabled; Gateway y Target READY; KMS Enabled; SOPHIA-only Running y `/api/health` devolvió `status=ok`, protocolo `xoc-tool-gateway-v1`. La muestra acotada de logs contó 15 registros Chat, cero registros target y seis trazas Azure, sin patrones de credenciales detectados. Esto corrobora el modo disabled, no sustituye el futuro ensayo completo de seguridad de logs.
+
+Se inició `python -B tests/ac1/chat_ac2r_release.py deploy --mode agentcore` después de inspección PASS y compatibilidad de firma PASS. No se cambió código de negocio, timeout, Voice, VICTOR, Step Functions ni XOC-MCP. La comprobación humana de Chat activo y herramientas todavía está pendiente: no se obtuvieron tokens de archivos/chats ni se fabricó una identidad humana. No hay PASS integral, rollback probado ni push.
+
+Resultado: Serverless terminó exitosamente (59 s); stack `UPDATE_COMPLETE` a las 21:33:58 del 10 de octubre de 2026, Guayaquil (02:33:58 UTC del día 11). Estado actual: **ACTIVADO, NO PROBADO E2E**. El siguiente paso es B1 Chat normal y B2–B5 herramientas usando la sesión legítima del usuario en Postman; después seguridad, rollback y smoke final. Los apartados siguientes conservan el estado histórico previo a esta activación y no representan los flags actuales.
 
 Fecha: 10 de octubre de 2026, Guayaquil; despliegue Chat finalizado el 11 de octubre UTC.
 
