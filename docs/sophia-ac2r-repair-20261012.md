@@ -43,3 +43,16 @@ python -B tests/ac1/chat_ac2r_hotfix.py deploy --mode agentcore
 python -B tests/ac1/chat_ac2r_hotfix.py inspect --mode disabled
 python -B tests/ac1/chat_ac2r_hotfix.py deploy --mode disabled
 ```
+
+## Diagnostico y transporte gobernado (segunda intervencion, 12 octubre)
+
+- STS revalidado con `xoc-dev`, cuenta `811776156524`. Chat permanece `disabled`, Active/Successful y conserva el SHA indicado arriba. No se desplego Chat ni se cambiaron IAM, TTL o limites de tiempo en esta intervencion.
+- Reproduccion local: una capability de servicio recibio 401 al enviarse inmediatamente y 400 `invalid_protocol` al reenviar **el mismo token** tres segundos despues con un mensaje vacio (rechazo de protocolo posterior a autenticacion, sin ejecucion de Foundry). El diagnostico interno de Azure confirmo `not_yet_valid`. No prueba un desfase entre AWS y Azure: acredita el problema del emisor local.
+- Runtime `dbc1298`: categorias internas de rechazo de capability, sin tokens, claims ni texto de excepciones; respuesta publica sin cambios. Despliegue aislado `0a2b90b0-0303-427c-b1e5-5e3390fa0d28`.
+- Runtime `36996f6`: conexiones HTTP reutilizadas dentro de un turno gobernado, cerradas al terminar; no sesion global ni contexto compartido entre usuarios. Cliente legacy intacto. Sin reintentos, redirects o incremento de timeouts. Despliegue aislado `f835341b-c641-484d-8c53-9fe96a035801`, build remoto satisfactorio y host Running.
+- Suite runtime: 225 PASS, 12 omitidos, 8 de VICTOR deseleccionados. Regresiones Chat/C.3: 111 PASS. Docker Linux local no estaba disponible; el paquete se construyo en Azure y su smoke posterior paso.
+- `aged-capability-diagnostic.json`: smoke Azure PASS con saludo, continuidad, tool request y segundo turno para allowed/denied/unavailable. Usa fixtures vacios y demora diagnostica de 3 s **antes** de cada envio; no se instalo esa demora en produccion ni se modificaron relojes o validaciones. Los tiempos HTTP registrados excluyen esa demora, por lo que no acreditan el presupuesto end-to-end de Chat.
+- `gateway-aged-fixture.json`: tickets.list, documents.list y notifications.unread_count reales devolvieron allowed y audit, usando un tenant/usuario de servicio de prueba sin datos y una demora diagnostica de assertion de 2 s. No es una prueba de usuarios reales ni del rol IAM de Chat. El diagnostico reproducible es `tests/ac1/ac2r_gateway_diagnostic.py`; nunca guarda credenciales o filas devueltas.
+- Evidencias JSON en `tests/ic1/.build/ac2r/repair-20261012/`, ignoradas por Git. No confundir estos smokes por componentes con PASS integral. Falta la peticion autenticada desde Postman para acreditar AWS -> Azure sin el reloj local, y despues una activacion controlada y smoke real de herramientas. No se fabricaron JWT humanos.
+- Voice, VICTOR, Step Functions, Web, Mobile y autorizacion de datos permanecieron fuera de cambios. No push en esta intervencion.
+- `pooled-runtime-smoke.json`: PASS de los nueve pasos contra la version nueva. Segundos turnos allowed/denied/unavailable: 6535/4879/5333 ms frente a 8634/7298/6788 ms en la muestra anterior. Son muestras individuales, no p95 ni garantia de latencia/cold start. La misma demora diagnostica local de 3 s aplica; no se incorpora a Chat.
