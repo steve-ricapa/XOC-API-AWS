@@ -76,6 +76,8 @@ def model_result(result: ToolResult, tool_name: str, context: ToolContext) -> di
               "status": result.status.value, "code": "denied",
               "audit_id": result.audit_id, "data": None}
     if result.status is not ToolDecision.ALLOWED:
+        if result.code in {"agentcore_unavailable", "mcp_unavailable", "tool_transport_unavailable", "execution_failed", "unavailable"}:
+            output["code"] = "unavailable"
         return output
     try:
         data = result.data
@@ -182,7 +184,10 @@ def finish_turn(payload, *, context, cleaner, validate_thread, post_result, allo
     body = {"protocol": PROTOCOL, "phase": "result", "request_id": context.request_id,
             "thread_id": payload["thread_id"], "continuation": continuation, "tool_result": sanitized}
     metadata = {"toolGateway": {"toolName": tool_request.tool_name,
-                "status": sanitized["status"], "code": result.code if sanitized["code"] != "unavailable" else "unsafe_tool_result",
+                "status": sanitized["status"], "code": result.code if (
+                    sanitized["code"] != "unavailable" or result.code in {
+                        "agentcore_unavailable", "mcp_unavailable", "tool_transport_unavailable", "execution_failed", "unavailable"
+                    }) else "unsafe_tool_result",
                 "auditId": result.audit_id}}
     try:
         final = post_result(body)

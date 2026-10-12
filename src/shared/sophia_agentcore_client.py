@@ -13,6 +13,7 @@ import time
 
 import boto3
 import requests
+from urllib3.util import Timeout
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 from botocore.config import Config
@@ -88,7 +89,7 @@ class AgentCoreExecution:
             with requests.Session() as http:
                 http.trust_env = False
                 with http.post(endpoint, data=data, headers=dict(signed.headers), allow_redirects=False,
-                               stream=True, timeout=(min(0.5, remaining / 4), remaining / 2)) as response:
+                               stream=True, timeout=Timeout(total=remaining, connect=min(0.5, remaining / 4))) as response:
                     if (response.status_code != 200
                             or response.headers.get("Content-Type", "").split(";")[0].strip() != "application/json"
                             or response.headers.get("Mcp-Session-Id")):
