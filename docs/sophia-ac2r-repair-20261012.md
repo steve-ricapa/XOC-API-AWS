@@ -30,6 +30,8 @@ El smoke directo Azure pasó saludo, continuidad y solicitud de tickets, pero el
 
 Se inició retorno a `disabled`, conservando el código corregido, por no estar acreditada la verificación posterior. Las correcciones están implementadas y desplegadas; no hay PASS end-to-end ni reactivación autorizada por resultados completos. Hace falta comprobar Chat normal con la sesión humana legítima y resolver/acreditar esta intermitencia antes de continuar las herramientas.
 
+Retorno confirmado: Serverless exitoso en 53 s; lectura Lambda `SOPHIA_TOOL_EXECUTION=disabled`, `LastUpdateStatus=Successful`, mismo SHA corregido. Esto acredita el rollback de configuración, no el smoke funcional humano posterior, todavía pendiente.
+
 No hay push. La corrección no equivale a PASS end-to-end: falta repetir Chat normal y tickets.list con la sesión legítima, luego el resto de herramientas y el rollback funcional acordado. No se fabricaron JWT humanos ni se reutilizó el confirmation_token expuesto en una captura.
 
 Comandos preparados, desde el backend principal:
