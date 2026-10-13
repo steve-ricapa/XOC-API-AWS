@@ -71,9 +71,9 @@ def _runtime_timeout(deadline):
 
 def _uncertain_sophia_turn():
     # The request may have created a Foundry run even if its response was lost.
-    # Do not present a successful turn or suggest retrying the same thread.
+    # Never present a successful turn; retrying the same message recovers it.
     return AppError(
-        "No se pudo confirmar el estado de la consulta. No reenvies el mensaje en este hilo; inicia una nueva conversacion si necesitas continuar.",
+        "No se pudo confirmar la respuesta de SOPHIA. Vuelve a intentarlo en unos segundos con el mismo mensaje; si el problema continua, inicia una nueva conversacion.",
         status_code=409, code="sophia_turn_state_unknown",
     )
 
