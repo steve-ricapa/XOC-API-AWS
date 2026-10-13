@@ -69,6 +69,15 @@ def _runtime_timeout(deadline):
     return (connect, remaining - connect)
 
 
+def _uncertain_sophia_turn():
+    # The request may have created a Foundry run even if its response was lost.
+    # Do not present a successful turn or suggest retrying the same thread.
+    return AppError(
+        "No se pudo confirmar el estado de la consulta. No reenvies el mensaje en este hilo; inicia una nueva conversacion si necesitas continuar.",
+        status_code=409, code="sophia_turn_state_unknown",
+    )
+
+
 _AFFINITY_COOKIE_KEYS = ("ARRAffinity", "ARRAffinitySameSite")
 _SESSION_AFFINITY: dict = {}
 _DEFAULT_CHAT_TIMEOUT = 60
@@ -846,6 +855,8 @@ def proxy_chat(
             )
         except requests.exceptions.Timeout:
             logger.warning("[chat] SOPHIA timeout after %ss", timeout_seconds)
+            if governed:
+                raise _uncertain_sophia_turn() from None
             response_payload = {
                 "text": "SOPHIA esta procesando tu solicitud. Intenta nuevamente en unos segundos."
             }
@@ -856,7 +867,7 @@ def proxy_chat(
             return response_payload
         except requests.exceptions.RequestException:
             if governed:
-                raise sophia_tool_chat.protocol_error("sophia_runtime_unavailable") from None
+                raise _uncertain_sophia_turn() from None
             raise
 
         response_cookies = _extract_affinity_cookies(sophia_response.cookies)
@@ -947,6 +958,8 @@ def proxy_chat(
 
         if governed:
             # No raw provider errors, legacy retries or alternative execution.
+            if sophia_response.status_code == 409 or sophia_response.status_code >= 500:
+                raise _uncertain_sophia_turn()
             raise sophia_tool_chat.protocol_error("sophia_runtime_unavailable")
         error_data = (
             sophia_response.json()

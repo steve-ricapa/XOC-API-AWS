@@ -268,6 +268,23 @@ class PhaseDChatRouteTests(unittest.TestCase):
                     self.assertNotIn('secret', json.dumps(result))
                 factory.assert_not_called()
 
+    def test_governed_first_turn_uncertain_outcome_is_not_success_or_retried(self):
+        for outcome in (requests.Timeout('secret'), requests.ConnectionError('secret'),
+                        self.response({'traceback': 'secret'}, 409),
+                        self.response({'traceback': 'secret'}, 502),
+                        self.response({'traceback': 'secret'}, 504)):
+            with self.subTest(outcome=type(outcome).__name__):
+                with patch.object(chat.requests, 'post', side_effect=[outcome]) as post:
+                    with patch.object(d, 'ToolExecutor') as executor:
+                        with self.assertRaises(AppError) as caught:
+                            chat.proxy_chat({'message': 'Consulta de lectura'}, self.actor, self.db)
+                self.assertEqual(409, caught.exception.status_code)
+                self.assertEqual('sophia_turn_state_unknown', caught.exception.code)
+                self.assertNotIn('secret', str(caught.exception))
+                post.assert_called_once()
+                executor.assert_not_called()
+                self.assertEqual([], self.db.query(AgentSession).all())
+
 
 if __name__ == '__main__':
     unittest.main()
