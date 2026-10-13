@@ -56,3 +56,97 @@ python -B tests/ac1/chat_ac2r_hotfix.py deploy --mode disabled
 - Evidencias JSON en `tests/ic1/.build/ac2r/repair-20261012/`, ignoradas por Git. No confundir estos smokes por componentes con PASS integral. Falta la peticion autenticada desde Postman para acreditar AWS -> Azure sin el reloj local, y despues una activacion controlada y smoke real de herramientas. No se fabricaron JWT humanos.
 - Voice, VICTOR, Step Functions, Web, Mobile y autorizacion de datos permanecieron fuera de cambios. No push en esta intervencion.
 - `pooled-runtime-smoke.json`: PASS de los nueve pasos contra la version nueva. Segundos turnos allowed/denied/unavailable: 6535/4879/5333 ms frente a 8634/7298/6788 ms en la muestra anterior. Son muestras individuales, no p95 ni garantia de latencia/cold start. La misma demora diagnostica local de 3 s aplica; no se incorpora a Chat.
+
+## Reactivacion autorizada para prueba (12 octubre, 23:22 UTC)
+
+El usuario aporto una prueba autenticada de Chat, sesion 69: HTTP 200, solicitud de tickets con `tool_transport_unavailable`, respuesta natural de indisponibilidad y sin `runtime_unavailable`. Esto acredita el segundo turno AWS -> Azure con herramientas desactivadas, no la lectura de tickets. Luego autorizo explicitamente activar para probar.
+
+Se ejecuto `chat_ac2r_hotfix.py deploy --mode agentcore` con `xoc-dev`, despues de inspeccionar el paquete. Serverless termino correctamente en 52 s; CloudFormation `UPDATE_COMPLETE`, Lambda `Active`/`Successful`, `SOPHIA_TOOL_EXECUTION=agentcore`. SHA conservado: `VKixlT8FOnKMHQ44upO2EIPeeaQ6dEltWnbzT5zAy70=`. Unica diferencia de environment: selector de transporte. Sin cambios IAM o de codigo Voice/VICTOR.
+
+Este es el estado vigente y reemplaza las menciones anteriores a `disabled`. Pendiente repetir la consulta de tickets autenticada y comprobar resultado autorizado/auditoria; aun no se declara PASS integral. Rollback preparado: el mismo helper con `--mode disabled`.
+
+## Validacion posterior: consultas reales y regresion de continuidad
+
+Revision del 12 de octubre, hora local (13 de octubre UTC). No cambios de logica productiva, deploy, push o desactivacion en esta revision. Se conserva la activacion autorizada.
+
+### Evidencia humana y correlacion AWS
+
+Las capturas muestran HTTP 200, `allowed`, auditId y respuestas que el usuario contrasto con sus datos. Se localizaron los cuatro auditId en CloudWatch del target, con decision `allowed`:
+
+| Tool | auditId | Transporte AgentCore observado | Duracion Chat Lambda |
+| --- | --- | --- | --- |
+| xoc.tickets.list | d8d505a84e80c20e8d2be0f3 | 4303 ms | 18959.21 ms |
+| xoc.documents.list | 8c9d6544cea6a083646676b5 | 719 ms | 11633.46 ms |
+| xoc.notifications.unread_count | 2bda0497c46b6bdef1d640ce | 656 ms | 12272.34 ms |
+| xoc.tickets.get | 7fde04bf549dbf61358a52ef | 4355 ms | 19132.93 ms |
+
+Las duraciones se asociaron por proximidad temporal en los logs; la identidad de tool/decision/request_id si se verifico mediante auditId. No existe aun un desglose distribuido completo por request_id de todos los segmentos. La lectura se pagino hasta agotar nextToken en la ventana revisada (34 eventos target, 49 Chat), sin imprimir conversaciones ni credenciales.
+
+Los casos list/get tuvieron Init Duration de aproximadamente 2 s en target y 2.2 s en Chat. Init Duration se informa por separado de Duration: no se debe sumar dos veces ni atribuir el tiempo total de Postman exclusivamente a MCP. Las ejecuciones Chat de ~19 s dejan menos de 1.1 s respecto al timeout de 20 s. Riesgo de estabilidad pendiente; no es evidencia de perdida de permisos.
+
+Application Insights, muestra de 1 h de `sophia_run`: 24 requests, cero fallos, mediana 4454.0595 ms, maximo 5975.6691 ms. Es una muestra de telemetria, no una garantia de disponibilidad ni prueba de carga. No demuestra por si sola la correccion semantica de la respuesta.
+
+### Pruebas automaticas ejecutadas
+
+- Release Chat `4e8286b`: 116 PASS en phase_d, ticket_confirmations, access_hardening, policy, executor, chat_tool_gateway_integration, thread_operations, ac2r_isolation y failure_semantics.
+- Backend feature (contratos AgentCore/IaC/perfil): 39 PASS. La primera invocacion aislada tuvo 1 fallo y 2 errores por faltar `TICKETS_TABLE_NAME` en el entorno de pruebas; al declarar `offline-fixture-tickets`, paso sin cambios de codigo. HTTP/KMS/DynamoDB simulados en esta suite.
+- Runtime `36996f6`: 225 PASS, 12 omitidos y 8 de VICTOR deseleccionados.
+- Nuevas regresiones en `XOC-API-AWS-CHAT-AC2R/tests/test_chat_continuity_intent_regression.py`: 1 PASS y 2 FAIL, reproducibles offline.
+- Peticiones reales sin Authorization: `POST /chat` y `POST /chat/tickets/confirm` devolvieron 401. No se reutilizo el confirmation_token mostrado en la captura, ni se confirmo/creo un ticket real.
+
+Las suites cubren roles, delegacion, SUPERADMIN bloqueado, tools desconocidas/deshabilitadas, inyeccion de ownership, datos de otro tenant descartados, limites temporales, ausencia de fallback y segunda herramienta bloqueada. Esto NO sustituye una prueba autenticada entre dos tenants reales; no se dispuso de esas dos sesiones.
+
+### Hallazgo que impide declarar cierre completo
+
+La segunda captura NO aprueba continuidad: a `Que ticket acabamos de revisar? Responde sin consultar herramientas.` el backend devuelve una propuesta generica NEEDS_CONFIRMATION, no el recuerdo del ticket.
+
+Causa reproducida en el release: `_detect_ticket_creation_intent` acepta cualquier substring de `_TICKET_CREATION_TRIGGERS`, incluyendo `revisar`; `_maybe_create_ticket_from_intent` reemplaza incluso una respuesta de continuidad correcta por una propuesta. Las dos regresiones verifican tanto el falso positivo del detector como la sustitucion de una respuesta correcta. La prueba de creacion explicita sigue pasando.
+
+Clasificacion: bug funcional de Chat, no del transporte MCP. No acredita perdida de memoria del runtime; el postprocesado puede sobrescribirla. La propuesta requiere confirmacion humana y no demuestra auto-creacion. No se corrigio incidentalmente durante una solicitud de pruebas.
+
+Siguiente cambio recomendado: acotar la intencion explicita de crear/proponer ticket, preservar consultas/recuerdo/negaciones y cubrirlas con tests; conservar intacta la confirmacion C.3. Despues revisar el presupuesto de latencia y completar prueba real multi-tenant. Estado: consultas READ_ONLY reales verificadas; cierre integral NO-GO por continuidad y validacion de estabilidad pendiente.
+
+## Correccion local autorizada del detector y mediciones
+
+El detector de respaldo ya no interpreta palabras de incidentes, `revisar` o `analizar` como solicitudes de creacion. Ahora exige una peticion explicita al inicio (crear/abrir/generar/proponer un ticket, con variantes de cortesia en espanol e ingles) y rechaza cancelaciones explicitas. Es deliberadamente conservador, no un clasificador linguistico exhaustivo. El procesamiento de action_plan del modelo y la confirmacion C.3 no se modificaron.
+
+Cambio aplicado tanto al backend feature como al worktree release aislado; se elimino la antigua lista de triggers. La regresion de continuidad pasa, junto con consultas, historia, negaciones, hipoteticos y solicitudes de propuesta/creacion. Suites: 155 pruebas backend feature y 122 release aislado, todas PASS. Son conjuntos parcialmente solapados, no 277 pruebas independientes.
+
+Para latencia se agrego telemetria de `first_turn` y `second_turn` con request_id generado por el servidor y duracion monotonic; sin cuerpos, tokens, identidad, URLs o mensajes de excepcion. Se mide incluso si hay timeout. No se modificaron timeouts, IAM, almacenamiento, eventos, Step Functions, Voice, VICTOR o infraestructura de precalentamiento.
+
+Estado de este ajuste: LOCAL, sin deploy ni push. La reduccion de latencia NO se declara conseguida. Proximo paso operativo: empaquetar el nuevo chat.py sobre el artefacto aislado vigente, revisar el diff CloudFormation y desplegar de forma controlada; luego repetir continuidad y consultas, medir turnos y arranque en frio antes de decidir una optimizacion adicional o costos de precalentamiento. No reutilizar el antiguo chat-isolated.zip esperando que incluya esta correccion.
+
+## Despliegue autorizado de continuidad — 13 octubre UTC
+
+El estado LOCAL anterior queda superado por este despliegue autorizado. Identidad STS revalidada con xoc-dev, cuenta 811776156524. Commit release aislado: cc3c7f4; equivalente backend feature: 6306dee. Sin push.
+
+Helper: tests/ac1/chat_continuity_release.py. Artefactos en tests/ic1/.build/ac2r/continuity-20261013. Se acredito SHA del paquete anterior contra Lambda y se verifico que unicamente src/handlers/routes/chat.py difiere entre ZIPs. Dependencias y restantes archivos conservados byte a byte. CloudFormation: solo Code y version Lambda; environment e IAM sin cambios. Los paquetes anteriores permanecen disponibles para rollback; los helpers anteriores exigen su SHA original, por lo que un rollback debe validar el nuevo SHA antes de reutilizar el paquete previo.
+
+Se repitieron las 122 pruebas del release: PASS. Serverless deploy completo en 47 s; stack xoc-api-chat-prod UPDATE_COMPLETE. Lambda Active/Successful, SOPHIA_TOOL_EXECUTION=agentcore, timeout 20 s conservado. SHA nuevo: dgIc5H3/YFjgdwruzeDWb4xWMnb6XkAfen0UNvOuH4I=.
+
+Pendiente smoke autenticado del usuario: consultar un ticket y, en la misma session_id, preguntar que ticket se acaba de revisar sin herramientas. Debe conservar la respuesta y no generar ticket_proposal. No se declara mejora de velocidad ni cierre integral hasta medir first_turn/second_turn y repetir regresiones reales. Sin cambios a tickets almacenados, eventos, Step Functions, Voice, VICTOR, Mobile o Web.
+
+## AC-2R Closure — evidencia 2026-10-13 01:58 UTC
+
+Continuidad real posterior al deploy: PASS. El usuario envio la pregunta de recuerdo con session_id 75; HTTP 200 en 12.99 s, ticket correcto y ausencia de ticket_proposal. No demuestra por si sola que toda la matriz este cerrada.
+
+Observacion read-only con xoc-dev y STS revalidado. Chat mantiene SHA dgIc5H3/YFjgdwruzeDWb4xWMnb6XkAfen0UNvOuH4I=, Active/Successful, agentcore, timeout 20 s. Target Active/Successful, timeout 5 s. Script reproducible: python -B tests/ac1/closure_observe.py. Pagina CloudWatch y muestra solo agregados, no mensajes originales.
+
+Ventana mixta de 24 h (incluye versiones anteriores, rechazos y diferentes tipos de llamadas; NO constituye benchmark de consultas autenticadas):
+
+- Chat: 108 eventos, 29 REPORT; Duration min 12 ms, mediana 5756.62 ms, max 19835.27 ms. Margen del maximo contra timeout: 164.73 ms.
+- Chat Init: 12 muestras, mediana 2266.905 ms, max 2962.64 ms.
+- first_turn nuevo: una muestra, 7516 ms. Ninguna muestra second_turn todavia.
+- AgentCore: 7 muestras, mediana 3487 ms, max 4355 ms.
+- Target: 85 eventos, 16 REPORT; mediana 173.335 ms, max 1099.68 ms. Init 6 muestras, mediana 1922.55 ms, max 2013.3 ms.
+- Cero mensajes con el patron Task timed out after; no equivale a cero errores de aplicacion. No se calcularon percentiles de servicio ni correlacion distribuida a partir de esta mezcla.
+
+Regresiones release repetidas: 122 PASS. Sin cambios de arquitectura ni codigo productivo en este bloque.
+
+Operacion: se empaqueto chat-disabled dentro de continuity-20261013 con el MISMO ZIP corregido; inspect PASS. Unica diferencia de environment SOPHIA_TOOL_EXECUTION. Code cambia de referencia S3 pero conserva hash de bytes. No cambia IAM. NO se desplego: rollback/reactivacion real pendientes de ventana coordinada con smoke humano. No volver al ZIP anterior salvo regresion de codigo: reintroduciria el detector defectuoso.
+
+Runbook de ensayo: revalidar STS y hash vivo; seleccionar OUT continuity-20261013 en chat_ac2r_release; inspeccionar disabled; copiar su serverless-state.json al directorio .serverless del worktree release; desplegar paquete disabled con helper y comprobar UPDATE_COMPLETE/hash/modo; probar chat normal y fallo seguro sin fallback; restaurar el estado del paquete chat-agentcore, inspeccionar y desplegar; comprobar UPDATE_COMPLETE/hash/modo y una consulta real allowed. No empaquetar en paralelo con deploy. Detenerse ante drift no explicado. La existencia del paquete NO acredita el ensayo real.
+
+Seguridad real: usuario confirma disponibilidad de cuentas ADMIN, ADMIN_XOC y USER en distintos tenants. Pendiente ejecutar pares positivo/negativo con sesiones legitimas. Primero ADMIN A get ticket A permitido; ADMIN B get mismo ticket A sin datos; luego control positivo B get ticket B. Continuar USER segun policy real, ADMIN_XOC sin delegacion y con delegacion valida. No crear cuentas ni fabricar tokens. No declarar exito por HTTP 200: revisar metadata, contenido y auditoria. Si hay filtracion, parar pruebas y tratar como blocker de seguridad.
+
+Estado Closure: EN CURSO / NO-GO para cierre integral por latencia sin muestra postdeploy suficiente, matriz real pendiente y ensayo operativo pendiente. AgentCore sigue activo. MCP y runtime sin cambios en este bloque; sus estados Git locales registrados fueron 1f09a72 (MCP) y 36996f6 (runtime). No afirmar push de esos repos por este cierre.
