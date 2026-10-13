@@ -4,6 +4,8 @@ import os
 import re
 import time
 import uuid
+import unicodedata
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -25,6 +27,27 @@ from src.tool_gateway.schemas import ToolContext, ToolRequest
 
 
 logger = logging.getLogger(__name__)
+_latency_logger = logging.getLogger(__name__ + ".latency")
+_latency_logger.setLevel(logging.INFO)
+
+
+@contextmanager
+def _sophia_stage_timing(stage, request_id, enabled=True):
+    """Only server-owned correlation and elapsed time; no bodies or identities."""
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        if enabled:
+            _latency_logger.info("sophia_chat_stage stage=%s request_id=%s duration_ms=%d",
+                        stage, request_id, int((time.monotonic() - started) * 1000))
+
+
+def _timed_sophia_post(stage, request_id, *, timing_enabled=True, **kwargs):
+    with _sophia_stage_timing(stage, request_id, timing_enabled):
+        return requests.post(kwargs.pop("url"), **kwargs)
+
+
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
@@ -400,25 +423,6 @@ def _maybe_create_ticket_from_action_plan(
     )
 
 
-_TICKET_CREATION_TRIGGERS = [
-    "crear ticket", "create ticket", "generar ticket", "abrir ticket",
-    "eliminar archivo", "remove file", "delete file", "borrar archivo",
-    "eliminar malware", "remove malware", "quitar archivo", "remover archivo",
-    "clean up", "remover", "eliminar script", "remove script", "delete script",
-    "limpiar servidor", "clean server", "fix server", "arreglar servidor",
-    "malicious", "malware", "virus", "trojan", "backdoor", "ransomware",
-    "sospechoso", "suspicious", "amenaza", "threat", "compromiso", "compromised",
-    "desinstalar", "uninstall", "instalar", "install",
-    "revisar", "check", "analizar", "analyze", "escanear", "scan",
-    "proteger", "protect", "bloquear", "block", "aislar", "isolate",
-    "amenaza detectada", "threat detected", "alerta", "alert",
-    "incursion", "breach", "intrusion", "intruso",
-    "script malicioso", "malicious script", "codigo malicioso", "malicious code",
-    "archivo infectado", "infected file", "archivo corrupto", "corrupted file",
-    "puerta trasera", "rootkit", "keylogger", "spyware", "adware",
-    "actualizar", "update", "patch", "parche",
-    "configurar", "configure", "setup", "config",
-]
 
 
 def _extract_filename(message: str) -> str | None:
@@ -440,7 +444,24 @@ def _detect_ticket_creation_intent(message: str) -> dict | None:
     lower = (message or "").strip().lower()
     if not lower or len(lower) < 5:
         return None
-    if not any(t in lower for t in _TICKET_CREATION_TRIGGERS):
+    # Conservative fallback, not an incident classifier. A read/recall or a
+    # mention of malware must never overwrite the model's answer with a ticket.
+    normalized = "".join(c for c in unicodedata.normalize("NFKD", lower) if not unicodedata.combining(c))
+    normalized = re.sub(r"\s+", " ", normalized).strip(" ¿¡")
+    request_pattern = (
+        r"^(?:(?:hola|hey|bro|sophia)[, :]+)*"
+        r"(?:(?:por favor|please)[, :]+)?"
+        r"(?:(?:quiero que|necesito que|quiero|necesito|quisiera|deseo|puedes|podrias|puede|podria|"
+        r"me puedes|me podrias|i want to|i need to|can you|could you)\s+)?"
+        r"(?:crear|crea|creame|crees|generar|genera|generame|generes|abrir|abre|abreme|abras|"
+        r"proponer|propon|proponme|create|open|propose)\s+"
+        r"(?:(?:un|el|nuevo|a|an|new)\s+){0,2}ticket\b"
+    )
+    if not re.search(request_pattern, normalized):
+        return None
+    # Explicit cancellation wins, even when a creation request came first.
+    if re.search(r"\b(?:no|nunca|sin)\s+(?:(?:lo|un|el)\s+)?(?:crees|crear|crearlo|generes|generar|abras|abrir)\b"
+                 r"|\b(?:don't|do not|never)\s+(?:create|open|propose)\b", normalized):
         return None
     filename = _extract_filename(message)
     if filename:
@@ -792,8 +813,8 @@ def proxy_chat(
 
     while True:
         try:
-            sophia_response = requests.post(
-                full_url,
+            sophia_response = _timed_sophia_post(
+                "first_turn", request_id, timing_enabled=governed, url=full_url,
                 json=sophia_payload,
                 params=params,
                 headers={
@@ -841,8 +862,9 @@ def proxy_chat(
                     remaining = governed_deadline - time.monotonic()
                     if remaining <= 0:
                         raise sophia_tool_chat.protocol_error("sophia_runtime_timeout")
-                    final_response = requests.post(
-                        full_url, json=body, params={"thread_id": body["thread_id"]},
+                    final_response = _timed_sophia_post(
+                        "second_turn", request_id,
+                        url=full_url, json=body, params={"thread_id": body["thread_id"]},
                         headers={"Content-Type": "application/json",
                                  "Authorization": f"Bearer {sophia_tool_chat.capability(tool_context, body)}"},
                         cookies=affinity_cookies, timeout=min(9, remaining), allow_redirects=False,
