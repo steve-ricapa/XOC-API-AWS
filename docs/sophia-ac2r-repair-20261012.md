@@ -188,3 +188,15 @@ Azure Function aislada, App Insights c854497d-ab9d-4dd7-be21-8ecbb68cb789: en ve
 Script azure_completion_observe.py consulta categorias fijas/metricas de Functions, no contenidos de conversaciones ni credenciales. Azure CLI carece de extension application-insights; se uso REST con token CLI solo en memoria, sin instalarla. No se modifico Azure/Foundry.
 
 Decision requerida antes de ampliar alcance: evaluar Lambda 26 s y presupuesto Chat 23 s (API ya 30 s), preservando margen y respaldo, pero reconociendo impacto en la envolvente temporal de rutas compartidas Voice/agents; alternativa separar Chat/asincronia implica arquitectura nueva. No se ejecuto ninguna de esas opciones. Aumentar el limite no optimiza latencia ni corrige los 502 del runtime; requiere smoke y costos/timeout de clientes revisados. No quitar guard ni resumir un DENY como exito.
+
+## Autorizacion y plantilla Serverless — 13 octubre
+
+Usuario confirma aprobacion del responsable para 26 s y exige administrarlo en Serverless. Implementado timeout: 26 por funcion en serverless.chat.js, despues de lambdaConfig; no cambia el default de otras Lambdas. Presupuesto gobernado Chat 23 s limitado tambien por tiempo real restante menos 3 s. API Gateway permanece 30 s. El limite de la Lambda compartida afecta tambien rutas Voice/agents; sus archivos no cambian.
+
+La infraestructura MCP/AgentCore AWS YA esta en Serverless: serverless.agentcore.js y serverless/services/agentcore-resources.js, comandos npm package:agentcore:prod / deploy:agentcore:prod. Se verifico stack xoc-api-agentcore-prod con Gateway, GatewayTarget, Lambda, KMS, IAM, logs y bucket Serverless. No existe necesidad de reconstruirlo ni convertir el proceso local MCP en otro servidor productivo. El runtime SOPHIA de Azure tiene despliegue aislado diferente, no administrado por ese stack AWS.
+
+Para operar, usar xoc-dev/us-east-1 y releases acreditados, no desplegar main indiscriminadamente. Chat requiere SOPHIA_AGENTCORE_PROVISIONED=true y selector agentcore explicito para preservar activacion; el helper prepara esas variables. AgentCore tiene opcion de concurrencia unreserved acreditada en esta cuenta; no redesplegar con defaults sin revisar diferencias. Los comandos npm utilizan Serverless Framework, los helpers solo controlan perfil, artefacto, inspeccion y procedencia.
+
+Release timeout26-20261013: byte overlay solo chat.py, plantilla cambia Code/Timeout y version, environment/IAM sin cambios. 133 tests PASS. Commits backend 4a32522, release 9e70854. Se conserva resumen directo. El aumento no garantiza respuesta ni reduce duracion del modelo. Ensayo funcional autenticado pendiente tras deploy.
+
+Deploy Serverless completo en 53 s: stack UPDATE_COMPLETE, Lambda Active/Successful con Timeout 26 y agentcore activo. SHA cb/XpKQoM/bG+5tNQ9/klMJID5DfZS/7VwNmpMvBQQA=. No hubo update-function-configuration manual.
