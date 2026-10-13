@@ -6,6 +6,7 @@ The caller supplies its authenticated ToolContext and existing thread validator.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import os
 import re
@@ -109,6 +110,45 @@ def model_result(result: ToolResult, tool_name: str, context: ToolContext) -> di
     return output
 
 
+def _direct_summary(projected):
+    """Presentation only: consume the existing ownership-checked projection."""
+    if projected.get("status") != "allowed" or projected.get("code") != "allowed":
+        return None
+    data = projected["data"]
+    name = projected["tool_name"]
+
+    def cell(value):
+        value = " ".join(safe_text(value, 240).split())
+        value = re.sub(r"([\\`*_{}\[\]()!#|>])", r"\\\1", value)
+        return html.escape(value)
+
+    def ticket(row):
+        return " | ".join(cell(row[k]) for k in ("ticket_id", "id", "subject", "status")
+                          if row.get(k)) or "Ticket sin detalles disponibles"
+
+    prefix = "SOPHIA no pudo completar la redaccion. Resumen directo de los datos autorizados:\n"
+    if name == "xoc.tickets.get":
+        return prefix + ticket(data["ticket"])
+    if name == "xoc.notifications.unread_count":
+        return prefix + f"Notificaciones sin leer: {data['count']}."
+    key = {"xoc.tickets.list": "tickets", "xoc.documents.list": "documents"}.get(name)
+    if key is None:
+        return None
+    rows = data[key]
+    if not rows:
+        return prefix + f"La consulta no devolvio {key}."
+    lines = []
+    for row in rows[:20]:
+        rendered = ticket(row) if key == "tickets" else " | ".join(
+            cell(row[k]) for k in ("document_id", "document_type", "status", "created_at") if row.get(k))
+        if sum(map(len, lines)) + len(rendered) > 7000:
+            break
+        lines.append("- " + (rendered or "Documento sin detalles disponibles"))
+    if len(rows) > len(lines) or data.get("truncated"):
+        lines.append("Se muestra solo una parte de los resultados devueltos.")
+    return prefix + "\n".join(lines)
+
+
 def protocol_error(code="sophia_protocol_error"):
     return AppError("SOPHIA no pudo completar la consulta de forma segura. Intenta nuevamente.",
                     status_code=502, code=code)
@@ -196,9 +236,18 @@ def finish_turn(payload, *, context, cleaner, validate_thread, post_result, allo
             metadata["toolGateway"]["completionCode"] = "tool_call_limit"
         else:
             answer = _public_reply(final, allow_proposal=False)
-    except (requests.RequestException, ValueError, AppError):
+    except (requests.RequestException, ValueError, AppError) as exc:
         answer = {"text": "La herramienta fue procesada, pero SOPHIA no pudo preparar la respuesta final. No se reintento la herramienta.",
                   "thread_id": payload["thread_id"]}
         metadata["toolGateway"]["completionCode"] = "runtime_unavailable"
+        # Never substitute a DENY, malformed envelope, thread mismatch or second
+        # tool request. No executor/store/API call occurs in this renderer.
+        unavailable = isinstance(exc, requests.RequestException) or (
+            isinstance(exc, AppError) and exc.code in {
+                "sophia_runtime_unavailable", "sophia_runtime_timeout"})
+        summary = _direct_summary(sanitized) if unavailable else None
+        if summary is not None:
+            answer["text"] = summary
+            metadata["toolGateway"]["presentation"] = "direct_authorized_summary"
     answer["metadata"] = metadata
     return answer
