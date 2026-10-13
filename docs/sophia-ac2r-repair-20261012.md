@@ -162,3 +162,17 @@ Limites: timeouts requests son de conexion/inactividad de lectura, no una cancel
 127 tests release PASS (122 previos y 5 de presupuesto). Commit release 538d797; backend 487e3de. Paquete aislado budget-20261013: solo chat.py cambia; inspect PASS con environment e IAM intactos. SHA esperado ZNk/VfQvA+3ZzO8jt+QkqyWvCFXJd+Dwb0Cxj3dUA7I=. Paquete anterior continuity-20261013 conservado. No usar el paquete disabled anterior como si incluyera esta correccion nueva; reempaquetarlo desde budget-20261013 antes del ensayo operativo.
 
 Deploy completado en 47 s. Verificado UPDATE_COMPLETE, Active/Successful, SHA esperado coincidente, agentcore activo y timeout 20 s. POST /chat sin credenciales devuelve 401. Pendiente repetir consulta autenticada; no se declara resuelto E2E por el solo despliegue.
+
+## Respaldo de presentacion autorizado — 12 octubre Ecuador
+
+El usuario autorizo explicitamente mostrar los resultados reales autorizados cuando la redaccion final de SOPHIA no completa. La prueba anterior devolvio allowed + runtime_unavailable en 21.89 s: fue degradacion controlada, NO exito funcional completo.
+
+Cambio focalizado en sophia_tool_chat.py: ante error de transporte del segundo turno o runtime_unavailable/runtime_timeout, se renderiza exclusivamente la proyeccion model_result existente con status y code allowed. No consulta stores ni APIs, no reejecuta tools, no evita AgentCore, no convierte DENY en datos. Errores de protocolo/thread y segunda herramienta no se ocultan con este resumen.
+
+Soporta las cuatro READ_ONLY. Campos existentes permitidos, redaccion determinista identificada como resumen directo, escape HTML/Markdown, redaccion de secretos existente, maximo 20 filas y limite de longitud con aviso de resultado parcial. Conserva auditId y completionCode runtime_unavailable; agrega presentation=direct_authorized_summary para distinguir el respaldo del exito del modelo. No agrega propuestas ni confirmaciones.
+
+132 pruebas release PASS: casos de las cuatro tools, vacio, DENY, ownership extranjero, resultado malformado, fallo de protocolo, redaccion, escape y truncamiento; una ejecucion y un intento de segundo turno. Release 321fa07; backend 5262b37. Artefacto presentation-20261013 sobre budget-20261013, unicamente sophia_tool_chat.py distinto; inspeccion Code/version solamente, sin environment/IAM.
+
+Esto NO reduce el tiempo del modelo ni garantiza que Foundry guarde el texto del resumen en su historial: el resumen se devuelve desde XOC. La continuidad tras una respuesta degradada debe probarse por separado. No se amplio el alcance a persistir mensajes en Foundry, reintentar runs o cambiar Voice/VICTOR.
+
+Deploy terminado en 47 s, Lambda Active/Successful, agentcore activo. Hash vivo coincide con paquete: E7LEy4rv75TgEEDB3dVlXFzoXDl2IrFDAQCEyICu9E4=. Pendiente consulta autenticada de aceptacion.
