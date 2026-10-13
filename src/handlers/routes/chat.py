@@ -53,7 +53,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 def _chat_deadline(request):
     """Reserve response/persistence time from the actual Lambda budget."""
-    budget = 17.0
+    budget = 23.0
     scope = getattr(request, "scope", None)
     context = scope.get("aws.context") if isinstance(scope, dict) else None
     if context is not None:

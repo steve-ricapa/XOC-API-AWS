@@ -13,6 +13,7 @@ PREVIOUS = release.OUT / 'repair-20261012'
 OUT = release.OUT / 'continuity-20261013'
 EXPECTED = 'VKixlT8FOnKMHQ44upO2EIPeeaQ6dEltWnbzT5zAy70='
 FILE = 'src/handlers/routes/chat.py'
+EXPECTED_PROPERTY_DIFF = ['Code']
 
 
 def prepare():
@@ -56,7 +57,7 @@ def main():
             release.inspect('agentcore')
             report = json.loads((OUT / 'chat-agentcore-inspection.json').read_bytes())
             assert report['environment_diff'] == [], 'Unexpected configuration drift'
-            assert report['lambda_property_diff'] == ['Code']
+            assert sorted(report['lambda_property_diff']) == sorted(EXPECTED_PROPERTY_DIFF)
         else:
             report = json.loads((OUT / 'chat-agentcore-inspection.json').read_bytes())
             assert report['environment_diff'] == []

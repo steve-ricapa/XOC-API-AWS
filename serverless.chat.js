@@ -33,6 +33,7 @@ module.exports = buildService({
   },
   functions: (stage) => ({
     chatAgentsApi: {
+      // Applied below lambdaConfig so its default cannot override this limit.
       ...lambdaConfig(stage, {
       handler: 'src/handlers/domains/chat_agents.handler',
       description: 'Chat & Agents domain API',
@@ -62,6 +63,8 @@ module.exports = buildService({
         protectedRoute(stage, 'GET', '/agents/instance/{instanceId}'),
       ],
       }),
+      // Approved shared Chat/agents/Voice envelope; HTTP API remains at 30 s.
+      timeout: 26,
       // Local implementation only; activate after the matching runtime release.
       // No changes to the provider-wide environment or any VICTOR function.
       environment: {

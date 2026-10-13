@@ -13,7 +13,12 @@ class ChatBudgetTests(unittest.TestCase):
 
     def test_local_budget_is_bounded(self):
         with patch.object(chat.time, "monotonic", return_value=100):
-            self.assertEqual(117, chat._chat_deadline(None))
+            self.assertEqual(123, chat._chat_deadline(None))
+
+    def test_shared_lambda_26_seconds_preserves_reserve(self):
+        request = SimpleNamespace(scope={"aws.context": Mock(get_remaining_time_in_millis=Mock(return_value=26000))})
+        with patch.object(chat.time, "monotonic", return_value=100):
+            self.assertEqual(123, chat._chat_deadline(request))
 
     def test_expired_budget_never_starts_http(self):
         with patch.object(chat.time, "monotonic", return_value=100):

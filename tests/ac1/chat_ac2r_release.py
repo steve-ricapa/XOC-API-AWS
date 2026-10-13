@@ -18,6 +18,8 @@ RELEASE = ROOT.parent / 'XOC-API-AWS-CHAT-AC2R'
 OUT = ROOT / 'tests/ic1/.build/ac2r'
 BASE = 'fe3b25f13833fb300ad1049b0e7974b37be8e706'
 BASE_SHA = 'H/uO4Z5cNLVyRGLy/CIBibwN/Gen8BXzvrvW+6niP2E='
+EXPECTED_TIMEOUT = 20
+ALLOWED_LAMBDA_DIFF = {'Code', 'Environment'}
 OVERLAY = ('src/handlers/routes/chat.py', 'src/shared/sophia_tool_chat.py',
     'src/shared/sophia_thread_operations.py', 'src/shared/sophia_tool_execution.py',
     'src/shared/sophia_agentcore_client.py', 'src/shared/agentcore_context.py',
@@ -102,8 +104,8 @@ def inspect(mode):
                     resources.get(key,old.get(key))['Type']=='AWS::Lambda::Version'), key
     before, after = old[function]['Properties'], resources[function]['Properties']
     property_diff = [key for key in set(before)|set(after) if before.get(key)!=after.get(key)]
-    assert set(property_diff) <= {'Code','Environment'}, property_diff
-    assert after['Timeout']==20
+    assert set(property_diff) <= ALLOWED_LAMBDA_DIFF, property_diff
+    assert after['Timeout'] == EXPECTED_TIMEOUT
     e0, e1=before['Environment']['Variables'], after['Environment']['Variables']
     env_diff = [key for key in set(e0)|set(e1) if e0.get(key)!=e1.get(key)]
     allowed_env = {'SOPHIA_TOOL_GATEWAY_ENABLED','SOPHIA_THREAD_CAPABILITIES_ENABLED',
@@ -123,7 +125,9 @@ def inspect(mode):
     assert all(row['Resource']!='*' for row in policy['Statement'])
     report={'status':'PASS','resources':changes,'lambda_property_diff':property_diff,
             'environment_diff':sorted(env_diff),'IAM_added':policy,
-            'dependency_bytes_preserved':True,'voice_bytes_and_config_preserved':True,
+            'dependency_bytes_preserved':True,'voice_bytes_preserved':True,
+            'shared_lambda_timeout_changed': before['Timeout'] != after['Timeout'],
+            'voice_bytes_and_config_preserved': before['Timeout'] == after['Timeout'],
             'victor_bytes_and_config_preserved':True,'template_sha256':hashlib.sha256(
                 (directory/'cloudformation-template-update-stack.json').read_bytes()).hexdigest()}
     (OUT/('chat-'+mode+'-inspection.json')).write_text(json.dumps(report,indent=2),encoding='utf-8')
