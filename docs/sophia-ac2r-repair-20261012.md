@@ -176,3 +176,15 @@ Soporta las cuatro READ_ONLY. Campos existentes permitidos, redaccion determinis
 Esto NO reduce el tiempo del modelo ni garantiza que Foundry guarde el texto del resumen en su historial: el resumen se devuelve desde XOC. La continuidad tras una respuesta degradada debe probarse por separado. No se amplio el alcance a persistir mensajes en Foundry, reintentar runs o cambiar Voice/VICTOR.
 
 Deploy terminado en 47 s, Lambda Active/Successful, agentcore activo. Hash vivo coincide con paquete: E7LEy4rv75TgEEDB3dVlXFzoXDl2IrFDAQCEyICu9E4=. Pendiente consulta autenticada de aceptacion.
+
+## Diagnostico posterior — 13 octubre Ecuador
+
+Usuario valido resumen directo y casos reales: ADMIN A propio allowed; ADMIN B ticket A denied sin datos, control propio B confirmado; USER list vacio allowed y get ticket de otro tenant denied (usuario confirmo tenants distintos); ADMIN_XOC sin delegacion 403. ADMIN_XOC con delegacion no disponible/no probado. Estas son evidencias humanas, no inspeccion independiente de claims de sus tokens.
+
+Revalidacion live: SHA presentation coincide, Active, agentcore, Lambda 20 s. API Gateway integracion rbq4x2l de esa Lambda tiene timeout 30000 ms. La misma Lambda sirve /chat, /live-voice-sessions y rutas /agents: ampliar su timeout no es un cambio exclusivamente de Chat.
+
+Azure Function aislada, App Insights c854497d-ab9d-4dd7-be21-8ecbb68cb789: en ventana de 3 h los segundos requests temporalmente asociados terminaron 200 en 4687, 4994, 5815, 5058 y 4961 ms; hubo tambien 502 de 9526 y 5498 ms. Correlacion por proximidad temporal, NO trace distribuida completa. Los logs AWS muestran esperas second_turn de 3430, 3296, 3116, 5961, 2067, 4282 y 2581 ms, con ejecuciones terminando cerca de 16.1 s tras el guard. El timeout cliente explica varios resultados degradados aunque Azure termine 200 despues; no explica los 502 propios de Azure.
+
+Script azure_completion_observe.py consulta categorias fijas/metricas de Functions, no contenidos de conversaciones ni credenciales. Azure CLI carece de extension application-insights; se uso REST con token CLI solo en memoria, sin instalarla. No se modifico Azure/Foundry.
+
+Decision requerida antes de ampliar alcance: evaluar Lambda 26 s y presupuesto Chat 23 s (API ya 30 s), preservando margen y respaldo, pero reconociendo impacto en la envolvente temporal de rutas compartidas Voice/agents; alternativa separar Chat/asincronia implica arquitectura nueva. No se ejecuto ninguna de esas opciones. Aumentar el limite no optimiza latencia ni corrige los 502 del runtime; requiere smoke y costos/timeout de clientes revisados. No quitar guard ni resumir un DENY como exito.
