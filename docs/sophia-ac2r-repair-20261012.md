@@ -200,3 +200,19 @@ Para operar, usar xoc-dev/us-east-1 y releases acreditados, no desplegar main in
 Release timeout26-20261013: byte overlay solo chat.py, plantilla cambia Code/Timeout y version, environment/IAM sin cambios. 133 tests PASS. Commits backend 4a32522, release 9e70854. Se conserva resumen directo. El aumento no garantiza respuesta ni reduce duracion del modelo. Ensayo funcional autenticado pendiente tras deploy.
 
 Deploy Serverless completo en 53 s: stack UPDATE_COMPLETE, Lambda Active/Successful con Timeout 26 y agentcore activo. SHA cb/XpKQoM/bG+5tNQ9/klMJID5DfZS/7VwNmpMvBQQA=. No hubo update-function-configuration manual.
+
+## Intermitencia residual e instrumentacion aislada — 13 octubre, 05:53 UTC
+
+Capturas humanas: sesion 83 natural en 21.26 s; sesion 84 respaldo autorizado en 14.87 s; sesiones 85/86 naturales en 11.28/11.31 s. No considerar el HTTP 200 del respaldo como segundo turno exitoso.
+
+CloudWatch, ventana 05:38–05:43 UTC: llamada temporalmente asociada a sesion 84 tuvo first_turn 5859 ms, AgentCore allowed 687 ms, second_turn 8127 ms, Lambda 14720.58 ms. Azure registro solicitud 05:39:09.537Z, operacion 45995be46cf737b9a9831c5c0fe18901, HTTP 502 en 9132.8873 ms, runtime_unavailable. Correlacion temporal, no union distribuida por auditId. No fue agotamiento del timeout Lambda 26 s. El cliente termino antes que Azure; no atribuir todo el caso exclusivamente a uno de los dos limites.
+
+Consultas acotadas dependencies/exceptions de esa operacion no devolvieron filas. El runtime anterior descartaba la excepcion concreta: no es posible afirmar retrospectivamente si fue timeout, HTTP proveedor o respuesta invalida.
+
+Runtime commit 2572f67b70de143f1a713570216fdc8778817a2c agrega telemetria estatica de fase/operacion/duracion/categoria y codigo HTTP numerico; no argumentos, URLs, tokens, cuerpos, mensajes de excepcion ni datos de negocio. Preserva excepciones, limites, bindings, maximo una herramienta, ausencia de retry y cliente por turno. No modifica cliente legacy ni VICTOR. Pruebas: 230 PASS, 12 skipped, 8 VICTOR deselected; incluye redaccion y una sola llamada en fallos.
+
+Build allowlist build/ac2r-diagnostics-20261013 publicado via Core Tools remote build exclusivamente en prod-a-xoc-sophia. Deployment 0c6a7c42-5383-49b0-8a04-a7bd20e12cac exitoso 05:52:19 UTC. Advertencia Python local 3.13 vs destino 3.12: se uso build remoto, no dependencias locales. No cambios AWS ni de timeout adicionales.
+
+Smoke de servicio PASS (build/smoke-diagnostics-20261013.json): sin capability 401; normal/continuidad 200; tres solicitudes de tool y resultados fixture allowed/denied/unavailable 200, sin segunda herramienta. Segundos turnos 5573/3697/3788 ms. Usa capabilities de servicio y datos vacios, NO JWT humano ni lectura de tickets XOC; delay diagnostico de 3 s fuera de medicion para reloj local. Telemetria nueva observada en Application Insights; no errores nuevos en esta muestra.
+
+Estado: instrumentacion desplegada y acreditada, NO correccion demostrada de la intermitencia. Falta capturar un fallo nuevo con detalle y corregir segun causa. No ampliar timeouts ni cambiar arquitectura por inferencia. Closure sigue abierta; quedan estabilidad/latencia representativa y cierre operacional/documental. Commits de este bloque locales, sin push.
