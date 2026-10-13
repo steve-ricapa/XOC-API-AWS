@@ -150,3 +150,15 @@ Runbook de ensayo: revalidar STS y hash vivo; seleccionar OUT continuity-2026101
 Seguridad real: usuario confirma disponibilidad de cuentas ADMIN, ADMIN_XOC y USER en distintos tenants. Pendiente ejecutar pares positivo/negativo con sesiones legitimas. Primero ADMIN A get ticket A permitido; ADMIN B get mismo ticket A sin datos; luego control positivo B get ticket B. Continuar USER segun policy real, ADMIN_XOC sin delegacion y con delegacion valida. No crear cuentas ni fabricar tokens. No declarar exito por HTTP 200: revisar metadata, contenido y auditoria. Si hay filtracion, parar pruebas y tratar como blocker de seguridad.
 
 Estado Closure: EN CURSO / NO-GO para cierre integral por latencia sin muestra postdeploy suficiente, matriz real pendiente y ensayo operativo pendiente. AgentCore sigue activo. MCP y runtime sin cambios en este bloque; sus estados Git locales registrados fueron 1f09a72 (MCP) y 36996f6 (runtime). No afirmar push de esos repos por este cierre.
+
+## Incidente y ajuste de presupuesto — 12 octubre, hora Ecuador
+
+La nueva prueba humana list fallo HTTP 500 en 25.61 s. La llamada reciente de Chat registro first_turn 7390 ms, transporte AgentCore allowed 4356 ms y REPORT Duration 20000 ms / Status timeout (Init 2282.97 ms). Sin second_turn completo. No es evidencia de rechazo de policy. El observador ahora cuenta tambien Status timeout: buscar solo el texto antiguo Task timed out after omitio este formato.
+
+Se encontro que el deadline se iniciaba despues de consultas/preparacion y no consideraba el tiempo Lambda ya consumido; el timeout escalar requests tampoco reparte un presupuesto unico entre conexion y lectura. Correccion autorizada: deadline al entrar a la ruta, limitado por aws.context.get_remaining_time_in_millis menos 3 s; tope local 17 s; timeouts connect/read repartidos en hasta 9 s o el restante; chequeo del segundo turno despues de firmar capability. Preserva respuesta controlada existente y no reejecuta herramienta. No cambia timeout Lambda, IAM, tools ni infraestructura.
+
+Limites: timeouts requests son de conexion/inactividad de lectura, no una cancelacion dura de todo el proceso (DNS/streaming/DB tambien pueden consumir tiempo). El margen de 3 s para persistencia es una reserva, no garantia de latencia de DB. Pendiente confirmar comportamiento real; esto no acelera el modelo ni acredita rendimiento integral.
+
+127 tests release PASS (122 previos y 5 de presupuesto). Commit release 538d797; backend 487e3de. Paquete aislado budget-20261013: solo chat.py cambia; inspect PASS con environment e IAM intactos. SHA esperado ZNk/VfQvA+3ZzO8jt+QkqyWvCFXJd+Dwb0Cxj3dUA7I=. Paquete anterior continuity-20261013 conservado. No usar el paquete disabled anterior como si incluyera esta correccion nueva; reempaquetarlo desde budget-20261013 antes del ensayo operativo.
+
+Deploy completado en 47 s. Verificado UPDATE_COMPLETE, Active/Successful, SHA esperado coincidente, agentcore activo y timeout 20 s. POST /chat sin credenciales devuelve 401. Pendiente repetir consulta autenticada; no se declara resuelto E2E por el solo despliegue.
