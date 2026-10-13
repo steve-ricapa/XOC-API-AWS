@@ -70,6 +70,9 @@ module.exports = buildService({
       environment: {
         SOPHIA_TOOL_GATEWAY_ENABLED: "${env:SOPHIA_TOOL_GATEWAY_ENABLED, 'false'}",
         SOPHIA_THREAD_CAPABILITIES_ENABLED: "${env:SOPHIA_THREAD_CAPABILITIES_ENABLED, 'false'}",
+        ...(stage === 'prod' ? {
+          SOPHIA_GOVERNED_BASE_URL: "${env:SOPHIA_GOVERNED_BASE_URL, 'https://prod-a-xoc-sophia.azurewebsites.net'}",
+        } : {}),
         USER_NOTIFICATION_INBOX_TABLE_NAME: `xoc-api-ops-${stage}-user-notification-inbox`,
       },
     },

@@ -104,12 +104,34 @@ def _get_runtime_settings(session: Session, tenant_id: int) -> TenantRuntimeSett
 
 
 def _resolve_agent_routes(session: Session, tenant_id: int) -> dict[str, str]:
+    routes = _resolve_existing_agent_routes(session, tenant_id)
+    governed_base = os.getenv("SOPHIA_GOVERNED_BASE_URL", "").strip()
+    if governed_base:
+        from urllib.parse import urlsplit
+        try:
+            parsed = urlsplit(governed_base)
+            valid = (parsed.scheme == "https" and parsed.hostname
+                     and not parsed.username and not parsed.password
+                     and not parsed.query and not parsed.fragment
+                     and parsed.path in ("", "/") and parsed.port in (None, 443))
+        except ValueError:
+            valid = False
+        if not valid or not sophia_tool_chat.enabled() or not sophia_thread_operations.enabled():
+            raise sophia_tool_chat.protocol_error("sophia_runtime_configuration")
+        # Only this Chat module uses the override. Preserve tenant extra_json,
+        # route contracts and all shared/VICTOR configuration.
+        routes["function_base_url"] = governed_base.rstrip("/")
+    return routes
+
+
+def _resolve_existing_agent_routes(session: Session, tenant_id: int) -> dict[str, str]:
     settings = get_settings()
     global_base_url = (settings.agents_function_base_url or "").strip()
     global_sophia = (settings.agents_function_route_sophia or "/api/agents/SophiaDurableAgent/run").strip()
     global_history = (settings.agents_function_route_sophia_history or "/api/agents/SophiaDurableAgent/history").strip()
     global_delete = (settings.agents_function_route_sophia_delete or "/api/agents/SophiaDurableAgent/threads").strip()
     global_victor = (settings.agents_function_route_victor or "/api/agents/VictorDurableAgent/run").strip()
+
 
     runtime_settings = None
     try:
