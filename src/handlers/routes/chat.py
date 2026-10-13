@@ -51,6 +51,24 @@ def _timed_sophia_post(stage, request_id, *, timing_enabled=True, **kwargs):
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
+def _chat_deadline(request):
+    """Reserve response/persistence time from the actual Lambda budget."""
+    budget = 17.0
+    scope = getattr(request, "scope", None)
+    context = scope.get("aws.context") if isinstance(scope, dict) else None
+    if context is not None:
+        budget = min(budget, context.get_remaining_time_in_millis() / 1000.0 - 3.0)
+    return time.monotonic() + max(0.0, budget)
+
+
+def _runtime_timeout(deadline):
+    remaining = min(9.0, deadline - time.monotonic())
+    if remaining <= 0.1:
+        raise requests.exceptions.Timeout("Chat budget exhausted")
+    connect = min(1.0, remaining / 4)
+    return (connect, remaining - connect)
+
+
 _AFFINITY_COOKIE_KEYS = ("ARRAffinity", "ARRAffinitySameSite")
 _SESSION_AFFINITY: dict = {}
 _DEFAULT_CHAT_TIMEOUT = 60
@@ -711,6 +729,8 @@ def proxy_chat(
     db_session: Session = Depends(get_db_session),
     request: Request = None,
 ) -> dict:
+    # Start before database/runtime setup, not after it.
+    governed_deadline = _chat_deadline(request)
     if not payload:
         raise ValidationError("Request body is required")
     require_tenant_read_access(current_user)
@@ -807,7 +827,6 @@ def proxy_chat(
     timeout_seconds = int(os.environ.get("SOPHIA_CHAT_TIMEOUT_SECONDS", str(_DEFAULT_CHAT_TIMEOUT)))
     # Stay within the existing shared Chat Lambda timeout; don't change Voice's
     # execution envelope to accommodate this opt-in protocol.
-    governed_deadline = time.monotonic() + 18
     if governed:
         timeout_seconds = min(timeout_seconds, 9)
 
@@ -822,7 +841,7 @@ def proxy_chat(
                     "Authorization": f"Bearer {service_token}",
                 },
                 cookies=affinity_cookies,
-                timeout=timeout_seconds,
+                timeout=_runtime_timeout(governed_deadline) if governed else timeout_seconds,
                 **({"allow_redirects": False} if governed else {}),
             )
         except requests.exceptions.Timeout:
@@ -859,15 +878,13 @@ def proxy_chat(
                 )
             if governed:
                 def post_tool_result(body):
-                    remaining = governed_deadline - time.monotonic()
-                    if remaining <= 0:
-                        raise sophia_tool_chat.protocol_error("sophia_runtime_timeout")
+                    token = sophia_tool_chat.capability(tool_context, body)
                     final_response = _timed_sophia_post(
                         "second_turn", request_id,
                         url=full_url, json=body, params={"thread_id": body["thread_id"]},
                         headers={"Content-Type": "application/json",
-                                 "Authorization": f"Bearer {sophia_tool_chat.capability(tool_context, body)}"},
-                        cookies=affinity_cookies, timeout=min(9, remaining), allow_redirects=False,
+                                 "Authorization": f"Bearer {token}"},
+                        cookies=affinity_cookies, timeout=_runtime_timeout(governed_deadline), allow_redirects=False,
                     )
                     if final_response.status_code != 200:
                         raise sophia_tool_chat.protocol_error("sophia_runtime_unavailable")

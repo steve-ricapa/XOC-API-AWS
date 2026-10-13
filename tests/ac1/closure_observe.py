@@ -44,6 +44,7 @@ def main():
             'timeout': cfg['Timeout'], 'mode': cfg.get('Environment', {}).get('Variables', {}).get('SOPHIA_TOOL_EXECUTION'),
             'events_scanned': len(rows), 'metrics': metrics,
             'timeout_messages': sum('Task timed out after' in row['message'] for row in rows),
+            'timeout_reports': sum(bool(re.search(r'REPORT RequestId:.*Status: timeout', row['message'])) for row in rows),
         }
     print(json.dumps(output, indent=2))
 

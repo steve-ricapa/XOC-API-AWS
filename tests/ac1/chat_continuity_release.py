@@ -42,7 +42,7 @@ def prepare():
     print('PREPARED_SINGLE_FILE_CONTINUITY_FIX')
 
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['prepare', 'package', 'inspect', 'deploy'])
     args = parser.parse_args()
@@ -64,3 +64,7 @@ if __name__ == '__main__':
             target.mkdir(exist_ok=True)
             shutil.copyfile(OUT / 'chat-agentcore/serverless-state.json', target / 'serverless-state.json')
             raise SystemExit(release.deploy('agentcore'))
+
+
+if __name__ == '__main__':
+    main()
