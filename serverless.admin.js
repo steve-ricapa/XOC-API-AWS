@@ -61,6 +61,7 @@ module.exports = buildService({
         protectedRoute(stage, 'GET', '/superadmin/users'),
         protectedRoute(stage, 'GET', '/superadmin/users/{userId}'),
         protectedRoute(stage, 'PATCH', '/superadmin/users/{userId}'),
+        protectedRoute(stage, 'DELETE', '/superadmin/users/{userId}'),
         protectedRoute(stage, 'POST', '/superadmin/users/{userId}/password-reset'),
         protectedRoute(stage, 'GET', '/superadmin/integrations'),
         protectedRoute(stage, 'GET', '/superadmin/integrations/{integrationId}'),
