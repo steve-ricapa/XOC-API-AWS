@@ -216,3 +216,15 @@ Build allowlist build/ac2r-diagnostics-20261013 publicado via Core Tools remote 
 Smoke de servicio PASS (build/smoke-diagnostics-20261013.json): sin capability 401; normal/continuidad 200; tres solicitudes de tool y resultados fixture allowed/denied/unavailable 200, sin segunda herramienta. Segundos turnos 5573/3697/3788 ms. Usa capabilities de servicio y datos vacios, NO JWT humano ni lectura de tickets XOC; delay diagnostico de 3 s fuera de medicion para reloj local. Telemetria nueva observada en Application Insights; no errores nuevos en esta muestra.
 
 Estado: instrumentacion desplegada y acreditada, NO correccion demostrada de la intermitencia. Falta capturar un fallo nuevo con detalle y corregir segun causa. No ampliar timeouts ni cambiar arquitectura por inferencia. Closure sigue abierta; quedan estabilidad/latencia representativa y cierre operacional/documental. Commits de este bloque locales, sin push.
+
+## Ajuste local del segundo turno — 15 octubre 2026
+
+Sesiones humanas 87/89 naturales; 88 respaldo autorizado. Correlacion temporal de sesion 88: first_turn 3575 ms, AgentCore allowed 677 ms, second_turn 8130 ms, Lambda 12415 ms. Azure operacion a986086aefcf7ce5aed1760465e95586 completo HTTP 200 en 6564 ms, aproximadamente 45 ms despues del fin de espera del cliente AWS. Esto apunta al limite de lectura (8 s, incluyendo espera previa al procesamiento Azure), pero no prueba retrospectivamente el tipo de excepcion.
+
+Cambio local acotado: _runtime_timeout mantiene primer turno 9 s combinados; segundo turno hasta 12 s combinados (1 conexion + 11 lectura), siempre limitado por deadline restante. Presupuesto total Chat 23 s, Lambda 26 s y reserva 3 s sin cambios. Requests no ofrece un deadline absoluto para DNS/lectura fragmentada: el presupuesto no es una garantia dura de tiempo total. Sin retries, sin otra ejecucion, sin cambios de permisos, Azure, MCP o infraestructura.
+
+Telemetria cliente nueva: connect_timeout/read_timeout/timeout/connection_error/transport_error/invalid_response/other_error; segundo turno registra status HTTP no 200 o JSON invalido. No URLs, cuerpos ni mensajes de excepcion. Se conserva presentacion autorizada de respaldo y sus marcadores, no se declara el respaldo como completion exitosa.
+
+136 pruebas PASS en release aislado, 36 focalizadas PASS en arbol principal; diff --check limpio. Pull integro dfbcd3c del responsable (ruta admin protegida) en main; ese cambio NO se incluye en el overlay Chat. Helper tests/ac1/chat_second_turn_release.py exige SHA previo timeout26, agentcore activo, propiedades Code solamente, environment sin diferencias, empaquetado Serverless existente y validacion de cuenta xoc-dev.
+
+Punto de reanudacion: AWS xoc-dev expirado al intentar STS. NO se preparo paquete acreditado contra live ni se desplego este ajuste. Tras renovar login: verificar cuenta 811776156524 y drift; ejecutar prepare/package/inspect/deploy del helper secuencialmente, detener ante SHA/config diferente; smoke autenticado pendiente. No cambiar main completo en PROD ni publicar herramientas nuevas. No afirmar AC-2R cerrado.

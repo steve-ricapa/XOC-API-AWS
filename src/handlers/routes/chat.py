@@ -35,12 +35,30 @@ _latency_logger.setLevel(logging.INFO)
 def _sophia_stage_timing(stage, request_id, enabled=True):
     """Only server-owned correlation and elapsed time; no bodies or identities."""
     started = time.monotonic()
+    outcome = "ok"
     try:
         yield
+    except Exception as exc:
+        # Fixed categories only: never exception messages, URLs or user data.
+        if isinstance(exc, requests.exceptions.ConnectTimeout):
+            outcome = "connect_timeout"
+        elif isinstance(exc, requests.exceptions.ReadTimeout):
+            outcome = "read_timeout"
+        elif isinstance(exc, requests.exceptions.Timeout):
+            outcome = "timeout"
+        elif isinstance(exc, requests.exceptions.ConnectionError):
+            outcome = "connection_error"
+        elif isinstance(exc, requests.exceptions.RequestException):
+            outcome = "transport_error"
+        elif isinstance(exc, ValueError):
+            outcome = "invalid_response"
+        else:
+            outcome = "other_error"
+        raise
     finally:
         if enabled:
-            _latency_logger.info("sophia_chat_stage stage=%s request_id=%s duration_ms=%d",
-                        stage, request_id, int((time.monotonic() - started) * 1000))
+            _latency_logger.info("sophia_chat_stage stage=%s request_id=%s duration_ms=%d outcome=%s",
+                        stage, request_id, int((time.monotonic() - started) * 1000), outcome)
 
 
 def _timed_sophia_post(stage, request_id, *, timing_enabled=True, **kwargs):
@@ -61,8 +79,10 @@ def _chat_deadline(request):
     return time.monotonic() + max(0.0, budget)
 
 
-def _runtime_timeout(deadline):
-    remaining = min(9.0, deadline - time.monotonic())
+def _runtime_timeout(deadline, *, second_turn=False):
+    # Allow Azure's 8s runtime plus transit on completion, without extending
+    # the shared 23s Chat deadline or consuming the Lambda's 3s reserve.
+    remaining = min(12.0 if second_turn else 9.0, deadline - time.monotonic())
     if remaining <= 0.1:
         raise requests.exceptions.Timeout("Chat budget exhausted")
     connect = min(1.0, remaining / 4)
@@ -884,11 +904,19 @@ def proxy_chat(
                         url=full_url, json=body, params={"thread_id": body["thread_id"]},
                         headers={"Content-Type": "application/json",
                                  "Authorization": f"Bearer {token}"},
-                        cookies=affinity_cookies, timeout=_runtime_timeout(governed_deadline), allow_redirects=False,
+                        cookies=affinity_cookies, timeout=_runtime_timeout(governed_deadline, second_turn=True), allow_redirects=False,
                     )
                     if final_response.status_code != 200:
+                        _latency_logger.warning(
+                            "sophia_completion_error request_id=%s outcome=http_error http_status=%d",
+                            request_id, final_response.status_code)
                         raise sophia_tool_chat.protocol_error("sophia_runtime_unavailable")
-                    return final_response.json()
+                    try:
+                        return final_response.json()
+                    except ValueError:
+                        _latency_logger.warning(
+                            "sophia_completion_error request_id=%s outcome=invalid_json", request_id)
+                        raise
 
                 cleaned_payload = sophia_tool_chat.finish_turn(
                     response_payload, context=tool_context, cleaner=_clean_agent_response,
