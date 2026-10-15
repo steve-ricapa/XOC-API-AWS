@@ -228,3 +228,15 @@ Telemetria cliente nueva: connect_timeout/read_timeout/timeout/connection_error/
 136 pruebas PASS en release aislado, 36 focalizadas PASS en arbol principal; diff --check limpio. Pull integro dfbcd3c del responsable (ruta admin protegida) en main; ese cambio NO se incluye en el overlay Chat. Helper tests/ac1/chat_second_turn_release.py exige SHA previo timeout26, agentcore activo, propiedades Code solamente, environment sin diferencias, empaquetado Serverless existente y validacion de cuenta xoc-dev.
 
 Punto de reanudacion: AWS xoc-dev expirado al intentar STS. NO se preparo paquete acreditado contra live ni se desplego este ajuste. Tras renovar login: verificar cuenta 811776156524 y drift; ejecutar prepare/package/inspect/deploy del helper secuencialmente, detener ante SHA/config diferente; smoke autenticado pendiente. No cambiar main completo en PROD ni publicar herramientas nuevas. No afirmar AC-2R cerrado.
+
+## Release combinado desplegado — 15 octubre 2026
+
+Sesion AWS renovada, cuenta 811776156524 verificada exclusivamente con xoc-dev. El gate detecto drift: SHA 6hafc+Evju/duP+CKsOUwZnkZZzXDbOqiSRIS2Vucu4=, actualizado el 13 octubre 22:15 UTC. Se detuvo antes de escribir. Comparacion byte a byte encontro SOLO chat.py cambiado, ninguna dependencia u otro archivo. Fuente acreditada: base aislada 9e70854 mas cambios 71aa494 y 3cf7af5 del responsable; helper accredit_uncertain_turn.py exige esa composicion exacta.
+
+Con autorizacion explicita del usuario se integro origin/fix/sophia-uncertain-turn-20261013 en main (merge 10fe997), incluidos enrutamiento gobernado y plantilla c0e79ef. El release aislado ya contenia el enrutamiento; se conservaron los cambios de respuesta 409 ante primer turno incierto mediante cherry-pick, sin retries automaticos. Release 5eba78f incluye ajuste a888dbb. No se mezclaron rutas admin, multi_planner ni otros cambios de main en el paquete productivo.
+
+137 pruebas unittest PASS en release combinado; 31 focalizadas PASS en principal. Las dos funciones test_sophia_governed_route_config se ejecutaron directamente con runpy y pasaron (pytest no instalado en Python global; no se instalaron paquetes). Inspeccion Serverless PASS: Code y version Lambda solamente; environment_diff vacio; IAM, timeout 26 y bytes fuera de chat.py preservados.
+
+Deploy Serverless terminado en 47 s. Verificacion posterior: stack UPDATE_COMPLETE; Lambda Active/Successful; AgentCore activo; SHA vivo igual al paquete 2+vEnMXuaNUsuuAnUdluLOqlez8rJ9BKLfhLduF9RPk=. No despliegue de Azure, Gateway, Voice ni VICTOR. Chat comparte Lambda con otras rutas, pero esas rutas y configuracion no cambiaron.
+
+Estado de entrega: ajuste DESPLEGADO, pendiente smoke humano autenticado de varias consultas y continuidad. No declarar intermitencia resuelta solo por tests/deploy. Rollback operativo con smoke y cierre integral AC-2R siguen pendientes. El ajuste no promete latencia menor ni corrige por si solo los 502 propios de Azure.
