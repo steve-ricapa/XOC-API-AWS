@@ -52,6 +52,28 @@ class DirectSummaryTests(unittest.TestCase):
                                 error=chat.protocol_error("sophia_thread_mismatch"))
         self.assertNotIn("presentation", reply["metadata"]["toolGateway"])
 
+    def test_second_turn_502_and_transport_errors_show_authorized_data_once(self):
+        for failure in (
+            chat.protocol_error("sophia_runtime_unavailable"),
+            requests.Timeout("PRIVATE"),
+            requests.ConnectionError("PRIVATE"),
+        ):
+            with self.subTest(failure=type(failure).__name__):
+                reply = self.run_result(ToolResult(
+                    ToolDecision.ALLOWED, code="allowed", audit_id="audit",
+                    data={"tickets": [{"tenant_id": 7, "ticket_id": "t1", "subject": "VPN"}]},
+                ), error=failure)
+                self.assertEqual("direct_authorized_summary", reply["metadata"]["toolGateway"]["presentation"])
+                self.assertEqual("runtime_unavailable", reply["metadata"]["toolGateway"]["completionCode"])
+                self.assertIn("VPN", reply["text"])
+
+    def test_denied_second_turn_502_never_becomes_authorized_summary(self):
+        reply = self.run_result(ToolResult(
+            ToolDecision.DENIED, code="delegation_required", audit_id="audit", data=None,
+        ), error=chat.protocol_error("sophia_runtime_unavailable"))
+        self.assertEqual("denied", reply["metadata"]["toolGateway"]["status"])
+        self.assertNotIn("presentation", reply["metadata"]["toolGateway"])
+
     def test_four_tools_and_empty(self):
         for tool, data, expected in (
             ("xoc.tickets.list", {"tickets": []}, "no devolvio"),

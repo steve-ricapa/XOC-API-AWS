@@ -1,0 +1,206 @@
+{
+  "backend_commit": "ad4ac1a764de03f65e1ff2f2a2c6762a89ce9eb9",
+  "files": [
+    {
+      "artifact_path": "src/__init__.py",
+      "git_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "imports": [],
+      "original_path": "src/__init__.py",
+      "reason": "Original namespace initializer",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "artifact_path": "src/persistence/__init__.py",
+      "git_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "imports": [],
+      "original_path": "src/persistence/__init__.py",
+      "reason": "Original ORM namespace initializer",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "artifact_path": "src/persistence/models.py",
+      "git_blob": "2a3ed8b12b8027f51f90fa53eeb54c813433f2a4",
+      "imports": [],
+      "original_path": "src/persistence/models.py",
+      "reason": "Transitive context import AuditLog/Tenant/User; classes only, no DB/engine",
+      "sha256": "46b7c4908b318e0d8ecae9a003d7d10064e1b40ba6ef6a3386ee14451ba16b69"
+    },
+    {
+      "artifact_path": "src/reports/__init__.py",
+      "git_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "imports": [],
+      "original_path": "src/reports/__init__.py",
+      "reason": "Original reports namespace initializer",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "artifact_path": "src/reports/store.py",
+      "git_blob": "61215bdeeea166d860139a2d721a2865bc96ea71",
+      "imports": [
+        "src.shared.errors"
+      ],
+      "original_path": "src/reports/store.py",
+      "reason": "Original DynamoDB documents helper; other modes not selected",
+      "sha256": "277d789f8c63bdd51766b4145027b4841ba57d9b0c25b8ef5f5f478e1a2e48fe"
+    },
+    {
+      "artifact_path": "src/shared/__init__.py",
+      "git_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "imports": [],
+      "original_path": "src/shared/__init__.py",
+      "reason": "Original shared namespace initializer",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "artifact_path": "src/shared/config.py",
+      "git_blob": "314b924d1aadb752c475d0599fa7d4324af675bf",
+      "imports": [
+        "src.shared.errors"
+      ],
+      "original_path": "src/shared/config.py",
+      "reason": "Transitive projection/tickets configuration definitions; secret getter NOT called",
+      "sha256": "14066fc6054c5a6a1a20dd193c9e3d44ecb50ac0987ee8f9ba17f819c3b61b98"
+    },
+    {
+      "artifact_path": "src/shared/context.py",
+      "git_blob": "2fe611c6444317a68a3504bddcf628d2663f2e96",
+      "imports": [
+        "src.persistence.models",
+        "src.shared.errors",
+        "src.shared.http"
+      ],
+      "original_path": "src/shared/context.py",
+      "reason": "Policy and projection import original normalize_role; ORM functions unused",
+      "sha256": "0c7527d88c0db9994f185220c5b79d82ca14f9e3942a356d3160b58656787232"
+    },
+    {
+      "artifact_path": "src/shared/errors.py",
+      "git_blob": "b26b7ac2f158966cc7cbcfefca092d26f3c828a4",
+      "imports": [],
+      "original_path": "src/shared/errors.py",
+      "reason": "Canonical error contracts used by helpers and projection",
+      "sha256": "5fa197cce361fe4af9648cf432c5fb189265bc79c54bd66211c6b8d687fdfce7"
+    },
+    {
+      "artifact_path": "src/shared/http.py",
+      "git_blob": "a5a005765a28dbd730127e2384a087af37643f4c",
+      "imports": [
+        "src.shared.errors"
+      ],
+      "original_path": "src/shared/http.py",
+      "reason": "Transitive context import get_authorizer_context; no HTTP route handlers",
+      "sha256": "21e386a52ded9c0f24debce72776ecd6e5916ad3b4bfe49cec368c92b8cb600a"
+    },
+    {
+      "artifact_path": "src/shared/logging.py",
+      "git_blob": "b95a93cd18d921cc6815cf5de96287b94620cfeb",
+      "imports": [],
+      "original_path": "src/shared/logging.py",
+      "reason": "Tickets store import-time Logger; redirected to safe stderr",
+      "sha256": "36c008ccf1a92778df8788d6748452d6a1734f116f1e5b33d43340143144c3a0"
+    },
+    {
+      "artifact_path": "src/shared/sophia_tool_chat.py",
+      "git_blob": "6e4045c1994cbfefaddf133ee5da6476b1f88163",
+      "imports": [
+        "src.shared.config",
+        "src.shared.context",
+        "src.shared.errors",
+        "src.tool_gateway.executor",
+        "src.tool_gateway.schemas"
+      ],
+      "original_path": "src/shared/sophia_tool_chat.py",
+      "reason": "Original model_result; network/capability functions retained byte-exact, never called",
+      "sha256": "73327dedf47206d439293be77e4a1a0abfd495aa51da69c679ec8e5873918320"
+    },
+    {
+      "artifact_path": "src/shared/tickets_store.py",
+      "git_blob": "3dfa91169a332dccd8ec80c8bf563d0da57b6b40",
+      "imports": [
+        "src.shared.config",
+        "src.shared.errors",
+        "src.shared.logging"
+      ],
+      "original_path": "src/shared/tickets_store.py",
+      "reason": "Original list/get/serialize; other functions retained byte-exact, never exposed",
+      "sha256": "c4b0ec00da5397e7d875baa1c5e89d9490d2fd637caf821a024cb064d6a88f5b"
+    },
+    {
+      "artifact_path": "src/shared/user_notification_inbox.py",
+      "git_blob": "a44dc0699506383b81c37d78807d100bcfabeccf",
+      "imports": [],
+      "original_path": "src/shared/user_notification_inbox.py",
+      "reason": "Original unread count; write functions retained byte-exact, never exposed",
+      "sha256": "ffd109f7fde577157f61db4f894ae2fed34f0463f2f3c893939047e9ff7ffe03"
+    },
+    {
+      "artifact_path": "src/tool_gateway/__init__.py",
+      "git_blob": "b0514736dc0e9bb4bd887acc6b15d874b81ba147",
+      "imports": [
+        "src.tool_gateway.executor",
+        "src.tool_gateway.schemas"
+      ],
+      "original_path": "src/tool_gateway/__init__.py",
+      "reason": "Original gateway initializer",
+      "sha256": "92a555c3125df7a5a4e4f5a33dcba08843db8fd43f5b2d1c52a548ef82ba7ef7"
+    },
+    {
+      "artifact_path": "src/tool_gateway/audit.py",
+      "git_blob": "fac87df1406aeb0fa7ece299f95845b50b4b0f70",
+      "imports": [
+        "src.tool_gateway.schemas"
+      ],
+      "original_path": "src/tool_gateway/audit.py",
+      "reason": "Canonical audit",
+      "sha256": "fa2b7147cb9ea5181e21c65e98b37c8d1148c6d42bfa0eb2786db25dcc4ebcee"
+    },
+    {
+      "artifact_path": "src/tool_gateway/executor.py",
+      "git_blob": "379c86ebb597136079c8b1de1e58d8a673e76d98",
+      "imports": [
+        "src.reports.store",
+        "src.shared.tickets_store",
+        "src.shared.user_notification_inbox",
+        "src.tool_gateway.audit",
+        "src.tool_gateway.policy",
+        "src.tool_gateway.registry",
+        "src.tool_gateway.schemas"
+      ],
+      "original_path": "src/tool_gateway/executor.py",
+      "reason": "Canonical executor and all four fixed READ_ONLY handlers",
+      "sha256": "7ed549f1e4cb73ae38b31cd33afeeed5a74e298ed4559b54cc86286b7363521a"
+    },
+    {
+      "artifact_path": "src/tool_gateway/policy.py",
+      "git_blob": "20d36b24b6f70aed3f2f38ad345e3a4172e43818",
+      "imports": [
+        "src.shared.context",
+        "src.tool_gateway.registry",
+        "src.tool_gateway.schemas"
+      ],
+      "original_path": "src/tool_gateway/policy.py",
+      "reason": "Canonical authorization",
+      "sha256": "1621177ca1de111a739e8db79712450d085944e18bc8d9009e5e363016eb2bde"
+    },
+    {
+      "artifact_path": "src/tool_gateway/registry.py",
+      "git_blob": "f3a9b9ba085fa70fc7d793467d70a116dd3780f6",
+      "imports": [
+        "src.tool_gateway.schemas"
+      ],
+      "original_path": "src/tool_gateway/registry.py",
+      "reason": "Canonical registry (disabled tools remain disabled)",
+      "sha256": "d6f7734f5764177bdb2bcc25f77c5bf5b6eb24cb95fe933b02a882ad7cbbb2b4"
+    },
+    {
+      "artifact_path": "src/tool_gateway/schemas.py",
+      "git_blob": "11bb116dd1cf2d6d88654c8b9dcadf84d1937bc9",
+      "imports": [],
+      "original_path": "src/tool_gateway/schemas.py",
+      "reason": "Canonical contexts, requests, decisions and results",
+      "sha256": "d18bc7cd581d9697b8037952afad73d5fb94c0bb7a9c5e8a3cbcdab2299788f4"
+    }
+  ],
+  "lab_only": true,
+  "source_selection_sha256": "55f69393560a29a73a4d90f8e433c2eb125cc01c4cf0b3735073c3beb38760ff"
+}

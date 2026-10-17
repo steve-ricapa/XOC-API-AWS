@@ -1,0 +1,26 @@
+{
+  "lab_only": true,
+  "backend_commit": "ad4ac1a764de03f65e1ff2f2a2c6762a89ce9eb9",
+  "files": {
+    "src/__init__.py": "Original namespace initializer",
+    "src/tool_gateway/__init__.py": "Original gateway initializer",
+    "src/tool_gateway/schemas.py": "Canonical contexts, requests, decisions and results",
+    "src/tool_gateway/registry.py": "Canonical registry (disabled tools remain disabled)",
+    "src/tool_gateway/policy.py": "Canonical authorization",
+    "src/tool_gateway/executor.py": "Canonical executor and all four fixed READ_ONLY handlers",
+    "src/tool_gateway/audit.py": "Canonical audit",
+    "src/shared/__init__.py": "Original shared namespace initializer",
+    "src/shared/context.py": "Policy and projection import original normalize_role; ORM functions unused",
+    "src/shared/http.py": "Transitive context import get_authorizer_context; no HTTP route handlers",
+    "src/shared/errors.py": "Canonical error contracts used by helpers and projection",
+    "src/shared/config.py": "Transitive projection/tickets configuration definitions; secret getter NOT called",
+    "src/shared/logging.py": "Tickets store import-time Logger; redirected to safe stderr",
+    "src/shared/tickets_store.py": "Original list/get/serialize; other functions retained byte-exact, never exposed",
+    "src/shared/user_notification_inbox.py": "Original unread count; write functions retained byte-exact, never exposed",
+    "src/shared/sophia_tool_chat.py": "Original model_result; network/capability functions retained byte-exact, never called",
+    "src/persistence/__init__.py": "Original ORM namespace initializer",
+    "src/persistence/models.py": "Transitive context import AuditLog/Tenant/User; classes only, no DB/engine",
+    "src/reports/__init__.py": "Original reports namespace initializer",
+    "src/reports/store.py": "Original DynamoDB documents helper; other modes not selected"
+  }
+}

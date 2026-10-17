@@ -58,7 +58,7 @@ class AgentCoreInfraTests(unittest.TestCase):
     def test_activation_is_separate_and_no_cloud_fallback(self):
         for configs in self.configs.values():
             chat = configs['chat']['functions']['chatAgentsApi']
-            self.assertEqual(20, chat['timeout'])
+            self.assertEqual(26, chat['timeout'])
             self.assertEqual("${env:SOPHIA_TOOL_EXECUTION, 'disabled'}", chat['environment']['SOPHIA_TOOL_EXECUTION'])
 
     def test_unreserved_rollout_is_explicit_and_scoped(self):
@@ -76,6 +76,7 @@ class AgentCoreInfraTests(unittest.TestCase):
             self.assertNotIn('JWT_SECRET', json.dumps(cfg))
             self.assertNotIn('xoc_mcp_lab', json.dumps(cfg))
             self.assertEqual('!**', cfg['package']['patterns'][0])
+            self.assertIn('!mcp/**', configs['chat']['package']['patterns'])
             self.assertTrue(cfg['provider']['deploymentBucket']['blockPublicAccess'])
             self.assertEqual('./serverless/plugins/agentcore-posix-package.js', cfg['plugins'][-1])
             requirements = cfg['custom']['pythonRequirements']

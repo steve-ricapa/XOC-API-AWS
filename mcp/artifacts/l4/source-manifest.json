@@ -1,0 +1,21 @@
+{
+  "c1_image": "sha256:421858fa81bd95a041aa12e85e6528d48eacae293674789156a6b19aebc3fd40",
+  "files": {
+    "xoc_mcp_lab_l4/__init__.py": "170aaf9dd65297923f9fb3dcdb0954ea703dc1168ac800af8890cd9ff004cb3e",
+    "xoc_mcp_lab_l4/boundary.py": "10d3a12c37762afb75807de23bd8e31fc91a22c6d2d7e3fb54430c5f7bb91522",
+    "xoc_mcp_lab_l4/client.py": "cfc2beb4f1f502dffa3e9dad9aaee91b4d03e1c6ae5897f667895619fc3bee95",
+    "xoc_mcp_lab_l4/harness.py": "9da8460f7f88f0510e418ddbede88424296abbf5181c0f1d8600207a43569005",
+    "xoc_mcp_lab_l4/integrity.py": "053b0fec9e4aaca47e041bc2a5766473a0205a95c6ed267f4bd3bf47a11237f7",
+    "xoc_mcp_lab_l4/pool.py": "ce1f440f5122314482fa9401918ca1e465bc713f835d319c780065c3ef0d7fd9",
+    "xoc_mcp_lab_l4/scope.py": "f0a43af2366820352b3a4359da478c16c9e94906c05346d47c031bded16ab1fd",
+    "xoc_mcp_lab_l4/server.py": "d4df69fa0122106a8dbf62f6820f32b679659d0f1851832626cdbd7de47f0d8b",
+    "xoc_mcp_lab_l4/tests/test_l4_cancellation.py": "d6b0124bf57df9d556849cc15942edbfe69a22334a9bd049fadc133511ca709f",
+    "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py": "00db6e0e033bca258e790fa7f50f1ce05fb6a75692eea99732ddd041773883c7",
+    "xoc_mcp_lab_l4/tests/test_l4_packaging.py": "63dc3003fb1a3b29539fd90786972d8df9054c50d72698a0fc56ec54048f0a0b",
+    "xoc_mcp_lab_l4/tests/test_l4_scope.py": "3bdcc4acead2a83ed7549f83521031d80bd8e7bd5d6f5f8a9f7a444ae43f647f",
+    "xoc_mcp_lab_l4/tests/test_l4_sdk.py": "eceab10fb84fd5e3be0c6871cb6565319baee30847c12bfd27e4bb9962677e2d",
+    "xoc_mcp_lab_l4/wiring.py": "ac051efdbd225f36ac327bc82f6cc9e14cc8e0df3d2f32189258ba40a71f93a4"
+  },
+  "lab_only": true,
+  "schema": "xoc-l4-source-v1"
+}

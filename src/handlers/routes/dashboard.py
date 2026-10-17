@@ -1,4 +1,8 @@
+import logging
+
 from fastapi import APIRouter, Depends, Query
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from src.integrations.dashboard_store import build_home_dashboard, build_provider_dashboard
@@ -8,6 +12,7 @@ from src.shared.context import effective_tenant_id_of, require_tenant_read_acces
 from src.shared.dependencies import get_current_user
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/home")
@@ -29,4 +34,9 @@ def get_provider_dashboard(
     to_date: str | None = Query(default=None, alias="to"),
 ) -> dict:
     require_tenant_read_access(current_user)
-    return build_provider_dashboard(session, effective_tenant_id_of(current_user), provider, preset, from_date, to_date)
+    try:
+        payload = build_provider_dashboard(session, effective_tenant_id_of(current_user), provider, preset, from_date, to_date)
+        return JSONResponse(content=jsonable_encoder(payload))
+    except Exception:
+        logger.exception("Failed to build provider dashboard", extra={"provider": provider, "tenant_id": effective_tenant_id_of(current_user)})
+        raise

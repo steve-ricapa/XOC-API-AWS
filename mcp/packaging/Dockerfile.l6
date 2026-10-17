@@ -1,0 +1,10 @@
+# LAB_ONLY: caller checks this new local alias against the exact L4 image ID.
+ARG L4_BASE
+FROM ${L4_BASE}
+USER 0:0
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="" PYTHONUTF8=1 PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+COPY l6/ /offline-l6/
+RUN ["/var/lang/bin/python", "-I", "-B", "/offline-l6/l6_build.py", "install"]
+WORKDIR /tmp
+USER 10001:10001
+ENTRYPOINT ["/opt/xoc-l2/bin/python", "-I", "-B", "-m", "xoc_mcp_lab_l6.harness"]

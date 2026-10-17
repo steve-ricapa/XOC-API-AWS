@@ -22,7 +22,8 @@ ARN = 'arn:aws:bedrock-agentcore:us-east-1:111122223333:gateway/xoc-api-agentcor
 KEY = 'arn:aws:kms:us-east-1:111122223333:key/11111111-1111-1111-1111-111111111111'
 URL = 'https://xoc-api-agentcore-dev-abcdefghij.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp'
 ENV = {'SOPHIA_AGENTCORE_GATEWAY_ARN': ARN, 'SOPHIA_AGENTCORE_GATEWAY_URL': URL,
-       'SOPHIA_AGENTCORE_CONTEXT_KEY_ARN': KEY, 'SOPHIA_TOOL_EXECUTION': 'agentcore'}
+       'SOPHIA_AGENTCORE_CONTEXT_KEY_ARN': KEY, 'SOPHIA_TOOL_EXECUTION': 'agentcore',
+       'TICKETS_TABLE_NAME': 'offline-fixture-tickets'}
 CTX = ToolContext(7, 7, 32, 'ADMIN', False, 'ac1-request', 'sophia_chat')
 REQ = ToolRequest('xoc.tickets.list', {}, CTX.request_id)
 
@@ -159,6 +160,8 @@ class TargetTests(unittest.TestCase):
 
 class ProviderTests(unittest.TestCase):
     def setUp(self):
+        self.env = patch.dict(os.environ, {'TICKETS_TABLE_NAME': 'offline-fixture-tickets'})
+        self.env.start(); self.addCleanup(self.env.stop)
         self.p = ReadOnlyProviders(int(time.time()*1000)+4500)
         self.table = MagicMock()
         self.patch = patch.object(self.p, 'table', return_value=self.table)

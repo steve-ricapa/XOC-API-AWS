@@ -55,6 +55,7 @@ function commonPackage() {
       '!package-lock.json',
       '!README.md',
       '!experiments/**',
+      '!mcp/**',
       '!tests/**',
       '!txdxai_Flask/**',
       '!.git/**',

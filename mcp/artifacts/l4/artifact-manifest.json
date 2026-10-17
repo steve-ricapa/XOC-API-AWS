@@ -1,0 +1,36 @@
+{
+  "artifacts": [
+    {
+      "bytes": 127657,
+      "filename": "xoc_tool_gateway_core-0.0.0+lab.ad4ac1a764de-py3-none-any.whl",
+      "sha256": "df95ce6b4b9e7531f43cf90e9e43a850f3d38311679afe9516af501ac6182e41"
+    },
+    {
+      "bytes": 78710,
+      "filename": "xoc_mcp_lab-0.2.0+lab.cdce81cbc014-py3-none-any.whl",
+      "sha256": "0f82b903e2b0bbbc5107a6371a2da95c83c0561c76f5b918a1cb1df1798da2ac"
+    },
+    {
+      "bytes": 137231,
+      "filename": "xoc_mcp_lab_harness-0.2.0+lab.cdce81cbc014-py3-none-any.whl",
+      "sha256": "f41abe59883f1bc9311ed88f8582b1f31639bc2be65e1163412925c17bd2d736"
+    },
+    {
+      "bytes": 150887,
+      "filename": "xoc_mcp_lab_l4-0.4.0+lab.27a62d14058a-py3-none-any.whl",
+      "sha256": "764352dc77a7c467f6c8c3162a4f93e4fcca0e21b7933db0e2a4557669dcfb5d"
+    }
+  ],
+  "base_image": "public.ecr.aws/lambda/python@sha256:cc940054e77d4a160c611a20c09cb8ab9325c09d72555a164329eb3e46957d80",
+  "builder": "Unmodified L2 stdlib wheel(); ZIP_STORED; fixed epoch/modes/order",
+  "c1_image": "sha256:421858fa81bd95a041aa12e85e6528d48eacae293674789156a6b19aebc3fd40",
+  "core_sha256": "df95ce6b4b9e7531f43cf90e9e43a850f3d38311679afe9516af501ac6182e41",
+  "fixture_only": true,
+  "lab_only": true,
+  "locks": {
+    "requirements-linux-runtime.lock.txt": "0b439be1007d484201613bae015e0ded27c8f38fa3b5338f8a7f41cc674e858b",
+    "requirements-linux-test.lock.txt": "4336d71caffdd9aeeb4143a9b3b2bfc30b61409a89c205f5a9c2b50bd3cbaff5"
+  },
+  "schema": "xoc-l4-build-v1",
+  "source_manifest_sha256": "27a62d14058ac4beac13e96a4cd2702b71a833d5e831fd1adf78da5250788d4f"
+}

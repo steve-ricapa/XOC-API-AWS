@@ -1,0 +1,865 @@
+{
+  "normalized_fields": [
+    "request_id",
+    "audit_id"
+  ],
+  "cases": [
+    {
+      "profile": "admin_tenant_a",
+      "name": "xoc.tickets.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.tickets.list",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "tickets": [
+            {
+              "ticket_id": "lab-ticket-a2",
+              "id": "lab-ticket-a2",
+              "subject": "Fictional tenant A check 2",
+              "status": "RESUELTO",
+              "severity": "low",
+              "created_at": "2026-01-02T00:00:00+00:00",
+              "updated_at": "2026-01-03T00:00:00+00:00"
+            },
+            {
+              "ticket_id": "lab-ticket-a1",
+              "id": "lab-ticket-a1",
+              "subject": "Fictional tenant A check 1",
+              "status": "PENDING",
+              "severity": "low",
+              "created_at": "2026-01-01T00:00:00+00:00",
+              "updated_at": "2026-01-03T00:00:00+00:00"
+            }
+          ],
+          "count": 2,
+          "truncated": false
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "admin_tenant_a",
+      "name": "xoc.tickets.get",
+      "arguments": {
+        "ticket_id": "lab-ticket-a1"
+      },
+      "result": {
+        "tool_name": "xoc.tickets.get",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "ticket": {
+            "ticket_id": "lab-ticket-a1",
+            "id": "lab-ticket-a1",
+            "subject": "Fictional tenant A check 1",
+            "status": "PENDING",
+            "severity": "low",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "updated_at": "2026-01-03T00:00:00+00:00"
+          }
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "admin_tenant_a",
+      "name": "xoc.documents.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.documents.list",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "documents": [
+            {
+              "document_id": "lab-document-a2",
+              "document_type": "small_report",
+              "variant": "client",
+              "status": "COMPLETED",
+              "created_at": "2026-01-02T00:00:00+00:00"
+            },
+            {
+              "document_id": "lab-document-a1",
+              "document_type": "small_report",
+              "variant": "client",
+              "status": "COMPLETED",
+              "created_at": "2026-01-01T00:00:00+00:00"
+            }
+          ],
+          "count": 2,
+          "truncated": false
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "admin_tenant_a",
+      "name": "xoc.notifications.unread_count",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.notifications.unread_count",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "count": 2
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "admin_tenant_b",
+      "name": "xoc.tickets.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.tickets.list",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "tickets": [
+            {
+              "ticket_id": "lab-ticket-b2",
+              "id": "lab-ticket-b2",
+              "subject": "Fictional tenant B check 2",
+              "status": "RESUELTO",
+              "severity": "low",
+              "created_at": "2026-01-02T00:00:00+00:00",
+              "updated_at": "2026-01-03T00:00:00+00:00"
+            },
+            {
+              "ticket_id": "lab-ticket-b1",
+              "id": "lab-ticket-b1",
+              "subject": "Fictional tenant B check 1",
+              "status": "PENDING",
+              "severity": "low",
+              "created_at": "2026-01-01T00:00:00+00:00",
+              "updated_at": "2026-01-03T00:00:00+00:00"
+            }
+          ],
+          "count": 2,
+          "truncated": false
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "admin_tenant_b",
+      "name": "xoc.tickets.get",
+      "arguments": {
+        "ticket_id": "lab-ticket-a1"
+      },
+      "result": {
+        "tool_name": "xoc.tickets.get",
+        "status": "denied",
+        "code": "execution_failed",
+        "data": null
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "admin_tenant_b",
+      "name": "xoc.documents.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.documents.list",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "documents": [
+            {
+              "document_id": "lab-document-b2",
+              "document_type": "small_report",
+              "variant": "client",
+              "status": "COMPLETED",
+              "created_at": "2026-01-02T00:00:00+00:00"
+            },
+            {
+              "document_id": "lab-document-b1",
+              "document_type": "small_report",
+              "variant": "client",
+              "status": "COMPLETED",
+              "created_at": "2026-01-01T00:00:00+00:00"
+            }
+          ],
+          "count": 2,
+          "truncated": false
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "admin_tenant_b",
+      "name": "xoc.notifications.unread_count",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.notifications.unread_count",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "count": 3
+        }
+      },
+      "handlers": 1,
+      "reads": 2
+    },
+    {
+      "profile": "user_a1",
+      "name": "xoc.tickets.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.tickets.list",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "tickets": [
+            {
+              "ticket_id": "lab-ticket-a2",
+              "id": "lab-ticket-a2",
+              "subject": "Fictional tenant A check 2",
+              "status": "RESUELTO",
+              "severity": "low",
+              "created_at": "2026-01-02T00:00:00+00:00",
+              "updated_at": "2026-01-03T00:00:00+00:00"
+            },
+            {
+              "ticket_id": "lab-ticket-a1",
+              "id": "lab-ticket-a1",
+              "subject": "Fictional tenant A check 1",
+              "status": "PENDING",
+              "severity": "low",
+              "created_at": "2026-01-01T00:00:00+00:00",
+              "updated_at": "2026-01-03T00:00:00+00:00"
+            }
+          ],
+          "count": 2,
+          "truncated": false
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "user_a1",
+      "name": "xoc.tickets.get",
+      "arguments": {
+        "ticket_id": "lab-ticket-a1"
+      },
+      "result": {
+        "tool_name": "xoc.tickets.get",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "ticket": {
+            "ticket_id": "lab-ticket-a1",
+            "id": "lab-ticket-a1",
+            "subject": "Fictional tenant A check 1",
+            "status": "PENDING",
+            "severity": "low",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "updated_at": "2026-01-03T00:00:00+00:00"
+          }
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "user_a1",
+      "name": "xoc.documents.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.documents.list",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "documents": [
+            {
+              "document_id": "lab-document-a2",
+              "document_type": "small_report",
+              "variant": "client",
+              "status": "COMPLETED",
+              "created_at": "2026-01-02T00:00:00+00:00"
+            },
+            {
+              "document_id": "lab-document-a1",
+              "document_type": "small_report",
+              "variant": "client",
+              "status": "COMPLETED",
+              "created_at": "2026-01-01T00:00:00+00:00"
+            }
+          ],
+          "count": 2,
+          "truncated": false
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "user_a1",
+      "name": "xoc.notifications.unread_count",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.notifications.unread_count",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "count": 2
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "user_a2",
+      "name": "xoc.tickets.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.tickets.list",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "tickets": [
+            {
+              "ticket_id": "lab-ticket-a2",
+              "id": "lab-ticket-a2",
+              "subject": "Fictional tenant A check 2",
+              "status": "RESUELTO",
+              "severity": "low",
+              "created_at": "2026-01-02T00:00:00+00:00",
+              "updated_at": "2026-01-03T00:00:00+00:00"
+            },
+            {
+              "ticket_id": "lab-ticket-a1",
+              "id": "lab-ticket-a1",
+              "subject": "Fictional tenant A check 1",
+              "status": "PENDING",
+              "severity": "low",
+              "created_at": "2026-01-01T00:00:00+00:00",
+              "updated_at": "2026-01-03T00:00:00+00:00"
+            }
+          ],
+          "count": 2,
+          "truncated": false
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "user_a2",
+      "name": "xoc.tickets.get",
+      "arguments": {
+        "ticket_id": "lab-ticket-a1"
+      },
+      "result": {
+        "tool_name": "xoc.tickets.get",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "ticket": {
+            "ticket_id": "lab-ticket-a1",
+            "id": "lab-ticket-a1",
+            "subject": "Fictional tenant A check 1",
+            "status": "PENDING",
+            "severity": "low",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "updated_at": "2026-01-03T00:00:00+00:00"
+          }
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "user_a2",
+      "name": "xoc.documents.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.documents.list",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "documents": [
+            {
+              "document_id": "lab-document-a2",
+              "document_type": "small_report",
+              "variant": "client",
+              "status": "COMPLETED",
+              "created_at": "2026-01-02T00:00:00+00:00"
+            },
+            {
+              "document_id": "lab-document-a1",
+              "document_type": "small_report",
+              "variant": "client",
+              "status": "COMPLETED",
+              "created_at": "2026-01-01T00:00:00+00:00"
+            }
+          ],
+          "count": 2,
+          "truncated": false
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "user_a2",
+      "name": "xoc.notifications.unread_count",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.notifications.unread_count",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "count": 5
+        }
+      },
+      "handlers": 1,
+      "reads": 3
+    },
+    {
+      "profile": "admin_xoc_delegated_a",
+      "name": "xoc.tickets.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.tickets.list",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "tickets": [
+            {
+              "ticket_id": "lab-ticket-a2",
+              "id": "lab-ticket-a2",
+              "subject": "Fictional tenant A check 2",
+              "status": "RESUELTO",
+              "severity": "low",
+              "created_at": "2026-01-02T00:00:00+00:00",
+              "updated_at": "2026-01-03T00:00:00+00:00"
+            },
+            {
+              "ticket_id": "lab-ticket-a1",
+              "id": "lab-ticket-a1",
+              "subject": "Fictional tenant A check 1",
+              "status": "PENDING",
+              "severity": "low",
+              "created_at": "2026-01-01T00:00:00+00:00",
+              "updated_at": "2026-01-03T00:00:00+00:00"
+            }
+          ],
+          "count": 2,
+          "truncated": false
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "admin_xoc_delegated_a",
+      "name": "xoc.tickets.get",
+      "arguments": {
+        "ticket_id": "lab-ticket-a1"
+      },
+      "result": {
+        "tool_name": "xoc.tickets.get",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "ticket": {
+            "ticket_id": "lab-ticket-a1",
+            "id": "lab-ticket-a1",
+            "subject": "Fictional tenant A check 1",
+            "status": "PENDING",
+            "severity": "low",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "updated_at": "2026-01-03T00:00:00+00:00"
+          }
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "admin_xoc_delegated_a",
+      "name": "xoc.documents.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.documents.list",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "documents": [
+            {
+              "document_id": "lab-document-a2",
+              "document_type": "small_report",
+              "variant": "client",
+              "status": "COMPLETED",
+              "created_at": "2026-01-02T00:00:00+00:00"
+            },
+            {
+              "document_id": "lab-document-a1",
+              "document_type": "small_report",
+              "variant": "client",
+              "status": "COMPLETED",
+              "created_at": "2026-01-01T00:00:00+00:00"
+            }
+          ],
+          "count": 2,
+          "truncated": false
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "admin_xoc_delegated_a",
+      "name": "xoc.notifications.unread_count",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.notifications.unread_count",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "count": 0
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "admin_xoc_without_delegation",
+      "name": "xoc.tickets.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.tickets.list",
+        "status": "denied",
+        "code": "delegation_required",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "admin_xoc_without_delegation",
+      "name": "xoc.tickets.get",
+      "arguments": {
+        "ticket_id": "lab-ticket-a1"
+      },
+      "result": {
+        "tool_name": "xoc.tickets.get",
+        "status": "denied",
+        "code": "delegation_required",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "admin_xoc_without_delegation",
+      "name": "xoc.documents.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.documents.list",
+        "status": "denied",
+        "code": "delegation_required",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "admin_xoc_without_delegation",
+      "name": "xoc.notifications.unread_count",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.notifications.unread_count",
+        "status": "denied",
+        "code": "delegation_required",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "superadmin",
+      "name": "xoc.tickets.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.tickets.list",
+        "status": "denied",
+        "code": "superadmin_ai_blocked",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "superadmin",
+      "name": "xoc.tickets.get",
+      "arguments": {
+        "ticket_id": "lab-ticket-a1"
+      },
+      "result": {
+        "tool_name": "xoc.tickets.get",
+        "status": "denied",
+        "code": "superadmin_ai_blocked",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "superadmin",
+      "name": "xoc.documents.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.documents.list",
+        "status": "denied",
+        "code": "superadmin_ai_blocked",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "superadmin",
+      "name": "xoc.notifications.unread_count",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.notifications.unread_count",
+        "status": "denied",
+        "code": "superadmin_ai_blocked",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "invalid_context",
+      "name": "xoc.tickets.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.tickets.list",
+        "status": "denied",
+        "code": "invalid_role",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "invalid_context",
+      "name": "xoc.tickets.get",
+      "arguments": {
+        "ticket_id": "lab-ticket-a1"
+      },
+      "result": {
+        "tool_name": "xoc.tickets.get",
+        "status": "denied",
+        "code": "invalid_role",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "invalid_context",
+      "name": "xoc.documents.list",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.documents.list",
+        "status": "denied",
+        "code": "invalid_role",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "invalid_context",
+      "name": "xoc.notifications.unread_count",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.notifications.unread_count",
+        "status": "denied",
+        "code": "invalid_role",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "admin_tenant_a",
+      "name": "xoc.tickets.get",
+      "arguments": {
+        "ticket_id": "lab-ticket-b1"
+      },
+      "result": {
+        "tool_name": "xoc.tickets.get",
+        "status": "denied",
+        "code": "execution_failed",
+        "data": null
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "admin_tenant_a",
+      "name": "xoc.tickets.list",
+      "arguments": {
+        "tenantId": 91002
+      },
+      "result": {
+        "tool_name": "xoc.tickets.list",
+        "status": "denied",
+        "code": "ownership_argument_forbidden",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "admin_tenant_a",
+      "name": "xoc.tickets.list",
+      "arguments": {
+        "user_id": 92003
+      },
+      "result": {
+        "tool_name": "xoc.tickets.list",
+        "status": "denied",
+        "code": "ownership_argument_forbidden",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "admin_tenant_a",
+      "name": "xoc.evil.execute",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.evil.execute",
+        "status": "denied",
+        "code": "unknown_tool",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "admin_tenant_a",
+      "name": "xoc.dashboard.summary",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.dashboard.summary",
+        "status": "denied",
+        "code": "tool_disabled",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "admin_tenant_a",
+      "name": "xoc.integrations.summary",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.integrations.summary",
+        "status": "denied",
+        "code": "tool_disabled",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "admin_tenant_a",
+      "name": "xoc.tickets.create",
+      "arguments": {},
+      "result": {
+        "tool_name": "xoc.tickets.create",
+        "status": "denied",
+        "code": "unknown_tool",
+        "data": null
+      },
+      "handlers": 0,
+      "reads": 0
+    },
+    {
+      "profile": "admin_tenant_a",
+      "name": "xoc.tickets.list",
+      "arguments": {
+        "limit": null
+      },
+      "result": {
+        "tool_name": "xoc.tickets.list",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "tickets": [
+            {
+              "ticket_id": "lab-ticket-a2",
+              "id": "lab-ticket-a2",
+              "subject": "Fictional tenant A check 2",
+              "status": "RESUELTO",
+              "severity": "low",
+              "created_at": "2026-01-02T00:00:00+00:00",
+              "updated_at": "2026-01-03T00:00:00+00:00"
+            },
+            {
+              "ticket_id": "lab-ticket-a1",
+              "id": "lab-ticket-a1",
+              "subject": "Fictional tenant A check 1",
+              "status": "PENDING",
+              "severity": "low",
+              "created_at": "2026-01-01T00:00:00+00:00",
+              "updated_at": "2026-01-03T00:00:00+00:00"
+            }
+          ],
+          "count": 2,
+          "truncated": false
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    },
+    {
+      "profile": "admin_tenant_a",
+      "name": "xoc.tickets.list",
+      "arguments": {
+        "status": "pending",
+        "limit": 1
+      },
+      "result": {
+        "tool_name": "xoc.tickets.list",
+        "status": "allowed",
+        "code": "allowed",
+        "data": {
+          "tickets": [
+            {
+              "ticket_id": "lab-ticket-a1",
+              "id": "lab-ticket-a1",
+              "subject": "Fictional tenant A check 1",
+              "status": "PENDING",
+              "severity": "low",
+              "created_at": "2026-01-01T00:00:00+00:00",
+              "updated_at": "2026-01-03T00:00:00+00:00"
+            }
+          ],
+          "count": 1,
+          "truncated": false
+        }
+      },
+      "handlers": 1,
+      "reads": 1
+    }
+  ]
+}

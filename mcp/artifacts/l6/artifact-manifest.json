@@ -1,0 +1,48 @@
+{
+  "artifacts": [
+    {
+      "bytes": 127657,
+      "filename": "xoc_tool_gateway_core-0.0.0+lab.ad4ac1a764de-py3-none-any.whl",
+      "sha256": "df95ce6b4b9e7531f43cf90e9e43a850f3d38311679afe9516af501ac6182e41"
+    },
+    {
+      "bytes": 78710,
+      "filename": "xoc_mcp_lab-0.2.0+lab.cdce81cbc014-py3-none-any.whl",
+      "sha256": "0f82b903e2b0bbbc5107a6371a2da95c83c0561c76f5b918a1cb1df1798da2ac"
+    },
+    {
+      "bytes": 137231,
+      "filename": "xoc_mcp_lab_harness-0.2.0+lab.cdce81cbc014-py3-none-any.whl",
+      "sha256": "f41abe59883f1bc9311ed88f8582b1f31639bc2be65e1163412925c17bd2d736"
+    },
+    {
+      "bytes": 150887,
+      "filename": "xoc_mcp_lab_l4-0.4.0+lab.27a62d14058a-py3-none-any.whl",
+      "sha256": "764352dc77a7c467f6c8c3162a4f93e4fcca0e21b7933db0e2a4557669dcfb5d"
+    },
+    {
+      "bytes": 305420,
+      "filename": "xoc_mcp_lab_l6-0.6.0+lab.0e43242f3bc3-py3-none-any.whl",
+      "sha256": "6fa74cf9fc336d52c7900ab4c35f3c4fd82e6e1e2b60c57ccc63156b2c0908d6"
+    }
+  ],
+  "base_image": "public.ecr.aws/lambda/python@sha256:cc940054e77d4a160c611a20c09cb8ab9325c09d72555a164329eb3e46957d80",
+  "builder": "Unmodified L2 stdlib wheel(); ZIP_STORED; fixed epoch/modes/order",
+  "builder_inputs": {
+    "build_artifacts.py": "7365e575dd4da80482c42865c18311f8e6a985d7b08cbde7906b1148040ba484",
+    "l4_build.py": "74a711889124574199800ac53d5f7625a92d81152b86a68c1ca25363feeb59b8"
+  },
+  "core_sha256": "df95ce6b4b9e7531f43cf90e9e43a850f3d38311679afe9516af501ac6182e41",
+  "fixture_only": true,
+  "l4_image": "sha256:129efefeecc7549df84604ed2e532fa524aaab716f6cf145ca9e5522e6ab72b9",
+  "l4_sha256": "764352dc77a7c467f6c8c3162a4f93e4fcca0e21b7933db0e2a4557669dcfb5d",
+  "lab_only": true,
+  "locks": {
+    "requirements-linux-runtime.lock.txt": "0b439be1007d484201613bae015e0ded27c8f38fa3b5338f8a7f41cc674e858b",
+    "requirements-linux-test.lock.txt": "4336d71caffdd9aeeb4143a9b3b2bfc30b61409a89c205f5a9c2b50bd3cbaff5"
+  },
+  "protocol": "2025-11-25",
+  "schema": "xoc-l6-build-v1",
+  "sdk": "1.30.0",
+  "source_manifest_sha256": "0e43242f3bc3d463c00b7ab7e4de708c6a6b8f81cde921b437bf72bdee2311c5"
+}

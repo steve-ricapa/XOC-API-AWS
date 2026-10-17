@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
 from src.persistence.models import AgentApiKey, FindingIndex, Integration, ScanSummary, ScanSummaryNoc
@@ -64,25 +65,37 @@ def _recent_noc_scans(session: Session, tenant_id: int, scanner_type: str, limit
 
 
 def _recent_findings(session: Session, scan_summary_id: int, limit: int = 5) -> list[FindingIndex]:
-    return list(
-        session.scalars(
-            select(FindingIndex)
-            .where(FindingIndex.scan_summary_soc_id == scan_summary_id)
-            .order_by(FindingIndex.created_at.desc())
-            .limit(limit)
+    try:
+        return list(
+            session.scalars(
+                select(FindingIndex)
+                .where(FindingIndex.scan_summary_soc_id == scan_summary_id)
+                .order_by(FindingIndex.created_at.desc())
+                .limit(limit)
+            )
         )
-    )
+    except ProgrammingError as exc:
+        if "finding_index" not in str(exc):
+            raise
+        session.rollback()
+        return []
 
 
 def _recent_noc_events(session: Session, scan_summary_noc_id: int, limit: int = 5) -> list[FindingIndex]:
-    return list(
-        session.scalars(
-            select(FindingIndex)
-            .where(FindingIndex.scan_summary_noc_id == scan_summary_noc_id)
-            .order_by(FindingIndex.created_at.desc())
-            .limit(limit)
+    try:
+        return list(
+            session.scalars(
+                select(FindingIndex)
+                .where(FindingIndex.scan_summary_noc_id == scan_summary_noc_id)
+                .order_by(FindingIndex.created_at.desc())
+                .limit(limit)
+            )
         )
-    )
+    except ProgrammingError as exc:
+        if "finding_index" not in str(exc):
+            raise
+        session.rollback()
+        return []
 
 
 def _scan_counts(scan) -> dict:

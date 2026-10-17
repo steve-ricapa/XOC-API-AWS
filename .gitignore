@@ -13,3 +13,4 @@ opencode-quota/
 opencode.json
 scripts/apply_live_voice_schema_remote.sh
 scripts/apply_pending_ingestions_schema_remote.sh
+docs/local/
