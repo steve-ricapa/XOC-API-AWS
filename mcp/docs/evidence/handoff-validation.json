@@ -1,0 +1,179 @@
+{
+  "core_sha256": "df95ce6b4b9e7531f43cf90e9e43a850f3d38311679afe9516af501ac6182e41",
+  "dependencies": "Pinned public Linux wheels freshly downloaded and hash-checked; identical 73-file context to cached dependency context",
+  "dependency_contexts_identical": true,
+  "host_smokes": {
+    "lab_only": true,
+    "passed": true,
+    "smokes": [
+      {
+        "exit_code": 0,
+        "raw_stderr_saved": false,
+        "script": "smoke.py",
+        "stderr_sha256": "03f35825d0d7ed7c91196d0f42aa8a11a2bdb13fddb6801f6e54feb76b49ad87",
+        "summary": {
+          "capabilities": {
+            "experimental": {},
+            "tools": {
+              "listChanged": false
+            }
+          },
+          "model_calls": 0,
+          "profiles": [
+            {
+              "allowed": 4,
+              "denied": 5,
+              "profile": "admin_tenant_a",
+              "tools": 4,
+              "unread": 2
+            },
+            {
+              "allowed": 4,
+              "denied": 5,
+              "profile": "admin_tenant_b",
+              "tools": 4,
+              "unread": 3
+            },
+            {
+              "allowed": 4,
+              "denied": 5,
+              "profile": "user_a2",
+              "tools": 4,
+              "unread": 5
+            }
+          ],
+          "protocol": "2025-11-25",
+          "sdk": "mcp==1.30.0",
+          "status": "passed",
+          "transport": "stdio"
+        }
+      },
+      {
+        "exit_code": 0,
+        "raw_stderr_saved": false,
+        "script": "smoke_l1.py",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "summary": {
+          "cases": [
+            {
+              "case": "admin_tenant_a",
+              "status": "passed"
+            },
+            {
+              "case": "admin_tenant_b",
+              "status": "passed"
+            },
+            {
+              "case": "invalid_signature",
+              "children": 0,
+              "status": "passed"
+            },
+            {
+              "case": "changed_tool",
+              "children": 0,
+              "status": "passed"
+            },
+            {
+              "case": "changed_arguments",
+              "children": 0,
+              "status": "passed"
+            },
+            {
+              "case": "signed_superadmin_denied",
+              "handlers": 0,
+              "reads": 0,
+              "status": "passed"
+            }
+          ],
+          "children": [
+            {
+              "pid": 37956,
+              "proc_entry_exists": null,
+              "process_group": null,
+              "reaped": true,
+              "returncode": 0,
+              "waitpid_not_child": null,
+              "wire_bytes": {
+                "stdin": 354,
+                "stdout": 3705
+              }
+            },
+            {
+              "pid": 42488,
+              "proc_entry_exists": null,
+              "process_group": null,
+              "reaped": true,
+              "returncode": 0,
+              "waitpid_not_child": null,
+              "wire_bytes": {
+                "stdin": 354,
+                "stdout": 3705
+              }
+            },
+            {
+              "pid": 40100,
+              "proc_entry_exists": null,
+              "process_group": null,
+              "reaped": true,
+              "returncode": 0,
+              "waitpid_not_child": null,
+              "wire_bytes": {
+                "stdin": 307,
+                "stdout": 756
+              }
+            }
+          ],
+          "fixture_only": true,
+          "lab_only": true,
+          "model_calls": 0,
+          "status": "passed",
+          "total_seconds": 5.379034099999444
+        }
+      }
+    ]
+  },
+  "independent_builds_identical": true,
+  "installed_image": "sha256:ffd2cdc17c30289ca4eaa3787cabe8190c38017f1840ad2020a7baef2b6c8df4",
+  "installed_linux": {
+    "provenance": {
+      "canonical_cases": 41,
+      "exit_code": 0,
+      "final_children": "",
+      "owned_container_removed": true,
+      "sha256": "7dfab234eb74a885dddae1a5101d88fa03263a5081a44db86331b8cfc9c2c4c9"
+    },
+    "smoke": {
+      "cases_passed": 1,
+      "exit_code": 0,
+      "final_children": "",
+      "owned_container_removed": true,
+      "sha256": "e8def3f711f7e1a6f36b982fcddabed8487d29f3e1fe9aa2c9b5bdc395ce0d07"
+    },
+    "tests": {
+      "exit_code": 0,
+      "failed": 0,
+      "final_children": "",
+      "owned_container_removed": true,
+      "passed": 446,
+      "sha256": "c80aab357b24cc765511a30ceabe3fa790b0e9fdcba1f1ba25ee20641dc86edd",
+      "skipped": 0
+    }
+  },
+  "l6_wheel_sha256": "6fa74cf9fc336d52c7900ab4c35f3c4fd82e6e1e2b60c57ccc63156b2c0908d6",
+  "passed": true,
+  "runtime_checkout_or_lab_mount": false,
+  "schema_version": 1,
+  "scope": "independent curated export; not another aggregate L6 timing campaign",
+  "source_folders_used": "XOC-MCP-GITHUB; explicit canonical clone only for host fixtures/core export",
+  "windows": {
+    "deselected": 0,
+    "errors": 0,
+    "failed": 0,
+    "passed": 407,
+    "skipped": 39,
+    "warnings": 0,
+    "xfailed": 0,
+    "xpassed": 0
+  },
+  "windows_seconds": 107.58068959999946
+}

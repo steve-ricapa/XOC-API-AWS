@@ -1,0 +1,11 @@
+# This is a LOCAL validation image, never a Lambda handler or production release.
+FROM public.ecr.aws/lambda/python@sha256:cc940054e77d4a160c611a20c09cb8ab9325c09d72555a164329eb3e46957d80
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="" PYTHONUTF8=1 PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+COPY wheelhouse/ /offline/wheelhouse/
+COPY artifacts/ /offline/artifacts/
+COPY requirements-linux-runtime.lock.txt requirements-linux-test.lock.txt /offline/
+COPY install_offline.py reference.json /offline/
+RUN ["/var/lang/bin/python", "-I", "-B", "/offline/install_offline.py"]
+WORKDIR /tmp
+USER 10001:10001
+ENTRYPOINT ["/opt/xoc-l2/bin/python", "-I", "-B", "-m", "xoc_mcp_lab_harness.linux_validation"]

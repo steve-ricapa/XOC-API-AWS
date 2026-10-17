@@ -1,0 +1,12 @@
+# LAB_ONLY / OFFLINE / FIXTURES / NOT_PRODUCTION
+# Independent reconstruction: exact public base and hash-pinned first-party wheels.
+FROM public.ecr.aws/lambda/python@sha256:cc940054e77d4a160c611a20c09cb8ab9325c09d72555a164329eb3e46957d80
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="" PYTHONUTF8=1 PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+COPY offline/ /offline/
+COPY l4/ /offline-l4/
+COPY l6/ /offline-l6/
+RUN ["/var/lang/bin/python", "-I", "-B", "/offline-l4/l4_build.py", "install"]
+RUN ["/var/lang/bin/python", "-I", "-B", "/offline-l6/l6_build.py", "install"]
+WORKDIR /tmp
+USER 10001:10001
+ENTRYPOINT ["/opt/xoc-l2/bin/python", "-I", "-B", "-m", "xoc_mcp_lab_l6.harness"]

@@ -3,10 +3,20 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def mcp_provenance(mcp: Path, manifest_bytes: bytes) -> dict:
+    """Do not report the parent XOC repository's HEAD as a vendored MCP HEAD."""
+    has_own_git = (mcp / ".git").exists()
+    return {
+        "head": subprocess.check_output(
+            ["git", "-C", str(mcp), "rev-parse", "HEAD"], text=True,
+        ).strip() if has_own_git else None,
+        "handoff_manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+    }
 
 
 def main():
@@ -18,7 +28,8 @@ def main():
     output = args.output.resolve()
     if output.exists() or not output.is_relative_to(ROOT / "tests/ic1/.build"):
         raise ValueError("Use a new directory within backend/tests/ic1/.build")
-    manifest = json.loads((mcp / "HANDOFF_MANIFEST.json").read_bytes())
+    manifest_bytes = (mcp / "HANDOFF_MANIFEST.json").read_bytes()
+    manifest = json.loads(manifest_bytes)
     # README repair has been explicitly authorized; all original hashes must pass.
     for row in manifest["files"]:
         if hashlib.sha256((mcp / row["path"]).read_bytes()).hexdigest() != row["sha256"]:
@@ -46,9 +57,13 @@ def main():
     for wheel in sorted((mcp / "build/ic1-extra").glob("*.whl")):
         copy(wheel, output / "extra" / wheel.name)
     # Explicit source revisions; uncommitted source hashes above are the tested truth.
-    heads = {name: subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
-             for name, repo in (("backend", ROOT), ("mcp", mcp))}
-    (output / "source-manifest.json").write_text(json.dumps(dict(heads=heads, files=records), indent=2))
+    provenance = mcp_provenance(mcp, manifest_bytes)
+    heads = {"backend": subprocess.check_output(
+        ["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True,
+    ).strip(), "mcp": provenance["head"]}
+    (output / "source-manifest.json").write_text(json.dumps(dict(
+        heads=heads, mcp_handoff_manifest_sha256=provenance["handoff_manifest_sha256"], files=records,
+    ), indent=2))
     print(json.dumps(dict(context=str(output), files=len(records), heads=heads)))
 
 

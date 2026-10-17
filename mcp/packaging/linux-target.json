@@ -1,0 +1,15 @@
+{
+  "lab_only": true,
+  "image": "public.ecr.aws/lambda/python@sha256:cc940054e77d4a160c611a20c09cb8ab9325c09d72555a164329eb3e46957d80",
+  "image_id": "sha256:3dd4ffcf67d1302b4c9808bdc65fbc8dd952debfbaf373392bbd8fb7c9856420",
+  "platform": "linux/amd64",
+  "python_minor": "3.11",
+  "os_id": "amzn",
+  "os_version_id": "2",
+  "memory_bytes": 536870912,
+  "cpus": 2,
+  "pids_limit": 128,
+  "sdk": "1.30.0",
+  "protocol": "2025-11-25",
+  "production_ready": false
+}

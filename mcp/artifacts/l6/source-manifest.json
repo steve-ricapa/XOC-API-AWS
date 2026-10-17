@@ -1,0 +1,45 @@
+{
+  "builder_inputs": {
+    "build_artifacts.py": "7365e575dd4da80482c42865c18311f8e6a985d7b08cbde7906b1148040ba484",
+    "l4_build.py": "74a711889124574199800ac53d5f7625a92d81152b86a68c1ca25363feeb59b8"
+  },
+  "files": {
+    "xoc_mcp_lab_l6/__init__.py": "924070a061e46bbf7355de77cbe840bf957e1b048a06a153a00e9e769a88bbfd",
+    "xoc_mcp_lab_l6/_build/Dockerfile.l6": "beda7e7e1f93f628853a2a3c2352471862e0eef4950e6fcd2d3343d73a2ea838",
+    "xoc_mcp_lab_l6/_build/build_artifacts.py": "7365e575dd4da80482c42865c18311f8e6a985d7b08cbde7906b1148040ba484",
+    "xoc_mcp_lab_l6/_build/l4_build.py": "74a711889124574199800ac53d5f7625a92d81152b86a68c1ca25363feeb59b8",
+    "xoc_mcp_lab_l6/_build/l6.ps1": "3c0077ac1b02c95f3fb3b9c0e21bbecc69b99f2a09eaf67bb506df7d507be1f1",
+    "xoc_mcp_lab_l6/_build/l6_build.py": "618a273bde5a3b881c29455b72e47f5f1ded48fea898928a6c8692ef4dcec52e",
+    "xoc_mcp_lab_l6/_build/l6_preservation.ps1": "7504df09388e3768c8115d401b1dcf0452917c509f7fd3d148e1fdfac0b30e39",
+    "xoc_mcp_lab_l6/acceptance.py": "edd79b5032913a8ab27e96eddacdc8a6f2c2d791a22995879ead9996fb544b3a",
+    "xoc_mcp_lab_l6/acceptance_context.py": "8936692b3fa028e9bb7860334059e385b61eaf55394b71e13bbf9c44ce8cd8b6",
+    "xoc_mcp_lab_l6/acceptance_control.py": "3974b29cdeb59336aa2ba4f1d093205f73d6708e0765ea9d444adf20a2743fe6",
+    "xoc_mcp_lab_l6/control.py": "8181cdcbb40f328ecaeaa44c04471959a7dfb41ad99265b54826ab54f0005798",
+    "xoc_mcp_lab_l6/harness.py": "349f681cd65816e58d85b816fb379abc6f9bf3a878c9521c6a8439de735dee30",
+    "xoc_mcp_lab_l6/integrity.py": "ab55246485d5c0054870ae5ce6e0473884d934ed85b31d315b4667307434db80",
+    "xoc_mcp_lab_l6/observability.py": "33516acf31dc2bc39424c1af62817d23d34aa6dde6d604e364f0701158325ca5",
+    "xoc_mcp_lab_l6/pool.py": "dab0685956eacdbcb60bcec67487a0f3513654d3def5e0baf60754799a9842d8",
+    "xoc_mcp_lab_l6/probe.py": "fbbaa11aadf1535b13cf9641412112311298f8042f662ab1daf199f49c6c68e6",
+    "xoc_mcp_lab_l6/server.py": "fbfd0783e13966b5c021d28fd6ddb47e169f2da5b8d3b54c974aca134553f6ed",
+    "xoc_mcp_lab_l6/supervisor.py": "fc4a649199b8cde29d9beddd4c7e073eae334eeff2bb6e54efd5d51a53170c6e",
+    "xoc_mcp_lab_l6/tests/test_l6_context.py": "faddc5ebe0be7533a8c5fc681c4b8d0a6ce766e38be61466cef8567d0b652580",
+    "xoc_mcp_lab_l6/tests/test_l6_lifecycle.py": "30424cad1dd0a51f4eab6a342dda78542b347d62a92674d277e6c186b89155e0",
+    "xoc_mcp_lab_l6/tests/test_l6_observability.py": "9bfdde2a50107b72bc49ca7429126666b663edc580b3eac5ae9176bb4c47cba0",
+    "xoc_mcp_lab_l6/tests/test_l6_packaging.py": "524f72071a43f5da2c8f5ae7a3f5cffecd3e3b4a987c28fcfb3231e135e279c4",
+    "xoc_mcp_lab_l6/tests/test_l6_pool_unit.py": "0355e5f82a8a2e9e44b8773c94458103a052e4db2d206f9fa948be75aba0b538",
+    "xoc_mcp_lab_l6/tests/test_l6_recovery.py": "6535072a9343c8e9bb3feedb1fe8c55106d59bb7181eb9861d7de56ccb9c3ee3",
+    "xoc_mcp_lab_l6/tests/test_l6_server_unit.py": "fbfd3bb424d2875c4c273ceca8b6d11a53cc4b556140823428cddaeb43a3c072",
+    "xoc_mcp_lab_l6/tests/test_l6_supervisor_unit.py": "36f5fbf197be7c4dd094624cd49a53fe024eb9daa59a1c7677e99f09153c4e23",
+    "xoc_mcp_lab_l6/tests/test_l6_validation.py": "498df7bcb8b0ab8b52109216dff4502190c01c385b42fe2b7530d1ad4893bad7",
+    "xoc_mcp_lab_l6/validation.py": "ef5039316c3c1adaa7f5aaf56e77391c6a02efa4680067f8ad0b86d73a6f40db"
+  },
+  "l4_image": "sha256:129efefeecc7549df84604ed2e532fa524aaab716f6cf145ca9e5522e6ab72b9",
+  "lab_only": true,
+  "preserved_wheels": {
+    "xoc_mcp_lab-0.2.0+lab.cdce81cbc014-py3-none-any.whl": "0f82b903e2b0bbbc5107a6371a2da95c83c0561c76f5b918a1cb1df1798da2ac",
+    "xoc_mcp_lab_harness-0.2.0+lab.cdce81cbc014-py3-none-any.whl": "f41abe59883f1bc9311ed88f8582b1f31639bc2be65e1163412925c17bd2d736",
+    "xoc_mcp_lab_l4-0.4.0+lab.27a62d14058a-py3-none-any.whl": "764352dc77a7c467f6c8c3162a4f93e4fcca0e21b7933db0e2a4557669dcfb5d",
+    "xoc_tool_gateway_core-0.0.0+lab.ad4ac1a764de-py3-none-any.whl": "df95ce6b4b9e7531f43cf90e9e43a850f3d38311679afe9516af501ac6182e41"
+  },
+  "schema": "xoc-l6-source-v1"
+}

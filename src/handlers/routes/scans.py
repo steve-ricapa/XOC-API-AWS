@@ -9,7 +9,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from src.persistence.db import get_db_session
-from src.persistence.models import AgentApiKey, FindingIndex, PendingIngestion, ScanSummary, ScanSummaryNoc, SnapshotArtifact, Tenant, User
+from src.persistence.models import AgentApiKey, FindingIndex, PendingIngestion, ScanSummary, ScanSummaryNoc, SnapshotArtifact, Tenant, User, Vulnerability
 from src.shared.config import get_settings
 from src.shared.context import effective_tenant_id_of, log_audit, require_tenant_read_access
 from src.shared.dependencies import get_current_user, get_request_claims, get_request_tenant_context
@@ -757,6 +757,37 @@ def agent_get_findings(
         payload = finding.to_dict()
         payload["scan_summary"] = {"id": summary.id, "scanner_type": summary.scanner_type, "scan_id": summary.scan_id, "scan_name": summary.scan_name, "scanned_at": summary.scanned_at.isoformat() if summary.scanned_at else None}
         result.append(payload)
+
+    # Demo and legacy seeded tenants may store vulnerabilities in the canonical
+    # vulnerabilities table without creating scan summary/finding rows.
+    # Keep the agent contract read-only and expose those records as findings.
+    if resolved_domain == "soc":
+        vulnerability_query = select(Vulnerability).where(
+            Vulnerability.tenant_id == tenant_id,
+            Vulnerability.status.in_(("open", "patching")),
+        )
+        if severity:
+            vulnerability_query = vulnerability_query.where(Vulnerability.severity.ilike(f"%{severity}%"))
+        if cve:
+            vulnerability_query = vulnerability_query.where(Vulnerability.cve_id.ilike(f"%{cve}%"))
+        vulnerabilities = session.scalars(
+            vulnerability_query.order_by(Vulnerability.created_at.desc()).limit(min(max(limit, 1), 1000))
+        ).all()
+        for vulnerability in vulnerabilities:
+            result.append({
+                "id": vulnerability.id,
+                "cve": vulnerability.cve_id,
+                "name": vulnerability.title,
+                "description": vulnerability.description,
+                "severity": vulnerability.severity,
+                "cvss": vulnerability.cvss_score,
+                "host": None,
+                "status": vulnerability.status,
+                "detected_at": vulnerability.created_at.isoformat() if vulnerability.created_at else None,
+                "source": "vulnerabilities",
+            })
+        result.sort(key=lambda item: item.get("detected_at") or "", reverse=True)
+        result = result[: min(max(limit, 1), 1000)]
     return {"findings": result, "count": len(result), "domain": resolved_domain, "period_days": days, "period": {"start_date": range_start.isoformat(), "end_date": range_end.isoformat()}}
 
 

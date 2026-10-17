@@ -1,0 +1,43 @@
+{
+  "lab_only": true,
+  "phase": "MCP-2 L3",
+  "status": "FUNCTIONAL_PASS_BUDGET_3_5_NO_GO",
+  "decision": "C",
+  "production_ready": false,
+  "cloud_authorized": false,
+  "chat_integrated": false,
+  "victor_involved": false,
+  "canonical_revision": "ad4ac1a764de03f65e1ff2f2a2c6762a89ce9eb9",
+  "core_sha256": "df95ce6b4b9e7531f43cf90e9e43a850f3d38311679afe9516af501ac6182e41",
+  "adapter_sha256": "0f82b903e2b0bbbc5107a6371a2da95c83c0561c76f5b918a1cb1df1798da2ac",
+  "harness_sha256": "f41abe59883f1bc9311ed88f8582b1f31639bc2be65e1163412925c17bd2d736",
+  "source_manifest_sha256": "cdce81cbc01458aa73d12d3709c2608fb58a5742d0970809378bb14e1b1625f8",
+  "runtime": {
+    "os": "Amazon Linux 2",
+    "python": "3.11.16",
+    "architecture": "x86_64",
+    "mcp": "1.30.0",
+    "protocol": "2025-11-25",
+    "transport": "stdio"
+  },
+  "limits": {
+    "memory_bytes": 536870912,
+    "cpus": 2,
+    "pids": 128,
+    "input_bytes": 65536,
+    "output_bytes": 262144,
+    "envelope_bytes": 16384,
+    "jws_chars": 4096,
+    "max_local_total_seconds": 5,
+    "target_total_seconds": 3.5
+  },
+  "tests": {
+    "windows": 212,
+    "linux": 212
+  },
+  "regression_report": "reports/l3-validation.json",
+  "measurement_report": "reports/l3-candidate-comparison.json",
+  "decision_report": "reports/l3-decision.md",
+  "private_sdk_factory_capture": true,
+  "existing_L2_compatibility_file_preserved": true
+}

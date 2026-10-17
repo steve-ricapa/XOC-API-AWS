@@ -47,12 +47,16 @@ Requiere Docker Linux y el handoff XOC-MCP verificado. Imagen base esperada:
 con SDK 1.30.0/Python 3.11.16 y wheels canónicas. Ver los comandos de construcción
 offline y manifests del repo XOC-MCP; no sustituir ese baseline por un tag remoto.
 Los tres wheels adicionales del lock deben estar previamente en
-`../XOC-MCP/build/ic1-extra`; no se descargan durante el build ni el test.
+`../XOC-MCP/build/ic1-extra` (o `mcp/build/ic1-extra` si se usa la copia
+vendorizada); no se descargan durante el build ni el test. La carpeta `mcp/`
+del backend conserva sólo el handoff versionado: **no** trae estos wheels extra,
+ni es el servidor productivo AgentCore. El preparador verifica el manifest y,
+si se usa `mcp/`, registra su hash en lugar de atribuirle el commit Git del backend.
 
 Desde XOC-API-AWS, escoger una ruta de evidencia NUEVA en cada ejecución:
 
 ```powershell
-python -B tests/ic1/prepare.py --mcp ../XOC-MCP --output tests/ic1/.build/my-run-context
+python -B tests/ic1/prepare.py --mcp mcp --output tests/ic1/.build/my-run-context
 docker build --network none -t xoc-chat-mcp-ic1:local tests/ic1/.build/my-run-context
 python -B tests/ic1/fast_track.py tests --output tests/ic1/.build/my-run/l6.json
 python -B tests/ic1/fast_track.py recovery --output tests/ic1/.build/my-run/cases.json

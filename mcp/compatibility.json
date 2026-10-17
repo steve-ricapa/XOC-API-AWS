@@ -1,0 +1,42 @@
+{
+  "schema_version": "xoc-mcp-lab-compatibility-v1",
+  "stage": "MCP-2 L1 fixture-only",
+  "backend": {
+    "repo": "XOC-API-AWS",
+    "branch": "main",
+    "head": "ad4ac1a764de03f65e1ff2f2a2c6762a89ce9eb9",
+    "source_manifest_sha256": "ccf551819f629af4ac672e2df6a1fcf8c3ea2ceb8c2537508b7d553aac9da9a5",
+    "files": {
+      "src/tool_gateway/policy.py": "1621177ca1de111a739e8db79712450d085944e18bc8d9009e5e363016eb2bde",
+      "src/tool_gateway/executor.py": "7ed549f1e4cb73ae38b31cd33afeeed5a74e298ed4559b54cc86286b7363521a",
+      "src/tool_gateway/registry.py": "d6f7734f5764177bdb2bcc25f77c5bf5b6eb24cb95fe933b02a882ad7cbbb2b4",
+      "src/tool_gateway/schemas.py": "d18bc7cd581d9697b8037952afad73d5fb94c0bb7a9c5e8a3cbcdab2299788f4",
+      "src/tool_gateway/audit.py": "fa2b7147cb9ea5181e21c65e98b37c8d1148c6d42bfa0eb2786db25dcc4ebcee",
+      "src/shared/sophia_tool_chat.py": "73327dedf47206d439293be77e4a1a0abfd495aa51da69c679ec8e5873918320"
+    }
+  },
+  "mcp": {
+    "sdk": "1.30.0",
+    "protocol": "2025-11-25",
+    "transport": "stdio"
+  },
+  "environment": {
+    "os": "Windows",
+    "architecture": "x64",
+    "python": "3.13.1",
+    "linux_validated": false
+  },
+  "limits": {
+    "input_message_bytes": 65536,
+    "output_message_bytes": 262144,
+    "fixture_envelope_bytes": 16384,
+    "assertion_lifetime_seconds": 30,
+    "worker_work_seconds": 5,
+    "worker_slots": 4,
+    "tool_calls_per_worker": 1,
+    "cleanup": "additional SDK graceful wait and platform termination"
+  },
+  "fixture_only": true,
+  "production_ready": false,
+  "requirements_lock_sha256": "38dae9004ff4e3d0953ca4d64da0ff53af3786d02d07c70e652727dc1a8fb1cf"
+}

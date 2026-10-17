@@ -1,0 +1,12 @@
+# LAB_ONLY. C1_BASE is an L4-owned local tag checked against the immutable C1 ID.
+# Offline reconstruction may instead use the already-local pinned AL2 base.
+ARG C1_BASE
+FROM ${C1_BASE}
+USER 0:0
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="" PYTHONUTF8=1 PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+COPY offline/ /offline/
+COPY l4/ /offline-l4/
+RUN ["/var/lang/bin/python", "-I", "-B", "/offline-l4/l4_build.py", "install"]
+WORKDIR /tmp
+USER 10001:10001
+ENTRYPOINT ["/opt/xoc-l2/bin/python", "-I", "-B", "-m", "xoc_mcp_lab_l4.harness"]

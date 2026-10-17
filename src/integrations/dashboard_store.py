@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import case, func, select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
 from src.integrations.summary_store import (
@@ -354,6 +355,78 @@ def _build_recent_noc_findings_for_provider(session: Session, tenant_id: int, pr
     ]
 
 
+def _build_top_cves_from_findings(findings: list[dict], limit: int = 10) -> list[dict]:
+    cve_map: dict[str, dict] = {}
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        cve = str(finding.get("cve") or finding.get("event_type") or "").strip()
+        if not cve:
+            continue
+        severity = str(finding.get("severity") or "info").strip().lower()
+        host = str(finding.get("host") or "").strip()
+        cvss = float(finding.get("cvss") or 0.0)
+        item = cve_map.setdefault(cve, {"cve_id": cve, "severity": severity, "hosts": set(), "cvss_score": 0.0})
+        if host:
+            item["hosts"].add(host)
+        item["cvss_score"] = max(item["cvss_score"], cvss)
+
+    top = []
+    for item in cve_map.values():
+        hosts = item.pop("hosts")
+        top.append({
+            "cve_id": item["cve_id"],
+            "severity": item["severity"],
+            "hosts_affected": len(hosts),
+            "cvss_score": item["cvss_score"],
+            "impact_score": len(hosts) * float(item["cvss_score"] or 0.0),
+        })
+    top.sort(key=lambda x: x["impact_score"], reverse=True)
+    return top[:limit]
+
+
+def _build_host_exposure_from_findings(findings: list[dict], limit: int = 10) -> list[dict]:
+    by_host: dict[str, dict] = {}
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        host = str(finding.get("host") or "").strip()
+        if not host:
+            continue
+        severity = str(finding.get("severity") or "info").strip().lower()
+        if severity not in {"critical", "high", "medium", "low", "info"}:
+            severity = "info"
+        item = by_host.setdefault(host, {
+            "host": host,
+            "critical": 0,
+            "high": 0,
+            "medium": 0,
+            "low": 0,
+            "info": 0,
+            "total_findings": 0,
+            "max_cvss": 0.0,
+            "last_seen": None,
+        })
+        item[severity] += 1
+        item["total_findings"] += 1
+        item["max_cvss"] = max(float(item["max_cvss"] or 0.0), float(finding.get("cvss") or 0.0))
+        detected_at = str(finding.get("detected_at") or finding.get("detectedAt") or "").strip()
+        if detected_at and (item["last_seen"] is None or detected_at > item["last_seen"]):
+            item["last_seen"] = detected_at
+
+    result = list(by_host.values())
+    result.sort(
+        key=lambda item: (
+            -int(item["critical"]),
+            -int(item["high"]),
+            -float(item["max_cvss"]),
+            -int(item["total_findings"]),
+            item["host"],
+        )
+    )
+    return result[:limit]
+
+
 def _build_top_alerts(session: Session, tenant_id: int, provider: str, range_start: datetime, range_end: datetime) -> list[dict]:
     summaries = session.scalars(
         select(ScanSummary).where(
@@ -472,13 +545,19 @@ def _build_latest_soc_snapshot(session: Session, latest_scan: ScanSummary | None
 
 
 def _build_scan_rule_and_agent_highlights(session: Session, scan_summary_id: int, limit: int = 5) -> tuple[list[dict], list[dict]]:
-    findings = list(
-        session.scalars(
-            select(FindingIndex)
-            .where(FindingIndex.scan_summary_soc_id == scan_summary_id)
-            .order_by(FindingIndex.created_at.desc())
+    try:
+        findings = list(
+            session.scalars(
+                select(FindingIndex)
+                .where(FindingIndex.scan_summary_soc_id == scan_summary_id)
+                .order_by(FindingIndex.created_at.desc())
+            )
         )
-    )
+    except ProgrammingError as exc:
+        if "finding_index" not in str(exc):
+            raise
+        session.rollback()
+        return [], []
 
     top_rules_counter: dict[str, int] = {}
     top_agents_counter: dict[str, int] = {}
@@ -626,9 +705,28 @@ def _build_vuln_provider_dashboard(session: Session, tenant_id: int, provider: s
     running = sum(1 for s in recent_scans if (s.status or "").lower() == "running")
     unique_hosts = int(latest_scan.total_hosts or 0) if latest_scan else 0
     trend = _build_vuln_trend(session, tenant_id, scanner, start, end)
-    top_cves = _build_top_cves(session, tenant_id, scanner, start, end)
-    host_exposure = _build_host_exposure(session, tenant_id, scanner, start, end)
-    recent_findings = _build_recent_findings_for_provider(session, tenant_id, scanner, start, end)
+    try:
+        session.execute(select(FindingIndex.id).limit(1)).first()
+        finding_index_available = True
+    except ProgrammingError as exc:
+        if "finding_index" not in str(exc):
+            raise
+        session.rollback()
+        finding_index_available = False
+
+    latest_findings = [finding.to_dict() for finding in _recent_findings(session, latest_scan.id)] if latest_scan and finding_index_available else []
+    if provider == "insightvm" and finding_index_available:
+        top_cves = _build_top_cves_from_findings(latest_findings)
+        host_exposure = _build_host_exposure_from_findings(latest_findings)
+        recent_findings = latest_findings[:20]
+    elif finding_index_available:
+        top_cves = _build_top_cves(session, tenant_id, scanner, start, end)
+        host_exposure = _build_host_exposure(session, tenant_id, scanner, start, end)
+        recent_findings = _build_recent_findings_for_provider(session, tenant_id, scanner, start, end)
+    else:
+        top_cves = []
+        host_exposure = []
+        recent_findings = []
     scan_rows = _build_provider_scans(session, tenant_id, scanner, start, end)
     agent_info = _build_agent_info(session, tenant_id, provider, "soc")
     total_findings = sum(int(latest_counts.get(key, 0) or 0) for key in ("critical", "high", "medium", "low", "info"))

@@ -1,0 +1,241 @@
+{
+  "author_paths": [],
+  "high_risk_findings": [],
+  "keyword_locations": [
+    {
+      "line": 30,
+      "path": "artifacts/wheels/xoc_mcp_lab-0.2.0+lab.cdce81cbc014-py3-none-any.whl!xoc_mcp_lab/fixtures.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 23,
+      "path": "artifacts/wheels/xoc_mcp_lab-0.2.0+lab.cdce81cbc014-py3-none-any.whl!xoc_mcp_lab/isolation.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 24,
+      "path": "artifacts/wheels/xoc_mcp_lab-0.2.0+lab.cdce81cbc014-py3-none-any.whl!xoc_mcp_lab/isolation.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 34,
+      "path": "artifacts/wheels/xoc_mcp_lab_harness-0.2.0+lab.cdce81cbc014-py3-none-any.whl!xoc_mcp_lab_harness/tests/test_gateway.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 149,
+      "path": "artifacts/wheels/xoc_mcp_lab_harness-0.2.0+lab.cdce81cbc014-py3-none-any.whl!xoc_mcp_lab_harness/tests/test_gateway.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 58,
+      "path": "artifacts/wheels/xoc_mcp_lab_harness-0.2.0+lab.cdce81cbc014-py3-none-any.whl!xoc_mcp_lab_harness/tests/test_stdio.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 121,
+      "path": "artifacts/wheels/xoc_mcp_lab_harness-0.2.0+lab.cdce81cbc014-py3-none-any.whl!xoc_mcp_lab_harness/tests/test_stdio.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 26,
+      "path": "artifacts/wheels/xoc_mcp_lab_harness-0.2.0+lab.cdce81cbc014-py3-none-any.whl!xoc_mcp_lab_harness/tests/test_worker_lifecycle.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 132,
+      "path": "artifacts/wheels/xoc_mcp_lab_harness-0.2.0+lab.cdce81cbc014-py3-none-any.whl!xoc_mcp_lab_harness/tests/test_worker_lifecycle.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 161,
+      "path": "artifacts/wheels/xoc_mcp_lab_l4-0.4.0+lab.27a62d14058a-py3-none-any.whl!xoc_mcp_lab_l4/tests/test_l4_packaging.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 424,
+      "path": "artifacts/wheels/xoc_mcp_lab_l6-0.6.0+lab.0e43242f3bc3-py3-none-any.whl!xoc_mcp_lab_l6/_build/l4_build.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 45,
+      "path": "artifacts/wheels/xoc_tool_gateway_core-0.0.0+lab.ad4ac1a764de-py3-none-any.whl!src/shared/http.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 50,
+      "path": "artifacts/wheels/xoc_tool_gateway_core-0.0.0+lab.ad4ac1a764de-py3-none-any.whl!src/shared/http.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 30,
+      "path": "artifacts/wheels/xoc_tool_gateway_core-0.0.0+lab.ad4ac1a764de-py3-none-any.whl!src/shared/sophia_tool_chat.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 34,
+      "path": "artifacts/wheels/xoc_tool_gateway_core-0.0.0+lab.ad4ac1a764de-py3-none-any.whl!src/tool_gateway/policy.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 36,
+      "path": "artifacts/wheels/xoc_tool_gateway_core-0.0.0+lab.ad4ac1a764de-py3-none-any.whl!src/tool_gateway/policy.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 89,
+      "path": "docs/architecture/MCP2_MATRIZ_CAMBIOS_Y_ACEPTACION.md",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 90,
+      "path": "docs/architecture/MCP2_MATRIZ_CAMBIOS_Y_ACEPTACION.md",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 207,
+      "path": "docs/architecture/MCP2_PLAN_TRANSICION.md",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 235,
+      "path": "docs/architecture/MCP2_PLAN_TRANSICION.md",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 241,
+      "path": "docs/architecture/MCP2_PLAN_TRANSICION.md",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 243,
+      "path": "docs/architecture/MCP2_PLAN_TRANSICION.md",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 136,
+      "path": "docs/architecture/MCP2_RUNBOOK_RESPALDO_DESPLIEGUE_ROLLBACK.md",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 161,
+      "path": "docs/architecture/MCP2_RUNBOOK_RESPALDO_DESPLIEGUE_ROLLBACK.md",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 166,
+      "path": "docs/architecture/MCP2_RUNBOOK_RESPALDO_DESPLIEGUE_ROLLBACK.md",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 41,
+      "path": "docs/evidence/closure-summary.json",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 42,
+      "path": "docs/evidence/closure-summary.json",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 504,
+      "path": "docs/evidence/closure-summary.json",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 512,
+      "path": "docs/evidence/closure-summary.json",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 131,
+      "path": "fixtures/l4-baseline-tests.json",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 137,
+      "path": "fixtures/l4-baseline-tests.json",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 424,
+      "path": "packaging/l4_build.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 11,
+      "path": "scripts/l6_security_scan.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 15,
+      "path": "scripts/l6_security_scan.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 17,
+      "path": "scripts/l6_security_scan.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 8,
+      "path": "SECURITY.md",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 34,
+      "path": "tests/test_gateway.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 149,
+      "path": "tests/test_gateway.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 161,
+      "path": "tests/test_l4_packaging.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 58,
+      "path": "tests/test_stdio.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 121,
+      "path": "tests/test_stdio.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 26,
+      "path": "tests/test_worker_lifecycle.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 132,
+      "path": "tests/test_worker_lifecycle.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 30,
+      "path": "xoc_mcp_lab/fixtures.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 23,
+      "path": "xoc_mcp_lab/isolation.py",
+      "type": "security_keyword_reference"
+    },
+    {
+      "line": 24,
+      "path": "xoc_mcp_lab/isolation.py",
+      "type": "security_keyword_reference"
+    }
+  ],
+  "limitation": "Heuristic scan, not proof of absolute absence of secrets. Keyword references need review; values are never emitted.",
+  "public_fixture": "ES256 scalar=1 in signing fixture: TEST FIXTURE ONLY / PUBLIC / NOT A SECRET / DO NOT USE IN PRODUCTION",
+  "review": "Keyword references reviewed: rejection/redaction tests, schema names, environment allowlists, public fixture and historical plans. No real credential identified. Heuristic, not an absolute guarantee.",
+  "scanned_files": 158,
+  "schema_version": 1
+}

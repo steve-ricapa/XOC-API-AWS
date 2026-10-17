@@ -1,0 +1,1911 @@
+{
+  "exit_code": 0,
+  "tests": [
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_real_gateway_handlers_and_helpers[xoc.tickets.list-args0-tickets]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0014012229999025294
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_real_gateway_handlers_and_helpers[xoc.tickets.get-args1-ticket]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0008292580000670569
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_real_gateway_handlers_and_helpers[xoc.documents.list-args2-documents]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0010334090002288576
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_real_gateway_handlers_and_helpers[xoc.notifications.unread_count-args3-count]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0011558129999684752
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_roles_use_original_policy[admin_tenant_a-True]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0007940400000734371
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_roles_use_original_policy[admin_tenant_b-True]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0007832699998289172
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_roles_use_original_policy[user_a1-True]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0008303199997499178
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_roles_use_original_policy[user_a2-True]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0009252619997823786
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_roles_use_original_policy[admin_xoc_delegated_a-True]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0007614070000272477
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_roles_use_original_policy[admin_xoc_without_delegation-False]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004921619997730886
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_roles_use_original_policy[superadmin-False]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005673370001204603
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_roles_use_original_policy[invalid_context-False]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005011299999750918
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[tenantId]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005149160001565178
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[tenant_id]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005568360002143891
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[effective_tenant_id]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004967110003235575
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[userId]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005144550000295567
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[user_id]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005032230001233984
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[role]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.000475451000056637
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[actor_role]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004694090002885787
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[delegation_active]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004607920000125887
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[JWT]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005562749997807259
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[access_token]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004823229996873124
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[refresh_token]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004901980000795447
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[effectiveTenantId]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00044670499983112677
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[actorUserId]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004517450001912948
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[delegationActive]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004506129998844699
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[accessToken]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00047042999995028367
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ownership_injection_is_policy_deny[refreshToken]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00048118099994098884
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_direct_hidden_unknown_write_calls[xoc.dashboard.summary-policy]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004797189999408147
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_direct_hidden_unknown_write_calls[xoc.integrations.summary-policy]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004968009998265188
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_direct_hidden_unknown_write_calls[xoc.evil.execute-policy]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005769449999206699
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_direct_hidden_unknown_write_calls[xoc.tickets.create-policy]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00048510799979339936
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_direct_hidden_unknown_write_calls[ticket_create-adapter]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00045416900002237526
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_direct_hidden_unknown_write_calls[ticket_patch-adapter]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00046208499998101615
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_direct_hidden_unknown_write_calls[ticket_delete-adapter]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005959810000604193
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[None]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0006475899999713874
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[False]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0007135659998311894
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[args2]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004771029998664744
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[0]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0006203379998623859
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004654720000871748
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[True]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005511250001291046
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[args6]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0006013209999764513
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[args7]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0006457959998442675
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[args8]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0007203199998002674
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[args9]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005963110002085159
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[args10]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.000590861000091536
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[args11]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0006189660002746677
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[args12]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0006177520003802783
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[args13]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0006207289998201304
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_invalid_falsy_schema_inputs[args14]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00059240399968985
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_absence_and_nullable_fields_are_distinct",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.001452430999961507
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ticket_id_strict_contract[]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.001227660000040487
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ticket_id_strict_contract[  ]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005928450000283192
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ticket_id_strict_contract[1]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0006168409995552793
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ticket_id_strict_contract[False]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0006024730000717682
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ticket_id_strict_contract[None]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005934659998274583
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_ticket_id_strict_contract[xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0006455160000768956
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_tenant_and_user_partition_keys",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0029413719998956367
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_foreign_and_missing_tickets_same_safe_failure",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0008954939999057387
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_store_error_no_details_retry_or_fallback",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.000861930000155553
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_projection_removes_canaries_decimal_and_internal_fields",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012971440000910661
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_projection_limits_and_unsafe_rows",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00954019699975106
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_status_filters_real_helpers_and_pagination",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0021616280000671395
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_registry_drift_cannot_auto_publish",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0007111219997568696
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_audit_original_without_arguments",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.000596813000356633
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_no_network_credentials_or_fallback",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.006529772999783745
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_bounded_business_work_not_distributed_exactly_once",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012748610001835914
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_no_mutable_fixture_cache_between_wirings",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005833769996570481
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_original_source_and_wiring_restore",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0169644719999269
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_incomplete_wiring_fails_without_real_provider",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0033730280001691426
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_projection_rejects_invalid_counts_and_excessive_output",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.006383701999766345
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_gateway.py::test_schema_matches_helper_statuses_and_limits",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0019685400002344977
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l2_lifecycle.py::test_spawn_error_zero_child_and_safe_result",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.06009528300000966
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l2_lifecycle.py::test_cleanup_error_after_reap_still_safe_and_slot_released",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 5.506019667999681
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l2_lifecycle.py::test_concurrent_calls_same_instance_only_one_child",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 3.114334267000231
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l2_lifecycle.py::test_monotonic_total_includes_cleanup",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.902300326999921
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l2_packaging.py::test_selected_sources_cover_internal_imports_without_routes",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.12993145099972025
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l2_packaging.py::test_wheel_double_build_record_metadata_bytes_and_no_pyc",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.004611804999967717
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l2_packaging.py::test_installed_mode_never_accepts_checkout_or_falls_back",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.05680240199990294
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l2_packaging.py::test_independent_smoke_reuses_existing_fixture_signer",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 8.49220000418427e-05
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_lifecycle.py::test_cancellation_at_each_phase_is_bounded_and_reaped[startup]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.495165869000175
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_lifecycle.py::test_cancellation_at_each_phase_is_bounded_and_reaped[query]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.7823740619996897
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_lifecycle.py::test_cancellation_at_each_phase_is_bounded_and_reaped[cleanup]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 3.017290580000008
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_lifecycle.py::test_owner_is_context_local_and_other_sdk_clients_untouched",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 3.062813709999773
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_lifecycle.py::test_cancellation_during_process_factory_is_reaped",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.49730375999979515
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_lifecycle.py::test_cleanup_stdin_error_is_safe_and_child_still_reaped",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 3.064832980999654
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_lifecycle.py::test_supervisor_wait_error_does_not_return_success",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.8017679370000224
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_total_budget.py::test_invalid_total_never_spawns[0]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0018083310001202335
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_total_budget.py::test_invalid_total_never_spawns[-1]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012156870002399955
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_total_budget.py::test_invalid_total_never_spawns[5.01]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.001695094999831781
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_total_budget.py::test_invalid_total_never_spawns[inf]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0008516709999639716
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_total_budget.py::test_invalid_total_never_spawns[nan]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0007749940000394417
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_total_budget.py::test_invalid_total_never_spawns[True]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0007969559997036413
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_total_budget.py::test_invalid_total_never_spawns[5]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0007182449999163509
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_total_budget.py::test_insufficient_total_before_spawn",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0010653589997673407
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_total_budget.py::test_signed_deadline_is_upper_bound_not_new_budget",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0007313200003409293
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_total_budget.py::test_insufficient_after_initialize_does_not_call_handler",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.786716562000038
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_total_budget.py::test_total_hang_includes_reap_without_extra_two_seconds[0.4]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.344042441000056
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_total_budget.py::test_total_hang_includes_reap_without_extra_two_seconds[3.5]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 3.3095808719999695
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_total_budget.py::test_total_hang_includes_reap_without_extra_two_seconds[5]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 4.810398009999972
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_l3_total_budget.py::test_no_security_checks_removed",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0029008000001340406
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_stdio.py::test_full_real_client_smoke",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 11.264470847999746
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_stdio.py::test_stdio_protocol_validation_and_metadata_cannot_change_context",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.763323835999927
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_stdio.py::test_two_simultaneous_stdio_instances_do_not_share_context",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 5.443670072000259
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_stdio.py::test_denied_context_over_wire_has_no_data_reads[invalid_context]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.8574053279999134
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_stdio.py::test_denied_context_over_wire_has_no_data_reads[superadmin]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.67924194599982
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_stdio.py::test_denied_context_over_wire_has_no_data_reads[admin_xoc_without_delegation]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.8390191270000287
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_stdio.py::test_fail_closed_startup[options0]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.11464365900019402
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_stdio.py::test_fail_closed_startup[options1]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.1076267960002042
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_stdio.py::test_fail_closed_startup[options2]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.11398504799990405
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_stdio.py::test_fail_closed_startup[options3]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.1811119049998524
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_stdio.py::test_oversized_input_closes_only_child",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.8522292010002275
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_stdio.py::test_unknown_profile_fails_closed_with_valid_backend",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.19492068999988987
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_stdio.py::test_inherited_cloud_settings_not_used_by_child",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 3.1573628139999528
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes0]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0032040900000538386
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes1]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0023720679996586114
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes2]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0022547329999724752
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes3]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0024048909999692114
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes4]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0018894350000664417
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes5]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0021472180001183006
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes6]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0014774770002077275
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes7]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0013766740003120503
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes8]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012165979997007526
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes9]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.002093164000143588
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes10]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0016250489998128614
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes11]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0014739199996256502
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes12]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0014444430003095476
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes13]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.001720532000035746
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes14]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0013261970002531598
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes15]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0013885559997106611
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes16]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0016569489998801146
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes17]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012730650000776222
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes18]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012449519999790937
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes19]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012371359998724074
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes20]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0015502559999731602
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes21]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0013169690000722767
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_invalid_claims_zero_child_before_backend_resolution[changes22]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012154159999226977
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_no_dynamic_key_or_algorithm_selection[headers0]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00039892299992061453
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_no_dynamic_key_or_algorithm_selection[headers1]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0003635050002230855
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_no_dynamic_key_or_algorithm_selection[headers2]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00033936900035769213
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_no_dynamic_key_or_algorithm_selection[headers3]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0003948960002162494
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_no_dynamic_key_or_algorithm_selection[headers4]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00035360699985176325
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_no_dynamic_key_or_algorithm_selection[headers5]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0003582949998417462
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_other_components_cannot_sign_fixture_chat_context[2]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00056991100018422
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_other_components_cannot_sign_fixture_chat_context[3]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005022310001550068
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_no_hs_or_unsigned_fallback[HS256]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0006201860001056048
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_no_hs_or_unsigned_fallback[none]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00041178800029229023
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_tampered_envelope[request_id]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.000607312000283855
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_tampered_envelope[arguments]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005023209996579681
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_tampered_envelope[tool]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005446019999908458
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_tampered_envelope[schema]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0003017770000042219
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_tampered_envelope[extra]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.000285936999716796
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_tampered_envelope[signature]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.000538159000370797
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_tampered_envelope[context]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0010711400000218418
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_context_immutable_and_detached_from_envelope",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0017559890002303291
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_verified_identity_still_uses_original_policy[admin_tenant_a-True]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0016346669999620644
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_verified_identity_still_uses_original_policy[user_a1-True]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.001943898999797966
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_verified_identity_still_uses_original_policy[admin_xoc_delegated_a-True]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.001650667999911093
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_verified_identity_still_uses_original_policy[admin_xoc_without_delegation-False]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0011700479999490199
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_verified_identity_still_uses_original_policy[superadmin-False]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0013129620001564035
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_verified_requests_cannot_bypass_registry_or_ownership[xoc.evil.execute-args0]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012630769997485913
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_verified_requests_cannot_bypass_registry_or_ownership[xoc.dashboard.summary-args1]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0017573509999238013
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_verified_requests_cannot_bypass_registry_or_ownership[xoc.integrations.summary-args2]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0011308229995847796
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_verified_requests_cannot_bypass_registry_or_ownership[xoc.tickets.create-args3]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0011564930000531604
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_verified_requests_cannot_bypass_registry_or_ownership[xoc.tickets.list-args4]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0014638299999205628
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_verified_requests_cannot_bypass_registry_or_ownership[xoc.tickets.list-args5]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012375279998195765
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_verified_requests_cannot_bypass_registry_or_ownership[xoc.tickets.list-args6]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0011874719998559158
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_verified_requests_cannot_bypass_registry_or_ownership[xoc.tickets.list-args7]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0013017500000387372
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_verified_requests_cannot_bypass_registry_or_ownership[xoc.tickets.list-args8]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0010168250000788248
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_mismatched_first_call_consumes_single_attempt",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012374580001051072
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_deadline_checked_again_at_execution",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0014370489998327685
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_duplicate_json_huge_envelope_and_fake_verified_rejected",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0008870460001162428
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_missing_claims_are_not_nullable_claims[tenant_id]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005581279997386446
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_missing_claims_are_not_nullable_claims[effective_tenant_id]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005548519998228585
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_missing_claims_are_not_nullable_claims[actor_user_id]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.000584788999731245
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_missing_claims_are_not_nullable_claims[delegation_active]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005548509998334339
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_missing_claims_are_not_nullable_claims[request_id]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005785969997305074
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_verified_context.py::test_compatibility_manifest_matches_reviewed_sources",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0010920499998974265
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_complete_output_exact_byte_boundary[-1]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.001523414000075718
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_complete_output_exact_byte_boundary[0]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0007143170000745158
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_complete_output_exact_byte_boundary[1]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0016987700000754558
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_unicode_and_json_escaping_count_utf8_not_characters[escaping]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0009968370000024152
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_unicode_and_json_escaping_count_utf8_not_characters[emoji]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0021676960000149847
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_unicode_and_json_escaping_count_utf8_not_characters[accent]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0010706479997679708
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_input_newline_included_in_boundary[-1]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012695290001829562
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_input_newline_included_in_boundary[0]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.000942712999858486
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_input_newline_included_in_boundary[1]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0009791029997359146
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_incomplete_or_invalid_utf8_not_repaired[incomplete]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0008126749999064486
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_incomplete_or_invalid_utf8_not_repaired[\\xff\\n]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0009865669999271631
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_client_checks_whole_message_limit",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0007282429996848805
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_official_sdk_stdio_receives_large_result_without_truncation[ascii]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.9260093900002175
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_official_sdk_stdio_receives_large_result_without_truncation[unicode]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 3.034707838000031
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_wire_limits.py::test_official_sdk_stdio_receives_large_result_without_truncation[overflow]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.405903070000022
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_worker_one_session_call_handler_and_closed_child[admin_tenant_a-xoc.tickets.list-args0-lab-ticket-a]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.6690559720000238
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_worker_one_session_call_handler_and_closed_child[admin_tenant_b-xoc.tickets.list-args1-lab-ticket-b]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.688987096999881
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_worker_one_session_call_handler_and_closed_child[user_a1-xoc.notifications.unread_count-args2-2]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.507365963999746
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_worker_one_session_call_handler_and_closed_child[user_a2-xoc.notifications.unread_count-args3-5]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.5006380690001606
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_worker_one_session_call_handler_and_closed_child[admin_xoc_delegated_a-xoc.documents.list-args4-lab-document-a]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.550025886000185
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_worker_one_session_call_handler_and_closed_child[admin_tenant_a-xoc.tickets.get-args5-lab-ticket-a1]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.7713889270003165
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_meta_cannot_override_verified_identity_or_call_twice",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.512573254000017
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_hung_dead_or_eof_no_retry_and_reaped[import time; time.sleep(60)]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.34377115300003425
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_hung_dead_or_eof_no_retry_and_reaped[raise SystemExit(7)]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.04973096000003352
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_hung_dead_or_eof_no_retry_and_reaped[pass]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.04934605299968098
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_saturation_rejects_before_child",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012240130004101957
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_cancellation_uses_local_deadline_and_reaps_child",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.31399783599999864
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_invalid_child_envelope_never_starts_business",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.14846100600016143
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_inherited_secrets_never_used",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.498117858000114
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_two_workers_concurrently_isolate_users",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.9720595839999078
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_unknown_role_and_foreign_ticket",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 8.22960440199995
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_client_rejects_wrong_correlation_and_text_mismatch",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0009041109997269814
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_same_request_replay_is_not_distributed_deduplication",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 5.235553188999802
+    },
+    {
+      "nodeid": "xoc_mcp_lab_harness/tests/test_worker_lifecycle.py::test_failed_provider_no_retry_or_fallback",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.503391488000034
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_cancellation.py::test_l4_finite_timeout_retains_slot_b_works_then_worker_cleans_up",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 4.527233314000114
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_cancellation.py::test_l4_cancel_notification_other_context_same_rpc_id_does_not_cancel_a_or_b",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 4.4535938760000136
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_cancellation.py::test_l4_explicit_tcp_disconnect_does_not_reuse_a_scope_or_free_its_thread",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 4.409120276000067
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_cancellation.py::test_l4_initialize_and_list_independently_require_current_verified_context[initialize]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.413836691999677
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_cancellation.py::test_l4_initialize_and_list_independently_require_current_verified_context[tools/list]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.6149366770000597
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_cancellation.py::test_l4_pool_retains_only_active_scope_then_drops_it_after_timeout",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.23747842400007357
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_each_header_verifies_distinct_immutable_l1_context",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0011366460003046086
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_exact_endpoint_and_post_only[updates0-405]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00030745899994144565
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_exact_endpoint_and_post_only[updates1-405]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.000278823999906308
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_exact_endpoint_and_post_only[updates2-404]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0002509800001462281
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_exact_endpoint_and_post_only[updates3-404]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0002890539999498287
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_transport_headers_are_not_identity_or_wildcard_channels[host-localhost:18844-421]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0002623720001793117
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_transport_headers_are_not_identity_or_wildcard_channels[host-127.0.0.1:18845-421]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00025590999985070084
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_transport_headers_are_not_identity_or_wildcard_channels[host-127.0.0.1:18844.evil-421]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004194129996903939
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_transport_headers_are_not_identity_or_wildcard_channels[origin-http://evil.invalid-403]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00030668700037495
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_transport_headers_are_not_identity_or_wildcard_channels[origin-null-403]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0002472430001034809
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_transport_headers_are_not_identity_or_wildcard_channels[content-type-text/plain-415]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00024856499976522173
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_transport_headers_are_not_identity_or_wildcard_channels[content-length-65537-413]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0003204230001756514
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_transport_headers_are_not_identity_or_wildcard_channels[content-length--1-400]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0003213750001123117
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_transport_headers_are_not_identity_or_wildcard_channels[content-length-nope-400]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00027370399993742467
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_origin_absent_or_exact_only_and_duplicate_headers_rejected",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0009103030001824663
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_host_origin_validation_precedes_unsupported_method_rejection[GET]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00031945199998517637
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_host_origin_validation_precedes_unsupported_method_rejection[DELETE]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0003650989997368015
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_header_encoding_is_canonical_and_bounded[]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.000160217000029661
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_header_encoding_is_canonical_and_bounded[not.base64]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 9.342800012746011e-05
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_header_encoding_is_canonical_and_bounded[a]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00012511900013123523
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_header_encoding_is_canonical_and_bounded[e30=]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 9.136500011663884e-05
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_header_encoding_is_canonical_and_bounded[_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00011770599985538865
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_unsigned_wrong_key_expired_and_noncanonical_rejected_without_echo",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0014094389998717816
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_envelope_and_inner_token_limits",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.000413261000176135
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_exact_envelope_size_boundaries_with_real_valid_signatures[16383]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.001166514000033203
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_exact_envelope_size_boundaries_with_real_valid_signatures[16384]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0011429380001573008
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_exact_envelope_size_boundaries_with_real_valid_signatures[16385]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0006300270001702302
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_jws_size_boundary_never_weakens_signature_verification[4095]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004066289998263528
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_jws_size_boundary_never_weakens_signature_verification[4096]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004121890001442807
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_jws_size_boundary_never_weakens_signature_verification[4097]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00040477499987900956
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_bound_actual_name_arguments_not_metadata",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.000714437999704387
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_protocol_pin_and_notification_shape",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005888880000384233
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_envelope_expiring_during_receive_stays_closed_with_401",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.000722533000043768
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_strict_json_parser_rejects_ambiguity_and_malformed_bytes[{\"a\":1,\"a\":2}]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00017905300001075375
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_strict_json_parser_rejects_ambiguity_and_malformed_bytes[{\"x\":NaN}]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00010283699975843774
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_strict_json_parser_rejects_ambiguity_and_malformed_bytes[{\"x\":Infinity}]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00010075299996969989
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_strict_json_parser_rejects_ambiguity_and_malformed_bytes[\\xff]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00010132399984286167
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_strict_json_parser_rejects_ambiguity_and_malformed_bytes[{]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0001115840000238677
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_strict_json_parser_rejects_ambiguity_and_malformed_bytes[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00048210300019491115
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_fragmented_utf8_body_counts_bytes_and_exact_limit",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0004901880001852987
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_receive_timeout_disconnect_and_content_length",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.010879879999720288
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_exact_output_limit_and_oversize_are_complete_json",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0017658199999459612
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_output_minus_at_plus_one_counts_wire_bytes_unicode_and_escapes[ascii-262143]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0016123669997796242
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_output_minus_at_plus_one_counts_wire_bytes_unicode_and_escapes[ascii-262144]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012825260000681737
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_output_minus_at_plus_one_counts_wire_bytes_unicode_and_escapes[ascii-262145]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0008407400000578491
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_output_minus_at_plus_one_counts_wire_bytes_unicode_and_escapes[raw_unicode-262143]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.005219644999669981
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_output_minus_at_plus_one_counts_wire_bytes_unicode_and_escapes[raw_unicode-262144]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.004332023999722878
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_output_minus_at_plus_one_counts_wire_bytes_unicode_and_escapes[raw_unicode-262145]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.002514965000045777
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_output_minus_at_plus_one_counts_wire_bytes_unicode_and_escapes[escaped_unicode-262143]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.002876838000247517
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_output_minus_at_plus_one_counts_wire_bytes_unicode_and_escapes[escaped_unicode-262144]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.002550512999732746
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_output_minus_at_plus_one_counts_wire_bytes_unicode_and_escapes[escaped_unicode-262145]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0012865430003330403
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_sdk_errors_and_invalid_responses_never_reflect_submitted_data",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005761130000792036
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_nonreading_peer_cannot_hold_error_response",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.01420412400011628
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_error_delivery_never_extends_remaining_total_budget",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.056305291000171565
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_http_boundary.py::test_installed_actual_http_exact_input_boundaries_and_fragmented_unicode",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.415734454000358
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_packaging.py::test_l4_source_or_installed_integrity_fail_closed",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.026368033999915497
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_packaging.py::test_l4_pinned_c1_and_locks_unchanged",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.026989582999703998
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_packaging.py::test_l4_two_independent_pure_wheels_and_c1_bytes",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.032147891000022355
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_packaging.py::test_l4_tampered_source_or_path_is_rejected",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0005283919999783393
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_packaging.py::test_l4_runner_uses_no_bind_mounts_or_exposed_ports",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.02674327100021401
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_packaging.py::test_l4_evidence_tar_is_bounded_and_no_overwrite_or_traversal",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.026980386000104772
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_packaging.py::test_l4_infrastructure_errors_retain_system_stderr_not_tokens",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.02750423800034696
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_scope.py::test_scope_is_frozen_detached_and_restored",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0016459220000797359
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_scope.py::test_timeout_keeps_all_four_slots_and_no_context_crossing",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.11342599299996436
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_scope.py::test_cancelled_awaiter_does_not_free_worker_and_b_continues",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.008127130000048055
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_scope.py::test_pool_does_not_retain_completed_scope_or_late_exception",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.23796971199999462
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_scope.py::test_provider_without_scope_fails_closed_and_lifetime_is_not_nested",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00026349499967182055
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_scope.py::test_real_ab_barrier_partitions_counters_audit_and_single_wrapper",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.005290398999932222
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_scope.py::test_error_and_noncooperative_a_leave_b_available",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.06188923099989552
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_scope.py::test_guard_counters_are_request_scoped",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.0019259069999861822
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_client_loopback_only[https://127.0.0.1:99/mcp]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00017566599990459508
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_client_loopback_only[http://localhost:99/mcp]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00018363200024396065
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_client_loopback_only[http://192.168.1.1/mcp]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00011155399988638237
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_client_loopback_only[http://127.0.0.1:99/mcp?a=b]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00010969999993903912
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_client_loopback_only[http://127.0.0.1:99/other]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 9.65350000114995e-05
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_client_loopback_only[http://user:pass@127.0.0.1:99/mcp]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 9.451000005356036e-05
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_client_loopback_only[http://127.0.0.1:99/mcp#fragment]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 9.65350000114995e-05
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_transport_locks_approved_endpoint_without_network",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.005471365000175865
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_redirects_to_approved_endpoint_never_replay_signed_header[302]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.00650281999969593
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_redirects_to_approved_endpoint_never_replay_signed_header[307]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.007061960000100953
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_redirects_to_approved_endpoint_never_replay_signed_header[308]",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 0.006331891999707295
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_official_sdk_smoke_and_single_use",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 3.074257163999846
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_http_identity_denials_and_binding",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.5460066739997274
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_interleaving_concurrency_same_ids_no_authority_reuse",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.6877240479998363
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_actual_blocked_provider_B_healthy_and_slot_retained",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 4.251257146000171
+    },
+    {
+      "nodeid": "xoc_mcp_lab_l4/tests/test_l4_sdk.py::test_l4_real_sdk_large_result_and_projection",
+      "when": "call",
+      "outcome": "passed",
+      "duration": 2.409239945000081
+    }
+  ],
+  "passed": 304,
+  "failed": 0,
+  "skipped": 0,
+  "suite": "unchanged C1 plus L4 together in installed candidate",
+  "c1_passed": 212,
+  "l4_passed": 92,
+  "environment": {
+    "python": "3.11.16 (main, Sep 11 2026, 13:05:54) [GCC 7.3.1 20180712 (Red Hat 7.3.1-18)]",
+    "os": {
+      "NAME": "\"Amazon Linux\"",
+      "VERSION": "\"2\"",
+      "ID": "\"amzn\"",
+      "ID_LIKE": "\"centos rhel fedora\"",
+      "VERSION_ID": "\"2\"",
+      "PRETTY_NAME": "\"Amazon Linux 2\"",
+      "ANSI_COLOR": "\"0;33\"",
+      "CPE_NAME": "\"cpe:2.3:o:amazon:amazon_linux:2\"",
+      "HOME_URL": "\"https://amazonlinux.com/\"",
+      "SUPPORT_END": "\"2026-06-30\"",
+      "VARIANT_ID": "\"202609030548-2.0.1752.0\""
+    },
+    "machine": "x86_64",
+    "libc": [
+      "glibc",
+      "2.26"
+    ],
+    "protocol": "2025-11-25",
+    "sdk": "1.30.0",
+    "cwd": "/tmp",
+    "network_routes": [
+      "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT                                                       "
+    ],
+    "uid": 10001,
+    "backend_checkout_mounted": false,
+    "executable": "/opt/xoc-l2/bin/python",
+    "prefix": "/opt/xoc-l2",
+    "sys_path": [
+      "/opt/xoc-l2/lib/python3.11/site-packages",
+      "/opt/xoc-l2/lib/python3.11/site-packages/xoc_mcp_lab_l4/tests",
+      "/opt/xoc-l2/lib/python3.11/site-packages/xoc_mcp_lab_harness/tests",
+      "/var/lang/lib/python311.zip",
+      "/var/lang/lib/python3.11",
+      "/var/lang/lib/python3.11/lib-dynload",
+      "/opt/xoc-l2/lib/python3.11/site-packages"
+    ],
+    "resources": {
+      "memory_current_bytes": 23261184,
+      "memory_limit_bytes": 536870912,
+      "memory_events": {
+        "oom_kill_disable": 0,
+        "under_oom": 0,
+        "oom_kill": 0
+      },
+      "memory_failcnt": 0,
+      "cpu_seconds": 0.1740799,
+      "cpu_quota_us": 200000,
+      "cpu_period_us": 100000
+    }
+  },
+  "final_children": "",
+  "final_resources": {
+    "pid": 7,
+    "VmRSS": 123068416,
+    "VmHWM": 125394944,
+    "Threads": 1,
+    "fds": 4,
+    "tasks": 1,
+    "cpu_ticks": 971,
+    "cgroup": {
+      "memory_current_bytes": 149725184,
+      "memory_limit_bytes": 536870912,
+      "memory_events": {
+        "oom_kill_disable": 0,
+        "under_oom": 0,
+        "oom_kill": 0
+      },
+      "memory_failcnt": 0,
+      "cpu_seconds": 148.9486965,
+      "cpu_quota_us": 200000,
+      "cpu_period_us": 100000
+    }
+  }
+}
