@@ -4,7 +4,7 @@ import logging
 import boto3
 
 from src.shared.errors import ValidationError
-from src.shared.tickets_store import get_tenant_ticket_or_404
+from src.shared.tickets_store import get_ticket_by_id_or_none, resolve_executable_plan
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +20,24 @@ def handler(event: dict, context) -> dict:
         raise ValidationError("ticketId is required")
 
     tenant_id = event.get("tenantId")
-    if not tenant_id:
-        item = get_tenant_ticket_or_404(0, ticket_id)
-        tenant_id = item.get("tenant_id")
+    ticket = get_ticket_by_id_or_none(ticket_id)
+    if not tenant_id and ticket:
+        tenant_id = ticket.get("tenant_id")
+
+    selected_plan = None
+    if approved:
+        selected_plan = resolve_executable_plan(ticket)
+        if selected_plan is None:
+            raise ValidationError("No action plan is available to execute for this ticket")
 
     if task_token and task_token != "pending":
-        output = json.dumps({"approved": bool(approved)})
+        output = {"approved": bool(approved)}
+        if approved and selected_plan is not None:
+            output["selected_plan"] = selected_plan
         try:
             stepfunctions.send_task_success(
                 taskToken=task_token,
-                output=output,
+                output=json.dumps(output),
             )
             logger.info("Step Functions callback sent for ticket %s (approved=%s)", ticket_id, approved)
         except Exception as exc:

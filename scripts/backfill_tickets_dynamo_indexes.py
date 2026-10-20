@@ -22,7 +22,7 @@ def main() -> None:
             status = item.get("status")
             created_at = item.get("created_at") or item.get("updated_at")
             if not ticket_id or tenant_id is None or not status or not created_at:
-                continue
+                continue 
 
             # The table also contains confirmation receipts, not just tickets.
             # Match the ticket's own identity, including historical items without entity_type.

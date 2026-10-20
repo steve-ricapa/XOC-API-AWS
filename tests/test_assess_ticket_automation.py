@@ -26,17 +26,17 @@ def _fake_db_session(runtime):
 
 class AssessTicketAutomationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.previous_base = os.environ.get("AGENTS_FUNCTION_BASE_URL")
+        self.previous_base = os.environ.get("AGENTS_FUNCTION_BASE_URL_VICTOR")
         self.previous_jwt = os.environ.get("JWT_SECRET_KEY")
-        os.environ["AGENTS_FUNCTION_BASE_URL"] = ""
+        os.environ["AGENTS_FUNCTION_BASE_URL_VICTOR"] = ""
         os.environ["JWT_SECRET_KEY"] = "test-secret"
         assess_ticket_automation.get_settings.cache_clear()
 
     def tearDown(self) -> None:
         if self.previous_base is None:
-            os.environ.pop("AGENTS_FUNCTION_BASE_URL", None)
+            os.environ.pop("AGENTS_FUNCTION_BASE_URL_VICTOR", None)
         else:
-            os.environ["AGENTS_FUNCTION_BASE_URL"] = self.previous_base
+            os.environ["AGENTS_FUNCTION_BASE_URL_VICTOR"] = self.previous_base
         if self.previous_jwt is None:
             os.environ.pop("JWT_SECRET_KEY", None)
         else:
@@ -44,7 +44,7 @@ class AssessTicketAutomationTests(unittest.TestCase):
         assess_ticket_automation.get_settings.cache_clear()
 
     def test_global_url_wins_and_marks_source_global(self) -> None:
-        os.environ["AGENTS_FUNCTION_BASE_URL"] = "http://10.0.0.5:8000"
+        os.environ["AGENTS_FUNCTION_BASE_URL_VICTOR"] = "http://10.0.0.5:8000"
         assess_ticket_automation.get_settings.cache_clear()
         base, route, source = assess_ticket_automation._resolve_victor_endpoint(7)
         self.assertEqual("http://10.0.0.5:8000", base)

@@ -96,13 +96,15 @@ class AssessmentContractTests(unittest.TestCase):
                 persist.assert_not_called()
 
     def test_push_event_uses_existing_type_self_and_safe_deep_link(self):
-        event = build_notification_event_for_ticket_status(tenant_id=7, ticket_id="t1", recipient_user_id=32, status="DERIVED")
-        self.assertEqual("ticket.derived", event["eventType"])
-        self.assertEqual("SELF", event["audienceType"])
-        self.assertEqual("32", event["recipientUserId"])
-        self.assertEqual("xoc://ticket/t1", event["deepLink"])
-        self.assertEqual("ticket.derived:7:t1:status", event["dedupeKey"])
-        self.assertNotIn("expir", event["body"])
+        for status in ("DERIVED", "DERIVADO"):
+            with self.subTest(status=status):
+                event = build_notification_event_for_ticket_status(tenant_id=7, ticket_id="t1", recipient_user_id=32, status=status)
+                self.assertEqual("ticket.derived", event["eventType"])
+                self.assertEqual("SELF", event["audienceType"])
+                self.assertEqual("32", event["recipientUserId"])
+                self.assertEqual("xoc://ticket/t1", event["deepLink"])
+                self.assertEqual("ticket.derived:7:t1:status", event["dedupeKey"])
+                self.assertNotIn("expir", event["body"])
 
     def test_push_failure_cannot_undo_persisted_result(self):
         with patch.object(store, "table"), patch.object(sync, "publish_ticket_status_notification", side_effect=RuntimeError("private")):
@@ -146,9 +148,9 @@ class DynamoAssessmentSyncTests(unittest.TestCase):
         self.assertEqual("STARTED", self.item()["execution_status"])
         self.assertTrue(self.finish())
         result = self.item()
-        self.assertEqual("DERIVED", result["status"])
+        self.assertEqual("DERIVADO", result["status"])
         self.assertEqual("CANNOT_RESOLVE", result["execution_status"])
-        self.assertEqual("TICKET#7#STATUS#DERIVED", result["gsi1pk"])
+        self.assertEqual("TICKET#7#STATUS#DERIVADO", result["gsi1pk"])
         self.assertIsNone(result["executed_at"])
         for key in ("gsi1sk", "gsi2pk", "gsi2sk", "gsi3pk", "gsi3sk", "created_by_user_id", "created_at", "action_plan", "pending_decision"):
             self.assertEqual(self.initial[key], result[key])

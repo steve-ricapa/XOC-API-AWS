@@ -1,5 +1,6 @@
 import json
 import boto3
+from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -9,7 +10,7 @@ from src.shared.config import get_settings
 from src.shared.dependencies import require_access_claims
 from src.shared.errors import AppError, ForbiddenError, NotFoundError, ValidationError
 from src.shared.logging import logger
-from src.shared.risk_config import is_role_sufficient
+from src.shared.risk_config import approval_requirement, is_role_sufficient
 from src.notifications.tickets import publish_ticket_status_notification
 from src.shared.tickets_store import (
     build_new_ticket_item,
@@ -18,6 +19,7 @@ from src.shared.tickets_store import (
     get_ticket_by_id_or_none,
     list_tenant_tickets,
     now_iso,
+    resolve_executable_plan,
     serialize_ticket,
     table,
     ticket_key,
@@ -229,44 +231,49 @@ def approve_ticket(ticket_id: str, claims: dict = Depends(require_access_claims)
     if item.get("status") != "PREAPROBADO":
         raise ValidationError("Only PREAPROBADO tickets can be approved")
     _assert_can_approve(claims, item)
-    pending_decision = item.get("pending_decision") or {}
-    recommended_option_id = pending_decision.get("recommended_option_id") if isinstance(pending_decision, dict) else None
-    selected_plan = None
-    if recommended_option_id:
-        selected_plan = _plan_steps_for_option(item, recommended_option_id)
+    selected_plan = resolve_executable_plan(item)
+    if selected_plan is None:
+        raise ValidationError("No action plan is available to execute for this ticket")
     _resume_workflow(item, approved=True, selected_plan=selected_plan)
     now = now_iso()
     secondary = build_secondary_index_fields(tenant_id, ticket_id, "APROBADO", item.get("created_at") or now)
-    table.update_item(
-        Key=ticket_key(tenant_id, ticket_id),
-        UpdateExpression="SET #status = :status, #approved_by_user_id = :uid, #approved_at = :at, #updated_at = :now, #execution_status = :exec_status, #gsi1pk = :gsi1pk, #gsi1sk = :gsi1sk, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk",
-        ExpressionAttributeValues={
-            ":status": "APROBADO",
-            ":uid": int(user_id) if user_id else None,
-            ":at": now,
-            ":now": now,
-            ":exec_status": "EXECUTING",
-            ":gsi1pk": secondary["gsi1pk"],
-            ":gsi1sk": secondary["gsi1sk"],
-            ":gsi2pk": secondary["gsi2pk"],
-            ":gsi2sk": secondary["gsi2sk"],
-            ":gsi3pk": secondary["gsi3pk"],
-            ":gsi3sk": secondary["gsi3sk"],
-        },
-        ExpressionAttributeNames={
-            "#status": "status",
-            "#approved_by_user_id": "approved_by_user_id",
-            "#approved_at": "approved_at",
-            "#updated_at": "updated_at",
-            "#execution_status": "execution_status",
-            "#gsi1pk": "gsi1pk",
-            "#gsi1sk": "gsi1sk",
-            "#gsi2pk": "gsi2pk",
-            "#gsi2sk": "gsi2sk",
-            "#gsi3pk": "gsi3pk",
-            "#gsi3sk": "gsi3sk",
-        },
-    )
+    try:
+        table.update_item(
+            Key=ticket_key(tenant_id, ticket_id),
+            UpdateExpression="SET #status = :status, #approved_by_user_id = :uid, #approved_at = :at, #updated_at = :now, #execution_status = :exec_status, #gsi1pk = :gsi1pk, #gsi1sk = :gsi1sk, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk",
+            ConditionExpression="#status = :preaprobado",
+            ExpressionAttributeValues={
+                ":status": "APROBADO",
+                ":uid": int(user_id) if user_id else None,
+                ":at": now,
+                ":now": now,
+                ":exec_status": "EXECUTING",
+                ":preaprobado": "PREAPROBADO",
+                ":gsi1pk": secondary["gsi1pk"],
+                ":gsi1sk": secondary["gsi1sk"],
+                ":gsi2pk": secondary["gsi2pk"],
+                ":gsi2sk": secondary["gsi2sk"],
+                ":gsi3pk": secondary["gsi3pk"],
+                ":gsi3sk": secondary["gsi3sk"],
+            },
+            ExpressionAttributeNames={
+                "#status": "status",
+                "#approved_by_user_id": "approved_by_user_id",
+                "#approved_at": "approved_at",
+                "#updated_at": "updated_at",
+                "#execution_status": "execution_status",
+                "#gsi1pk": "gsi1pk",
+                "#gsi1sk": "gsi1sk",
+                "#gsi2pk": "gsi2pk",
+                "#gsi2sk": "gsi2sk",
+                "#gsi3pk": "gsi3pk",
+                "#gsi3sk": "gsi3sk",
+            },
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            raise ValidationError("Ticket approval state changed, please refresh and try again")
+        raise
     updated = get_tenant_ticket_or_404(tenant_id, ticket_id)
     _emit_event("ticket.status_changed", tenant_id, ticket_id, {"status": "APROBADO"})
     publish_ticket_status_notification(
@@ -288,36 +295,43 @@ def reject_ticket(ticket_id: str, claims: dict = Depends(require_access_claims))
     _resume_workflow(item, approved=False)
     now = now_iso()
     secondary = build_secondary_index_fields(tenant_id, ticket_id, "RECHAZADO", item.get("created_at") or now)
-    table.update_item(
-        Key=ticket_key(tenant_id, ticket_id),
-        UpdateExpression="SET #status = :status, #rejected_by_user_id = :uid, #rejected_at = :at, #updated_at = :now, #execution_status = :exec_status, #gsi1pk = :gsi1pk, #gsi1sk = :gsi1sk, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk",
-        ExpressionAttributeValues={
-            ":status": "RECHAZADO",
-            ":uid": int(user_id) if user_id else None,
-            ":at": now,
-            ":now": now,
-            ":exec_status": "REJECTED",
-            ":gsi1pk": secondary["gsi1pk"],
-            ":gsi1sk": secondary["gsi1sk"],
-            ":gsi2pk": secondary["gsi2pk"],
-            ":gsi2sk": secondary["gsi2sk"],
-            ":gsi3pk": secondary["gsi3pk"],
-            ":gsi3sk": secondary["gsi3sk"],
-        },
-        ExpressionAttributeNames={
-            "#status": "status",
-            "#rejected_by_user_id": "rejected_by_user_id",
-            "#rejected_at": "rejected_at",
-            "#updated_at": "updated_at",
-            "#execution_status": "execution_status",
-            "#gsi1pk": "gsi1pk",
-            "#gsi1sk": "gsi1sk",
-            "#gsi2pk": "gsi2pk",
-            "#gsi2sk": "gsi2sk",
-            "#gsi3pk": "gsi3pk",
-            "#gsi3sk": "gsi3sk",
-        },
-    )
+    try:
+        table.update_item(
+            Key=ticket_key(tenant_id, ticket_id),
+            UpdateExpression="SET #status = :status, #rejected_by_user_id = :uid, #rejected_at = :at, #updated_at = :now, #execution_status = :exec_status, #gsi1pk = :gsi1pk, #gsi1sk = :gsi1sk, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk",
+            ConditionExpression="#status = :preaprobado",
+            ExpressionAttributeValues={
+                ":status": "RECHAZADO",
+                ":uid": int(user_id) if user_id else None,
+                ":at": now,
+                ":now": now,
+                ":exec_status": "REJECTED",
+                ":preaprobado": "PREAPROBADO",
+                ":gsi1pk": secondary["gsi1pk"],
+                ":gsi1sk": secondary["gsi1sk"],
+                ":gsi2pk": secondary["gsi2pk"],
+                ":gsi2sk": secondary["gsi2sk"],
+                ":gsi3pk": secondary["gsi3pk"],
+                ":gsi3sk": secondary["gsi3sk"],
+            },
+            ExpressionAttributeNames={
+                "#status": "status",
+                "#rejected_by_user_id": "rejected_by_user_id",
+                "#rejected_at": "rejected_at",
+                "#updated_at": "updated_at",
+                "#execution_status": "execution_status",
+                "#gsi1pk": "gsi1pk",
+                "#gsi1sk": "gsi1sk",
+                "#gsi2pk": "gsi2pk",
+                "#gsi2sk": "gsi2sk",
+                "#gsi3pk": "gsi3pk",
+                "#gsi3sk": "gsi3sk",
+            },
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            raise ValidationError("Ticket approval state changed, please refresh and try again")
+        raise
     updated = get_tenant_ticket_or_404(tenant_id, ticket_id)
     _emit_event("ticket.status_changed", tenant_id, ticket_id, {"status": "RECHAZADO"})
     publish_ticket_status_notification(
@@ -335,10 +349,7 @@ def select_ticket_decision(ticket_id: str, payload: dict, claims: dict = Depends
     pending_decision = item.get("pending_decision")
     if not pending_decision or not isinstance(pending_decision, dict):
         raise ValidationError("No pending decision found for this ticket")
-    required_role = pending_decision.get("required_approver_role", "USER")
     user_role = (claims.get("role") or "").upper()
-    if not is_role_sufficient(user_role, required_role):
-        raise ForbiddenError("Insufficient role to approve this decision")
     options = pending_decision.get("options", [])
     selected_option_id = payload.get("selected_option_id")
     if not selected_option_id:
@@ -347,22 +358,63 @@ def select_ticket_decision(ticket_id: str, payload: dict, claims: dict = Depends
     if selected_option_id not in option_ids:
         raise ValidationError("selected_option_id is not a valid option")
     chosen_plan = _plan_steps_for_option(item, selected_option_id)
-    if chosen_plan:
-        update_ticket_fields(tenant_id, ticket_id, {"action_plan": chosen_plan})
+    if not chosen_plan:
+        raise ValidationError("The selected option does not have executable steps")
+    # Re-evaluate risk on the CHOSEN plan, not the originally recommended one,
+    # so a riskier option cannot sneak past the approver role contract.
+    requirement = approval_requirement(chosen_plan)
+    if not is_role_sufficient(user_role, requirement["required_approver_role"]):
+        raise ForbiddenError(
+            f"Insufficient role to approve the selected plan. Required: {requirement['required_approver_role']}"
+        )
+    chosen_plan["risk_level"] = requirement["max_risk_level"]
+    update_ticket_fields(tenant_id, ticket_id, {"action_plan": chosen_plan})
     _resume_workflow(item, approved=True, selected_plan=chosen_plan)
     now = now_iso()
+    user_id = claims.get("userId") or claims.get("sub")
+    created_at = item.get("created_at") or now
+    secondary = build_secondary_index_fields(tenant_id, ticket_id, "APROBADO", created_at)
     table.update_item(
         Key=ticket_key(tenant_id, ticket_id),
-        UpdateExpression="SET #pending_decision = :null, #execution_status = :run, #updated_at = :now",
-        ExpressionAttributeValues={":null": None, ":run": "RUNNING", ":now": now},
+        UpdateExpression="SET #pending_decision = :null, #status = :aprobado, #execution_status = :executing, #approved_by_user_id = :uid, #approved_at = :at, #updated_at = :now, #gsi1pk = :gsi1pk, #gsi1sk = :gsi1sk, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk",
+        ConditionExpression="#status = :preaprobado",
+        ExpressionAttributeValues={
+            ":null": None,
+            ":aprobado": "APROBADO",
+            ":executing": "EXECUTING",
+            ":preaprobado": "PREAPROBADO",
+            ":uid": int(user_id) if user_id else None,
+            ":at": now,
+            ":now": now,
+            ":gsi1pk": secondary["gsi1pk"],
+            ":gsi1sk": secondary["gsi1sk"],
+            ":gsi2pk": secondary["gsi2pk"],
+            ":gsi2sk": secondary["gsi2sk"],
+            ":gsi3pk": secondary["gsi3pk"],
+            ":gsi3sk": secondary["gsi3sk"],
+        },
         ExpressionAttributeNames={
             "#pending_decision": "pending_decision",
+            "#status": "status",
             "#execution_status": "execution_status",
+            "#approved_by_user_id": "approved_by_user_id",
+            "#approved_at": "approved_at",
             "#updated_at": "updated_at",
+            "#gsi1pk": "gsi1pk",
+            "#gsi1sk": "gsi1sk",
+            "#gsi2pk": "gsi2pk",
+            "#gsi2sk": "gsi2sk",
+            "#gsi3pk": "gsi3pk",
+            "#gsi3sk": "gsi3sk",
         },
     )
     updated = _get_ticket_or_404(tenant_id, ticket_id)
-    _emit_event("ticket.decision_selected", tenant_id, ticket_id, {"selected_option_id": selected_option_id})
+    _emit_event("ticket.status_changed", tenant_id, ticket_id, {"status": "APROBADO", "selected_option_id": selected_option_id})
+    publish_ticket_status_notification(
+        tenant_id=tenant_id,
+        ticket_id=ticket_id,
+        status="APROBADO",
+    )
     return {"message": "Decision selected successfully", "ticket": serialize_ticket(updated)}
 
 
@@ -408,21 +460,63 @@ def custom_ticket_plan(ticket_id: str, payload: dict, claims: dict = Depends(req
             raise ValidationError("Victor could not generate a plan from your instructions")
         selected_plan = {"steps": plans[0].get("plan", []), "source": "custom"}
 
+    # Custom plans bypass Victor's original risk assessment, so the risk of the
+    # user-provided steps must be re-evaluated before the workflow executes them.
+    requirement = approval_requirement(selected_plan)
+    if not is_role_sufficient(user_role, requirement["required_approver_role"]):
+        raise ForbiddenError(
+            f"Insufficient role to approve a plan with risk level {requirement['max_risk_level']}. "
+            f"Required: {requirement['required_approver_role']}"
+        )
+    selected_plan["risk_level"] = requirement["max_risk_level"]
+
     update_ticket_fields(tenant_id, ticket_id, {"action_plan": selected_plan})
     _resume_workflow(item, approved=True, selected_plan=selected_plan)
     now = now_iso()
+    user_id = claims.get("userId") or claims.get("sub")
+    created_at = item.get("created_at") or now
+    secondary = build_secondary_index_fields(tenant_id, ticket_id, "APROBADO", created_at)
     table.update_item(
         Key=ticket_key(tenant_id, ticket_id),
-        UpdateExpression="SET #pending_decision = :null, #execution_status = :run, #updated_at = :now",
-        ExpressionAttributeValues={":null": None, ":run": "RUNNING", ":now": now},
+        UpdateExpression="SET #pending_decision = :null, #status = :aprobado, #execution_status = :executing, #approved_by_user_id = :uid, #approved_at = :at, #updated_at = :now, #gsi1pk = :gsi1pk, #gsi1sk = :gsi1sk, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk",
+        ConditionExpression="#status = :preaprobado",
+        ExpressionAttributeValues={
+            ":null": None,
+            ":aprobado": "APROBADO",
+            ":executing": "EXECUTING",
+            ":preaprobado": "PREAPROBADO",
+            ":uid": int(user_id) if user_id else None,
+            ":at": now,
+            ":now": now,
+            ":gsi1pk": secondary["gsi1pk"],
+            ":gsi1sk": secondary["gsi1sk"],
+            ":gsi2pk": secondary["gsi2pk"],
+            ":gsi2sk": secondary["gsi2sk"],
+            ":gsi3pk": secondary["gsi3pk"],
+            ":gsi3sk": secondary["gsi3sk"],
+        },
         ExpressionAttributeNames={
             "#pending_decision": "pending_decision",
+            "#status": "status",
             "#execution_status": "execution_status",
+            "#approved_by_user_id": "approved_by_user_id",
+            "#approved_at": "approved_at",
             "#updated_at": "updated_at",
+            "#gsi1pk": "gsi1pk",
+            "#gsi1sk": "gsi1sk",
+            "#gsi2pk": "gsi2pk",
+            "#gsi2sk": "gsi2sk",
+            "#gsi3pk": "gsi3pk",
+            "#gsi3sk": "gsi3sk",
         },
     )
     updated = _get_ticket_or_404(tenant_id, ticket_id)
-    _emit_event("ticket.decision_selected", tenant_id, ticket_id, {"custom": True})
+    _emit_event("ticket.status_changed", tenant_id, ticket_id, {"status": "APROBADO", "custom": True})
+    publish_ticket_status_notification(
+        tenant_id=tenant_id,
+        ticket_id=ticket_id,
+        status="APROBADO",
+    )
     return {"message": "Custom plan submitted successfully", "ticket": serialize_ticket(updated)}
 
 

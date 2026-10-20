@@ -42,8 +42,10 @@ def _assessment_guard() -> str:
 def sync_unresolvable_assessment(tenant_id: int, ticket_id: str, reason_code: str) -> bool:
     """Record the existing false assessment, once, scoped to its tenant.
 
-    DERIVED is an existing ticket status. It means manual review is required,
-    NOT that a human/team was assigned or that any action plan was executed.
+    DERIVADO is the canonical ticket status for "needs manual review".
+    It means manual review is required, NOT that a human/team was assigned or
+    that any action plan was executed. (Legacy tickets may still carry the
+    older DERIVED spelling; it remains a valid status for reads.)
     Never persist raw provider responses, request bodies or credentials here.
     """
     try:
@@ -55,7 +57,7 @@ def sync_unresolvable_assessment(tenant_id: int, ticket_id: str, reason_code: st
         table.update_item(
             Key=ticket_key(int(tenant_id), ticket_id),
             UpdateExpression=(
-                "SET #status = :derived, #run = :outcome, #assessment = :assessment, "
+                "SET #status = :derivado, #run = :outcome, #assessment = :assessment, "
                 "execution_summary = :message, updated_at = :now, gsi1pk = :statusIndex"
             ),
             ConditionExpression=_assessment_guard(),
@@ -65,9 +67,9 @@ def sync_unresolvable_assessment(tenant_id: int, ticket_id: str, reason_code: st
             },
             ExpressionAttributeValues={
                 ":tenant": int(tenant_id), ":pending": "PENDING", ":started": "STARTED",
-                ":nullType": "NULL", ":derived": "DERIVED", ":outcome": outcome,
+                ":nullType": "NULL", ":derivado": "DERIVADO", ":outcome": outcome,
                 ":message": message, ":now": completed_at,
-                ":statusIndex": status_index_pk(int(tenant_id), "DERIVED"),
+                ":statusIndex": status_index_pk(int(tenant_id), "DERIVADO"),
                 ":assessment": {
                     "outcome": outcome, "reason_code": reason_code,
                     "message": message, "completed_at": completed_at,
@@ -90,7 +92,7 @@ def sync_unresolvable_assessment(tenant_id: int, ticket_id: str, reason_code: st
                 tenant_id, ticket_id, outcome, reason_code)
     try:
         # Existing creator-only pipeline and dedupe key; never a tenant broadcast.
-        publish_ticket_status_notification(tenant_id=int(tenant_id), ticket_id=ticket_id, status="DERIVED")
+        publish_ticket_status_notification(tenant_id=int(tenant_id), ticket_id=ticket_id, status="DERIVADO")
     except Exception as exc:
         logger.warning("ticket_assessment_notification_failed tenant=%s ticket=%s errorType=%s",
                        tenant_id, ticket_id, type(exc).__name__)

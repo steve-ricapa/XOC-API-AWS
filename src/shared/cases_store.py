@@ -96,7 +96,7 @@ def create_case(
         "success": "SUCCESS",
         "failed_after_attempts": "FAILED_AFTER_ATTEMPTS",
         "rejected": "REJECTED",
-        "derivado": "DERIVED",
+        "derivado": "DERIVADO",
     }.get(action, "FAILED_AFTER_ATTEMPTS")
     item = {
         "sk": cases_sk(case_id),

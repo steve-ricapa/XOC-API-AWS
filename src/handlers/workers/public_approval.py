@@ -4,7 +4,7 @@ import logging
 import boto3
 
 from src.shared.risk_config import is_publicly_approvable
-from src.shared.tickets_store import get_ticket_by_id_or_none
+from src.shared.tickets_store import get_ticket_by_id_or_none, resolve_executable_plan
 
 logger = logging.getLogger(__name__)
 stepfunctions = boto3.client("stepfunctions")
@@ -31,11 +31,20 @@ def handler(event: dict, context) -> dict:
         if not is_publicly_approvable(max_risk_level):
             return {"statusCode": 403, "body": json.dumps({"error": "Public approval not allowed for this risk level"})}
 
+    selected_plan = None
+    if approved:
+        selected_plan = resolve_executable_plan(ticket)
+        if selected_plan is None:
+            return {"statusCode": 400, "body": json.dumps({"error": "No action plan is available to execute for this ticket"})}
+
     if task_token:
         try:
+            output = {"approved": bool(approved)}
+            if approved and selected_plan is not None:
+                output["selected_plan"] = selected_plan
             stepfunctions.send_task_success(
                 taskToken=task_token,
-                output=json.dumps({"approved": bool(approved)}),
+                output=json.dumps(output),
             )
             logger.info("Task success sent for ticket %s (approved=%s)", ticket_id, approved)
         except Exception as e:

@@ -180,6 +180,7 @@ module.exports = function automationResources(stage) {
                       'solutionApplied.$': '$.statusCheck.solutionApplied',
                       'attemptsLog.$': '$.state.attemptsLog',
                       'maxRiskLevel.$': '$.state.maxRiskLevel',
+                      'plans.$': '$.state.plans',
                       'similarCaseId.$': '$.state.similarCaseId',
                     },
                     ResultPath: '$.state',

@@ -227,7 +227,7 @@ class TicketApprovalFlowTests(unittest.TestCase):
             tickets_dynamo, "update_ticket_fields"
         ) as mock_update, patch.object(tickets_dynamo, "table") as mock_table, patch.object(
             tickets_dynamo, "_emit_event"
-        ):
+        ), patch.object(tickets_dynamo, "publish_ticket_status_notification"):
             mock_table.update_item.return_value = None
             with patch.object(tickets_dynamo.stepfunctions, "send_task_success") as mock_send:
                 tickets_dynamo.select_ticket_decision(
@@ -237,9 +237,35 @@ class TicketApprovalFlowTests(unittest.TestCase):
                 )
         mock_send.assert_called_once_with(
             taskToken="tok-123",
-            output='{"approved": true, "selected_plan": {"steps": [{"order": 1, "command": "sel"}], "source": "plan-selection"}}',
+            output='{"approved": true, "selected_plan": {"steps": [{"order": 1, "command": "sel"}], "source": "plan-selection", "risk_level": "basic"}}',
         )
-        mock_update.assert_called_once_with(7, "t1", {"action_plan": {"steps": [{"order": 1, "command": "sel"}], "source": "plan-selection"}})
+        mock_update.assert_called_once_with(
+            7,
+            "t1",
+            {"action_plan": {"steps": [{"order": 1, "command": "sel"}], "source": "plan-selection", "risk_level": "basic"}},
+        )
+        # BUG 3 regression: selection must move the ticket into APROBADO/EXECUTING.
+        update_kwargs = mock_table.update_item.call_args.kwargs
+        self.assertEqual("APROBADO", update_kwargs["ExpressionAttributeValues"][":aprobado"])
+        self.assertEqual("EXECUTING", update_kwargs["ExpressionAttributeValues"][":executing"])
+        self.assertEqual("PREAPROBADO", update_kwargs["ExpressionAttributeValues"][":preaprobado"])
+
+    def test_select_decision_blocks_option_above_user_role(self) -> None:
+        item = self._preaprobado_ticket()
+        item["pending_decision"]["options"] = [
+            {"option_id": "p1", "plan": [{"order": 1, "command": "wipe", "action_type": "wipe"}]},
+        ]
+        with patch.object(tickets_dynamo, "_get_ticket_or_404", return_value=item), patch.object(
+            tickets_dynamo, "table"
+        ) as mock_table, patch.object(tickets_dynamo.stepfunctions, "send_task_success") as mock_send:
+            with self.assertRaises(tickets_dynamo.ForbiddenError):
+                tickets_dynamo.select_ticket_decision(
+                    "t1",
+                    {"selected_option_id": "p1"},
+                    {"role": "USER", "tenantId": 7},
+                )
+        mock_send.assert_not_called()
+        mock_table.update_item.assert_not_called()
 
 
 class GenerateCaseTests(unittest.TestCase):

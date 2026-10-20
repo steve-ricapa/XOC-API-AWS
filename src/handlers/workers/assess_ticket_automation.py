@@ -115,7 +115,11 @@ def _normalize_plans(data) -> list:
         data = {}
 
     plans = data.get("plans")
-    if isinstance(plans, list) and len(plans) > 0:
+    if isinstance(plans, list):
+        # Cuando Victor responde con el formato multi-plan, esa lista es
+        # autoritativa: si no contiene ningun plan ejecutable se devuelve vacio
+        # (y la fase plan falla) en vez de caer al plan legacy, que podria ser
+        # un residuo de un ciclo anterior y provocaria un falso RESUELTO.
         normalized = []
         for idx, raw in enumerate(plans):
             if not isinstance(raw, dict):
@@ -134,8 +138,7 @@ def _normalize_plans(data) -> list:
                 "risk_level": raw.get("risk_level") or "",
                 "plan": steps,
             })
-        if normalized:
-            return normalized
+        return normalized
 
     single = data.get("plan", data)
     steps = single.get("steps", []) if isinstance(single, dict) else single if isinstance(single, list) else []

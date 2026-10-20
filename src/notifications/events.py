@@ -297,7 +297,7 @@ def build_notification_event_for_ticket_status(
         "DERIVED": (
             "ticket.derived",
             "Tu ticket requiere revisión manual",
-            "La evaluación automática terminó sin pasar a ejecución. Revisa el detalle del ticket.",
+            "La automatización no pudo continuar y tu ticket requiere atención manual. Revisa el detalle del ticket.",
             "high",
         ),
         "APROBADO": (
@@ -332,8 +332,8 @@ def build_notification_event_for_ticket_status(
         ),
         "DERIVADO": (
             "ticket.derived",
-            "Ticket derivado",
-            "El tiempo de aprobaciÃ³n expirÃ³ y tu ticket fue derivado para atenciÃ³n manual.",
+            "Tu ticket requiere revisión manual",
+            "La automatización no pudo continuar y tu ticket requiere atención manual. Revisa el detalle del ticket.",
             "high",
         ),
     }.get(normalized_status)

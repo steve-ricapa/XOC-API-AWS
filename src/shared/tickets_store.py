@@ -390,3 +390,48 @@ def create_ticket_from_agent(
     _emit_ticket_event("ticket.created", tenant_id, ticket_id, {"subject": subject, "status": item["status"]})
     logger.info("Ticket created from agent: tenant=%s ticket=%s subject=%s", tenant_id, ticket_id, subject)
     return {"ticket_id": ticket_id, "ticket": serialize_ticket(item)}
+
+
+def resolve_executable_plan(item: dict | None) -> dict | None:
+    """Resuelve el plan que debe ejecutarse para un ticket en aprobacion.
+
+    Orden de prioridad:
+      1. Opcion recomendada en pending_decision.options.
+      2. Primera opcion valida de pending_decision.options.
+      3. action_plan persistido en el ticket (plan recomendado de la fase plan).
+
+    Retorna {"steps": [...], ...} o None si no hay ningun plan ejecutable.
+    La ausencia de plan al aprobar es un estado invalido: el llamador debe
+    rechazar la aprobacion en lugar de resumir el workflow sin plan (lo que
+    romperia ExecuteTicketPlan con States.Runtime).
+    """
+    if not isinstance(item, dict):
+        return None
+
+    pending_decision = item.get("pending_decision") or {}
+    if not isinstance(pending_decision, dict):
+        pending_decision = {}
+    options = pending_decision.get("options") or []
+    if isinstance(options, list) and options:
+        ordered = []
+        recommended_id = pending_decision.get("recommended_option_id")
+        for option in options:
+            if not isinstance(option, dict):
+                continue
+            if option.get("option_id") == recommended_id:
+                ordered.insert(0, option)
+            else:
+                ordered.append(option)
+        for option in ordered:
+            steps = option.get("plan")
+            if isinstance(steps, list) and len(steps) > 0:
+                return {"steps": steps, "source": "plan-selection"}
+
+    action_plan = item.get("action_plan")
+    if isinstance(action_plan, dict):
+        steps = action_plan.get("steps")
+        if isinstance(steps, list) and len(steps) > 0:
+            return action_plan
+    if isinstance(action_plan, list) and len(action_plan) > 0:
+        return {"steps": action_plan, "source": "action_plan"}
+    return None
