@@ -42,15 +42,28 @@ Plantilla: `infra/test-server-prod.yml`
    - `SubnetId`: `xoc-prod-public-a` (10.20.0.0/24)
    - `KeyName`: vacio (acceso solo por SSM)
    - `InstanceType`: `t3.small` (minimo recomendado: compila la imagen de VICTOR)
-   - `VictorCidr`: `10.20.0.0/16` (o `10.20.0.22/32`)
+   - `AmiId`/`CustomAmiId`: deja `AmiId` default o pon el ID de tu AMI en `CustomAmiId` (ej. Cloud 9 Ubuntu22)
+   - `VictorCidr`: `10.20.0.0/16` (para las Lambdas y VICTOR)
+   - `SshCidr`: tu IP publica `/32` si vas a entrar por SSH
    - `AllocateElasticIp`: `true` (IP publica fija)
-   - `BootstrapScriptUrl`: dejar default (raw GitHub `main`)
+   - `BootstrapScriptUrl`: dejar default (`bootstrap-victor-lab.sh`)
    - `InstallVictor`: `true`
    - `VictorRepoRef`: `main`
    - `AnthropicApiKey`: (NoEcho) la misma key que usa VICTOR on-prem; si la dejas vacia, completala luego por SSM en `/opt/victor/.env`
    - `AzureEndpoint` / `AnthropicModel` / `AzureDeployment`: dejar defaults salvo que tu deployment use otro nombre
-3. La plantilla crea: IAM role con `AmazonSSMManagedInstanceCore`, SG (SSH/ICMP/8000 solo desde la red de VICTOR, egress total), EC2 Ubuntu 24.04 y EIP. El UserData siembra los artefactos e instala Docker + VICTOR (`/opt/victor`, `docker compose up -d --build`).
+3. La plantilla crea: IAM role con `AmazonSSMManagedInstanceCore`, SG (SSH/ICMP/8000 solo desde los CIDR configurados, egress total), EC2 Ubuntu y EIP. El UserData descarga `scripts/bootstrap-victor-lab.sh`, que agrega swap, instala Docker (get.docker.com), siembra los artefactos y levanta VICTOR (`/opt/victor`, `docker compose up -d --build`).
 4. Cuando el stack este `CREATE_COMPLETE`, anota `PrivateIp`, `PublicIp`, `VictorBaseUrl` e `InstanceId`. El build de VICTOR puede tardar varios minutos despues de que la instancia este `running`; espera `/opt/victor/READY`.
+
+### Si ya creaste la EC2 a mano (sin CloudFormation)
+
+Con la instancia en la VPC/subred correctas y el SG con `8000/tcp` desde `10.20.0.0/16`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/steve-ricapa/XOC-API-AWS/main/scripts/bootstrap-victor-lab.sh -o /tmp/bootstrap.sh
+sudo ANTHROPIC_API_KEY="<key>" INSTALL_VICTOR=true bash /tmp/bootstrap.sh
+```
+
+Ese unico comando hace swap, Docker, seed, clona VICTOR, monta `/opt/xoc-test` en el executor, levanta los contenedores y espera `/health`.
 
 ### Verificar sin SSH (desde AWS CloudShell)
 

@@ -33,12 +33,22 @@ Parameters:
   AmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
-    Description: AMI Ubuntu 24.04 LTS (resuelta por SSM, siempre vigente).
+    Description: AMI Ubuntu 24.04 LTS por defecto (resuelta por SSM). Se ignora si defines CustomAmiId.
+
+  CustomAmiId:
+    Type: String
+    Default: ''
+    Description: (Opcional) AMI ID propia, por ejemplo tu "Cloud 9 Ubuntu22" (ami-xxxxxxxx). Vacio = usa AmiId.
 
   VictorCidr:
     Type: String
     Default: 10.20.0.0/16
-    Description: CIDR permitido hacia SSH/ICMP (red donde vive VICTOR/on-prem).
+    Description: CIDR permitido hacia VICTOR :8000 e ICMP (red de las Lambdas/VPC).
+
+  SshCidr:
+    Type: String
+    Default: 10.20.0.0/16
+    Description: CIDR permitido hacia SSH :22. Pon tu IP publica /32 si vas a entrar por SSH desde fuera.
 
   AllocateElasticIp:
     Type: String
@@ -48,8 +58,13 @@ Parameters:
 
   BootstrapScriptUrl:
     Type: String
+    Default: https://raw.githubusercontent.com/steve-ricapa/XOC-API-AWS/main/scripts/bootstrap-victor-lab.sh
+    Description: Script que instala Docker, siembra artefactos y levanta VICTOR.
+
+  SeedScriptUrl:
+    Type: String
     Default: https://raw.githubusercontent.com/steve-ricapa/XOC-API-AWS/main/scripts/test-server-seed.sh
-    Description: URL del script de seed (artefactos simulados). Si falla, el UserData crea un seed minimo.
+    Description: Script de artefactos simulados. Si falla, el bootstrap crea un seed minimo.
 
   InstallVictor:
     Type: String
@@ -90,6 +105,7 @@ Parameters:
 
 Conditions:
   HasKey: !Not [!Equals [!Ref KeyName, '']]
+  HasCustomAmi: !Not [!Equals [!Ref CustomAmiId, '']]
   CreateEip: !Equals [!Ref AllocateElasticIp, 'true']
 
 Resources:
@@ -118,14 +134,14 @@ Resources:
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: XOC test target - SSM only, VICTOR reachability
+      GroupDescription: XOC test lab - SSM, VICTOR reachability, optional SSH
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: !Ref VictorCidr
-          Description: SSH desde red VICTOR/on-prem
+          CidrIp: !Ref SshCidr
+          Description: SSH desde el CIDR configurado (tu IP /32 o la VPC)
         - IpProtocol: tcp
           FromPort: 8000
           ToPort: 8000
@@ -149,7 +165,7 @@ Resources:
   Instance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: !Ref AmiId
+      ImageId: !If [HasCustomAmi, !Ref CustomAmiId, !Ref AmiId]
       InstanceType: !Ref InstanceType
       KeyName: !If [HasKey, !Ref KeyName, !Ref 'AWS::NoValue']
       IamInstanceProfile: !Ref InstanceProfile
@@ -175,83 +191,33 @@ Resources:
 
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -y
-            apt-get install -y curl ca-certificates jq unzip nano less procps
+            apt-get install -y curl ca-certificates
+            mkdir -p /opt/xoc-test
 
-            mkdir -p /opt/xoc-test/logs
-            BOOTSTRAP_URL="${BootstrapUrl}"
+            curl -fsSL --retry 3 --connect-timeout 10 "${BootstrapUrl}" -o /opt/xoc-test/bootstrap.sh
+            chmod +x /opt/xoc-test/bootstrap.sh
 
-            if curl -fsSL --retry 3 --connect-timeout 10 "$BOOTSTRAP_URL" -o /opt/xoc-test/seed.sh; then
-              chmod +x /opt/xoc-test/seed.sh
-              /opt/xoc-test/seed.sh | tee -a /var/log/xoc-test-bootstrap.log
-            else
-              echo "WARN: no se pudo descargar $BOOTSTRAP_URL; creando seed minimo" | tee -a /var/log/xoc-test-bootstrap.log
-              mkdir -p /opt/xoc-test/incident
-              printf 'X5O!P%%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*\n' > /opt/xoc-test/incident/eicar_test.txt
-              cat > /opt/xoc-test/incident/backdoor.sh <<'EOF2'
-            #!/bin/bash
-            echo "[SIMULATED BACKDOOR] beacon to 192.0.2.10:4444 (no network call)"
-            EOF2
-              chmod +x /opt/xoc-test/incident/backdoor.sh
-              echo '{"generated_at":"'"$(date -Is)"'","source":"userdata-fallback","files":["/opt/xoc-test/incident/eicar_test.txt","/opt/xoc-test/incident/backdoor.sh"]}' > /opt/xoc-test/incident/manifest.json
-            fi
-
-            echo "XOC test target ready" > /opt/xoc-test/READY
-
-            if [ "${InstallVictor}" = "true" ]; then
-              echo "Installing VICTOR on-premise (server + executor)..."
-              apt-get install -y -o DPkg::Lock::Timeout=120 git docker.io docker-compose-v2 || apt-get install -y -o DPkg::Lock::Timeout=120 git docker.io docker-compose
-              systemctl enable --now docker
-              usermod -aG docker ubuntu || true
-              mkdir -p /var/quarantine
-
-              if [ ! -d /opt/victor/.git ]; then
-                git clone --branch "${VictorRepoRef}" "${VictorRepoUrl}" /opt/victor
-              fi
-              cd /opt/victor
-              git fetch --all --tags --prune
-              git checkout "${VictorRepoRef}"
-              git reset --hard "origin/${VictorRepoRef}" || true
-
-              set +x
-              cat > /opt/victor/.env <<'EOF_ENV'
+            set +x
+            cat > /opt/xoc-lab-bootstrap.env <<'EOF_ENV'
             ANTHROPIC_API_KEY=${AnthropicApiKey}
             ANTHROPIC_MODEL=${AnthropicModel}
             AZURE_ENDPOINT=${AzureEndpoint}
             AZURE_DEPLOYMENT=${AzureDeployment}
-            EXECUTOR_URL=http://executor:8888
-            PORT=8000
-            STAGE=prod
+            INSTALL_VICTOR=${InstallVictor}
+            SWAP_SIZE=2G
+            VICTOR_REPO_URL=${VictorRepoUrl}
+            VICTOR_REPO_REF=${VictorRepoRef}
+            SEED_SCRIPT_URL=${SeedUrl}
             EOF_ENV
-              chmod 600 /opt/victor/.env
-              set -x
+            chmod 600 /opt/xoc-lab-bootstrap.env
+            set -a
+            . /opt/xoc-lab-bootstrap.env
+            set +a
+            set -x
 
-              cat > /opt/victor/docker-compose.override.yml <<'EOF_OVR'
-            services:
-              executor:
-                volumes:
-                  - /tmp:/tmp:rw
-                  - /var/quarantine:/var/quarantine:rw
-                  - /opt/xoc-test:/opt/xoc-test:rw
-            EOF_OVR
-
-              if docker compose version >/dev/null 2>&1; then
-                docker compose up -d --build
-              else
-                docker-compose up -d --build
-              fi
-
-              for _ in $(seq 1 60); do
-                if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
-                  echo "VICTOR healthy" > /opt/victor/READY
-                  break
-                fi
-                sleep 5
-              done
-              echo "VICTOR bootstrap finished"
-            fi
-
-            echo "XOC lab ready" > /opt/xoc-test/READY
+            /opt/xoc-test/bootstrap.sh
           - BootstrapUrl: !Ref BootstrapScriptUrl
+            SeedUrl: !Ref SeedScriptUrl
             InstallVictor: !Ref InstallVictor
             VictorRepoUrl: !Ref VictorRepoUrl
             VictorRepoRef: !Ref VictorRepoRef
@@ -295,11 +261,11 @@ Outputs:
       --region ${AWS::Region}
       --query Command.CommandId --output text
   SsmRunSeedCommand:
-    Description: Ejecutar el seed completo desde AWS CloudShell (sin SSH).
+    Description: Re-ejecutar el seed de artefactos desde AWS CloudShell (sin SSH).
     Value: !Sub >-
       aws ssm send-command --document-name AWS-RunShellScript
       --targets "Key=tag:xoc:role,Values=test-target"
       --comment "xoc-test-seed"
-      --parameters '{"commands":["sudo /opt/xoc-test/seed.sh"]}'
+      --parameters '{"commands":["sudo curl -fsSL https://raw.githubusercontent.com/steve-ricapa/XOC-API-AWS/main/scripts/test-server-seed.sh -o /tmp/xoc-seed.sh && sudo bash /tmp/xoc-seed.sh"]}'
       --region ${AWS::Region}
       --query Command.CommandId --output text
