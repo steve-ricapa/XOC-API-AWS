@@ -159,6 +159,24 @@ approve_as() {
     log "  $label -> HTTP $STATUS ${BODY:+}"
 }
 
+custom_plan_as() {
+    local token="$1" ticket_id="$2" label="$3"
+    local payload
+    payload="$(python3 -c '
+import json
+print(json.dumps({"custom_plan_steps": [{
+    "order": 1,
+    "action": "shell",
+    "command": "echo purga-irreversible-simulada",
+    "description": "Purga irreversible simulada para validar gobernanza",
+    "risk_level": "critical",
+}]}))
+')"
+    http PATCH "/tickets/$ticket_id/decision/custom" "$token" "$payload"
+    printf '%s|%s' "$STATUS" "$(printf '%s' "$BODY" | jget error)"
+    log "  $label -> HTTP $STATUS ${BODY:+}"
+}
+
 declare -a TICKET_IDS=() REQUIRED=() MAXRISK=() OPTIONS=() TITLES=()
 
 SPECS=(
@@ -258,6 +276,22 @@ for idx in "${!TICKET_IDS[@]}"; do
             ;;
     esac
 done
+
+if [[ -n "$OPERATOR_TOKEN" ]]; then
+    rule
+    log "Prueba custom critical (plan custom con risk_level=critical)"
+    CRIT_ID="$(create_ticket "Purga irreversible de laboratorio" "Se requiere purgar de forma irreversible el entorno de pruebas. Accion simulada, sin impacto real.")" || exit 1
+    log "  ticket $CRIT_ID"
+    if poll_preaprobado "$CRIT_ID" >/dev/null; then
+        custom_plan_as "$USER_TOKEN" "$CRIT_ID" "USER (esperado 403)"
+        custom_plan_as "$ADMIN_TOKEN" "$CRIT_ID" "ADMIN (esperado 403)"
+        custom_plan_as "$OPERATOR_TOKEN" "$CRIT_ID" "ADMIN_XOC (esperado 200)"
+    else
+        warn "El ticket custom no alcanzo PREAPROBADO; se omite"
+    fi
+else
+    warn "Sin token ADMIN_XOC; se omite la prueba custom critical"
+fi
 
 rule
 log "Fin. Revisa los tickets en https://xoc-frontend.firebaseapp.com/dashboard (tenant $TENANT_ID)"
