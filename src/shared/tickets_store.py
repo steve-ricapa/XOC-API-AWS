@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -279,6 +280,23 @@ def build_new_ticket_item(payload: dict, tenant_id: int, user_id: int | None) ->
     return ticket_id, item
 
 
+def _dynamo_safe(value):
+    """Convierte floats a Decimal de forma recursiva.
+
+    DynamoDB no soporta el tipo float nativo (boto3 lanza
+    ``TypeError: Float types are not supported``). execution_logs y otros
+    payloads pueden traer floats (p.ej. duration_seconds), asi que se
+    normalizan antes de escribir.
+    """
+    if isinstance(value, float):
+        return Decimal(str(value))
+    if isinstance(value, dict):
+        return {k: _dynamo_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_dynamo_safe(v) for v in value]
+    return value
+
+
 def update_ticket_fields(tenant_id: int, ticket_id: str, payload: dict) -> dict:
     item = get_tenant_ticket_or_404(tenant_id, ticket_id)
     if not payload:
@@ -314,7 +332,7 @@ def update_ticket_fields(tenant_id: int, ticket_id: str, payload: dict) -> dict:
             status_changed = True
             new_status = value
         updates.append(f"#{attr} = :{attr}")
-        expr_values[f":{attr}"] = value
+        expr_values[f":{attr}"] = _dynamo_safe(value)
         expr_names[f"#{attr}"] = attr
 
     if payload.get("status") and normalize_status(payload["status"]) in ("EXECUTED", "RESUELTO"):

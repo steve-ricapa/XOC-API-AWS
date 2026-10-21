@@ -318,6 +318,25 @@ class AssessTicketAutomationTests(unittest.TestCase):
         self.assertIn("No such file", fields["execution_logs"]["timeline"][0]["detail"])
         self.assertEqual("failed", fields["execution_logs"]["final_result"]["status"])
 
+    def test_execution_logs_are_dynamo_serializable(self) -> None:
+        from boto3.dynamodb.types import TypeSerializer
+
+        from src.shared.tickets_store import _dynamo_safe
+
+        logs = assess_ticket_automation._build_execution_logs(
+            ticket_id="t8",
+            step_results=[
+                {"order": 1, "command": "ls -la /opt/xoc-test", "description": "Listar",
+                 "success": True, "status": "ok", "returncode": 0, "stdout": "ok", "stderr": ""},
+            ],
+            all_success=True,
+            summary="Listar: OK",
+            duration_seconds=1.25,
+        )
+        self.assertIsInstance(logs["duration_seconds"], float)
+        serialized = TypeSerializer().serialize(_dynamo_safe(logs))
+        self.assertIn("N", serialized["M"]["duration_seconds"])
+
 
 if __name__ == "__main__":
     unittest.main()
