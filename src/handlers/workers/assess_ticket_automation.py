@@ -1,6 +1,7 @@
 import logging
 import os
-from datetime import timedelta
+import time
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -135,6 +136,7 @@ def _normalize_plans(data) -> list:
                 "plan_id": raw.get("plan_id") or f"plan-{idx + 1}",
                 "title": raw.get("title") or f"Plan {idx + 1}",
                 "plan_summary": raw.get("plan_summary") or raw.get("summary") or "",
+                "analysis": raw.get("analysis") or raw.get("plan_analysis") or "",
                 "total_steps": raw.get("total_steps") or len(steps),
                 "risk_level": raw.get("risk_level") or "",
                 "plan": steps,
@@ -151,6 +153,7 @@ def _normalize_plans(data) -> list:
         "plan_id": "plan-1",
         "title": "Plan de remediacion",
         "plan_summary": data.get("plan_summary") or data.get("summary") or "",
+        "analysis": data.get("analysis") or "",
         "total_steps": data.get("total_steps") or len(steps),
         "risk_level": data.get("risk_level") or "",
         "plan": steps,
@@ -200,6 +203,71 @@ def _fallback_response(phase: str, ticket_id: str, tenant_id: int, subject: str,
     }
 
 
+def _build_execution_logs(
+    ticket_id: str,
+    step_results: list,
+    all_success: bool,
+    summary: str,
+    duration_seconds: float | None = None,
+) -> dict:
+    """Construye el bloque `execution_logs` que consume el frontend.
+
+    Formato (ExecutionLogsPayload):
+      run_id, correlation_id, iterations, duration_seconds,
+      final_result{status,message,stdout,stderr,artifact_path},
+      timeline[{ts,step,status,detail}], decision_history
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    timeline = []
+    for idx, raw_step in enumerate(step_results):
+        if not isinstance(raw_step, dict):
+            continue
+        status = raw_step.get("status") or ("ok" if raw_step.get("success", True) else "failed")
+        label = (
+            raw_step.get("description")
+            or raw_step.get("tool")
+            or raw_step.get("command")
+            or f"Paso {idx + 1}"
+        )
+        details = []
+        command = raw_step.get("command")
+        if command:
+            details.append(str(command))
+        returncode = raw_step.get("returncode")
+        if returncode is not None:
+            details.append(f"rc={returncode}")
+        stderr = (raw_step.get("stderr") or "").strip()
+        stdout = (raw_step.get("stdout") or "").strip()
+        if stderr:
+            details.append(stderr[:300])
+        elif stdout:
+            details.append(stdout[:300])
+        for warning in raw_step.get("warnings") or []:
+            details.append(str(warning))
+        timeline.append({
+            "ts": now,
+            "step": f"{idx + 1}. {label}",
+            "status": str(status),
+            "detail": " | ".join(d for d in details if d)[:600],
+        })
+
+    return {
+        "run_id": f"{ticket_id}-{int(datetime.now(timezone.utc).timestamp())}",
+        "correlation_id": ticket_id,
+        "iterations": len(timeline),
+        "duration_seconds": round(duration_seconds, 2) if duration_seconds is not None else None,
+        "final_result": {
+            "status": "completed" if all_success else "failed",
+            "message": summary,
+            "stdout": "",
+            "stderr": "",
+            "artifact_path": None,
+        },
+        "timeline": timeline,
+        "decision_history": [],
+    }
+
+
 def handler(event: dict, context) -> dict:
     ticket_id = event.get("ticketId")
     tenant_id = event.get("tenantId")
@@ -243,6 +311,7 @@ def handler(event: dict, context) -> dict:
     )
 
     try:
+        request_started = time.monotonic()
         response = requests.post(
             full_url,
             json=payload,
@@ -306,24 +375,41 @@ def handler(event: dict, context) -> dict:
             raise ValidationError("Cannot execute: no action plan steps present for this ticket")
         plan_from_event = execute_plan
         all_success = bool(data.get("all_success", False))
+        step_results = data.get("step_results", [])
+        step_results = step_results if isinstance(step_results, list) else []
+        summary_parts = []
+        for r in step_results:
+            if not isinstance(r, dict):
+                summary_parts.append(str(r)[:100])
+                continue
+            label = (
+                r.get("description")
+                or r.get("tool")
+                or r.get("command")
+                or r.get("action")
+                or "?"
+            )
+            status = r.get("status")
+            if not status:
+                status = "ok" if r.get("success", True) else "failed"
+            detail = (r.get("output") or r.get("result") or r.get("stdout") or "")[:100]
+            summary_parts.append(f"{label}: {str(status).upper()}" + (f" ({detail})" if detail else ""))
+        execution_summary = "; ".join(summary_parts)[:500] or str(data)[:500]
+        execution_logs = _build_execution_logs(
+            ticket_id=str(ticket_id),
+            step_results=step_results,
+            all_success=all_success,
+            summary=execution_summary,
+            duration_seconds=time.monotonic() - request_started,
+        )
         if all_success:
-            step_results = data.get("step_results", [])
-            summary_parts = []
-            for r in (step_results if isinstance(step_results, list) else []):
-                if isinstance(r, dict):
-                    tool = r.get("tool", r.get("action", "?"))
-                    ok = "OK" if r.get("success", True) else "FAIL"
-                    detail = (r.get("output") or r.get("result") or "")[:100]
-                    summary_parts.append(f"{tool}: {ok}" + (f" ({detail})" if detail else ""))
-                else:
-                    summary_parts.append(str(r)[:100])
-            execution_summary = "; ".join(summary_parts)[:500] or str(data)[:500]
             try:
                 from src.shared.tickets_store import update_ticket_fields
                 update_ticket_fields(int(tenant_id), ticket_id, {
                     "status": "RESUELTO",
                     "execution_status": "EXECUTED",
                     "execution_summary": execution_summary,
+                    "execution_logs": execution_logs,
                 })
                 publish_ticket_status_notification(
                     tenant_id=int(tenant_id),
@@ -333,8 +419,20 @@ def handler(event: dict, context) -> dict:
                 logger.info("Ticket %s marked as RESUELTO after successful execution", ticket_id)
             except Exception as exc:
                 logger.error("Failed to update ticket %s to RESUELTO: %s", ticket_id, exc)
+        else:
+            try:
+                from src.shared.tickets_store import update_ticket_fields
+                update_ticket_fields(int(tenant_id), ticket_id, {
+                    "execution_status": "FAILED",
+                    "execution_summary": execution_summary,
+                    "execution_logs": execution_logs,
+                })
+            except Exception as exc:
+                logger.warning("Failed to persist execution logs for ticket %s: %s", ticket_id, exc)
         return {
             "executionResult": data,
+            "executionSummary": execution_summary,
+            "executionLogs": execution_logs,
             "ticketId": ticket_id,
             "tenantId": tenant_id,
             "victorSource": endpoint_source,
@@ -353,19 +451,22 @@ def handler(event: dict, context) -> dict:
         recommended_plan["risk_level"] = recommended["risk_level"]
 
     requirement = approval_requirement(recommended_plan)
-    try:
-        from src.shared.tickets_store import update_ticket_fields
-        update_ticket_fields(int(tenant_id), ticket_id, {
-            "action_plan": recommended_plan,
-            "action_plans": plans,
-        })
-    except Exception as exc:
-        logger.warning("Failed to save action_plan for ticket %s: %s", ticket_id, exc)
+    persist = bool(event.get("persist", True))
+    if persist:
+        try:
+            from src.shared.tickets_store import update_ticket_fields
+            update_ticket_fields(int(tenant_id), ticket_id, {
+                "action_plan": recommended_plan,
+                "action_plans": plans,
+            })
+        except Exception as exc:
+            logger.warning("Failed to save action_plan for ticket %s: %s", ticket_id, exc)
 
     return {
         "plan": recommended_plan,
         "plans": plans,
         "plansCount": len(plans),
+        "analysis": recommended.get("analysis") or "",
         "planSource": "victor_azure" if endpoint_source == "global" else "victor_on_premise",
         "maxRiskLevel": requirement["max_risk_level"],
         "approval": requirement,

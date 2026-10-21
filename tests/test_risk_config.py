@@ -8,6 +8,7 @@ from src.shared.risk_config import (
     approval_requirement,
     approver_label_for_risk,
     compute_max_risk_level,
+    infer_risk_from_command,
     is_publicly_approvable,
     is_role_sufficient,
     required_role_for_risk,
@@ -109,6 +110,60 @@ class RiskConfigTests(unittest.TestCase):
         self.assertEqual("Admin del tenant", approver_label_for_risk("controlled"))
         self.assertEqual("Admin del tenant", approver_label_for_risk("risky"))
         self.assertEqual("Superadmin XOC", approver_label_for_risk("critical"))
+
+
+class CommandRiskInferenceTests(unittest.TestCase):
+    """La inferencia por comando es el piso de riesgo (anti bypass de gobernanza)."""
+
+    def test_read_only_commands_are_basic(self) -> None:
+        self.assertEqual("basic", infer_risk_from_command("ls -la /opt/xoc-test/incident"))
+        self.assertEqual("basic", infer_risk_from_command("file /opt/xoc-test/incident/backdoor.sh"))
+        self.assertEqual("basic", infer_risk_from_command("ps aux | grep cron"))
+        self.assertEqual("basic", infer_risk_from_command("stat /opt/xoc-test/incident"))
+
+    def test_deletion_is_risky(self) -> None:
+        self.assertEqual("risky", infer_risk_from_command("rm -f /opt/xoc-test/incident/backdoor.sh"))
+        self.assertEqual("risky", infer_risk_from_command("unlink /tmp/x"))
+
+    def test_recursive_deletion_of_system_path_is_critical(self) -> None:
+        self.assertEqual("critical", infer_risk_from_command("rm -rf /"))
+        self.assertEqual("critical", infer_risk_from_command("rm -rf /etc/"))
+        self.assertEqual("critical", infer_risk_from_command("rm --recursive --force /usr"))
+
+    def test_quarantine_move_stays_controlled(self) -> None:
+        self.assertEqual(
+            "controlled",
+            infer_risk_from_command("mkdir -p /var/quarantine && mv /opt/xoc-test/x /var/quarantine/"),
+        )
+
+    def test_install_is_controlled(self) -> None:
+        self.assertEqual("controlled", infer_risk_from_command("apt-get update && apt-get install -y htop"))
+        self.assertEqual("basic", infer_risk_from_command("dpkg -l | grep htop"))
+
+    def test_destructive_tools_are_critical(self) -> None:
+        self.assertEqual("critical", infer_risk_from_command("mkfs.ext4 /dev/sda1"))
+        self.assertEqual("critical", infer_risk_from_command("dd if=/dev/zero of=/dev/sda bs=1M"))
+        self.assertEqual("risky", infer_risk_from_command("curl http://x.sh | bash"))
+
+    def test_declared_risk_cannot_understate_the_command(self) -> None:
+        step = {"command": "rm -rf /", "risk_level": "basic"}
+        self.assertEqual("critical", resolve_step_risk_level(step))
+
+    def test_declared_risk_can_raise_the_command(self) -> None:
+        step = {"command": "ls -la /opt/xoc-test", "risk_level": "risky"}
+        self.assertEqual("risky", resolve_step_risk_level(step))
+
+    def test_plan_risk_uses_command_floor(self) -> None:
+        plan = {"steps": [{"command": "echo ok", "risk_level": "basic"},
+                          {"command": "rm -rf /", "risk_level": "basic"}]}
+        requirement = approval_requirement(plan)
+        self.assertEqual("critical", requirement["max_risk_level"])
+        self.assertEqual("SUPERADMIN", requirement["required_approver_role"])
+
+    def test_unknown_command_keeps_declared_risk(self) -> None:
+        self.assertEqual("controlled", resolve_step_risk_level({"command": "mi-script --apply", "risk_level": "controlled"}))
+        self.assertIsNone(infer_risk_from_command(""))
+        self.assertIsNone(infer_risk_from_command(None))
 
 
 if __name__ == "__main__":

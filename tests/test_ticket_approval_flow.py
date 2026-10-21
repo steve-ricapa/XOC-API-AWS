@@ -300,6 +300,141 @@ class TicketApprovalFlowTests(unittest.TestCase):
         mock_table.update_item.assert_called_once()
 
 
+class CustomPlanGovernanceTests(unittest.TestCase):
+    """La gobernanza se aplica a la solucion propuesta, no al ticket completo."""
+
+    def setUp(self) -> None:
+        tickets_dynamo.get_settings.cache_clear()
+
+    def tearDown(self) -> None:
+        tickets_dynamo.get_settings.cache_clear()
+
+    def _ticket(self, required_role: str = "ADMIN") -> dict:
+        return {
+            "ticket_id": "t1",
+            "tenant_id": 7,
+            "subject": "Eliminar backdoor",
+            "description": "artefacto malicioso",
+            "status": "PREAPROBADO",
+            "pending_decision": {
+                "max_risk_level": "risky",
+                "required_approver_role": required_role,
+                "task_token": "tok-123",
+            },
+        }
+
+    def test_user_can_submit_safe_custom_plan_on_risky_ticket(self) -> None:
+        item = self._ticket(required_role="ADMIN")
+        steps = [{"order": 1, "action": "shell", "command": "ls -la /opt/xoc-test/incident", "risk_level": "basic"}]
+        with patch.object(tickets_dynamo, "_get_ticket_or_404", return_value=item), patch.object(
+            tickets_dynamo, "update_ticket_fields"
+        ) as mock_update, patch.object(tickets_dynamo, "_resume_workflow") as mock_resume, patch.object(
+            tickets_dynamo, "table"
+        ) as mock_table, patch.object(tickets_dynamo, "_emit_event"), patch.object(
+            tickets_dynamo, "publish_ticket_status_notification"
+        ):
+            result = tickets_dynamo.custom_ticket_plan(
+                "t1",
+                {"custom_plan_steps": steps},
+                {"role": "USER", "tenantId": 7},
+            )
+        self.assertEqual("Custom plan submitted successfully", result["message"])
+        stored = mock_update.call_args.args[2]["action_plan"]
+        self.assertEqual("basic", stored["risk_level"])
+        mock_resume.assert_called_once()
+        mock_table.update_item.assert_called_once()
+
+    def test_user_is_blocked_when_custom_plan_requires_admin(self) -> None:
+        item = self._ticket(required_role="ADMIN")
+        steps = [{"order": 1, "action": "shell", "command": "rm -f /opt/xoc-test/incident/backdoor.sh", "risk_level": "basic"}]
+        with patch.object(tickets_dynamo, "_get_ticket_or_404", return_value=item), patch.object(
+            tickets_dynamo, "table"
+        ) as mock_table, patch.object(tickets_dynamo, "_resume_workflow") as mock_resume:
+            with self.assertRaises(tickets_dynamo.ForbiddenError) as ctx:
+                tickets_dynamo.custom_ticket_plan(
+                    "t1",
+                    {"custom_plan_steps": steps},
+                    {"role": "USER", "tenantId": 7},
+                )
+        message = str(ctx.exception.message)
+        self.assertIn("no puede aprobar", message)
+        self.assertIn("Admin del tenant", message)
+        mock_resume.assert_not_called()
+        mock_table.update_item.assert_not_called()
+
+    def test_declared_basic_cannot_mask_destructive_command(self) -> None:
+        item = self._ticket(required_role="ADMIN")
+        steps = [{"order": 1, "action": "shell", "command": "rm -rf /", "risk_level": "basic"}]
+        with patch.object(tickets_dynamo, "_get_ticket_or_404", return_value=item), patch.object(
+            tickets_dynamo, "table"
+        ) as mock_table, patch.object(tickets_dynamo, "_resume_workflow") as mock_resume:
+            with self.assertRaises(tickets_dynamo.ForbiddenError) as ctx:
+                tickets_dynamo.custom_ticket_plan(
+                    "t1",
+                    {"custom_plan_steps": steps},
+                    {"role": "ADMIN", "tenantId": 7},
+                )
+        self.assertIn("Superadmin XOC", str(ctx.exception.message))
+        mock_resume.assert_not_called()
+        mock_table.update_item.assert_not_called()
+
+    def test_preview_returns_plan_and_governance_without_executing(self) -> None:
+        item = self._ticket(required_role="ADMIN")
+        with patch.object(tickets_dynamo, "_get_ticket_or_404", return_value=item), patch(
+            "src.handlers.workers.assess_ticket_automation.handler"
+        ) as mock_assess:
+            mock_assess.return_value = {
+                "plans": [
+                    {
+                        "plan_id": "plan-custom",
+                        "title": "Plan analizado por IA",
+                        "analysis": "La solucion propuesta se ajusta al incidente real.",
+                        "plan": [{"order": 1, "action": "shell", "command": "ls -la /opt/xoc-test", "risk_level": "basic"}],
+                    }
+                ]
+            }
+            result = tickets_dynamo.preview_ticket_custom_plan(
+                "t1",
+                {"custom_instructions": "revisar el artefacto"},
+                {"role": "USER", "tenantId": 7},
+            )
+        self.assertTrue(result["can_execute"])
+        self.assertEqual("", result["governance_message"])
+        self.assertEqual("basic", result["requirement"]["max_risk_level"])
+        self.assertEqual("La solucion propuesta se ajusta al incidente real.", result["analysis"])
+        self.assertEqual(1, len(result["plan"]["steps"]))
+        # La vista previa no debe persistir el plan en el ticket.
+        self.assertFalse(mock_assess.call_args.args[0].get("persist", True))
+
+    def test_preview_blocks_user_with_clear_message(self) -> None:
+        item = self._ticket(required_role="ADMIN")
+        with patch.object(tickets_dynamo, "_get_ticket_or_404", return_value=item), patch(
+            "src.handlers.workers.assess_ticket_automation.handler"
+        ) as mock_assess:
+            mock_assess.return_value = {
+                "plans": [
+                    {
+                        "analysis": "Borrado definitivo del artefacto.",
+                        "plan": [{"order": 1, "action": "shell", "command": "rm -f /opt/xoc-test/incident/backdoor.sh", "risk_level": "risky"}],
+                    }
+                ]
+            }
+            result = tickets_dynamo.preview_ticket_custom_plan(
+                "t1",
+                {"custom_instructions": "borrar el archivo"},
+                {"role": "USER", "tenantId": 7},
+            )
+        self.assertFalse(result["can_execute"])
+        self.assertIn("no puede aprobar", result["governance_message"])
+        self.assertIn("Admin del tenant", result["governance_message"])
+
+    def test_preview_requires_instructions_or_steps(self) -> None:
+        item = self._ticket()
+        with patch.object(tickets_dynamo, "_get_ticket_or_404", return_value=item):
+            with self.assertRaises(ValidationError):
+                tickets_dynamo.preview_ticket_custom_plan("t1", {}, {"role": "USER", "tenantId": 7})
+
+
 class GenerateCaseTests(unittest.TestCase):
     def test_rejected_action_is_accepted(self) -> None:
         with patch(

@@ -35,6 +35,7 @@ def _build_plan_options(plans) -> list:
             "option_id": option_id,
             "title": plan.get("title") or f"Plan {idx + 1}",
             "summary": plan.get("plan_summary") or "",
+            "analysis": plan.get("analysis") or "",
             "risk_level": plan.get("risk_level") or "",
             "total_steps": plan.get("total_steps") or len(steps),
             "is_recommended": idx == 0,

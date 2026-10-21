@@ -6,6 +6,10 @@ import unittest
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
+os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+os.environ.setdefault("TICKETS_TABLE_NAME", "xoc-api-tickets-test-tickets")
+os.environ.setdefault("EVENT_BUS_NAME", "xoc-api-tickets-test-bus")
+
 from src.handlers.workers import assess_ticket_automation
 
 
@@ -207,6 +211,112 @@ class AssessTicketAutomationTests(unittest.TestCase):
         sent_payload = mock_post.call_args.kwargs["json"]
         self.assertEqual([{"command": "echo hi"}], sent_payload["custom_plan_steps"])
         self.assertEqual("controlled", result["maxRiskLevel"])
+
+    def test_normalize_plans_keeps_ai_analysis(self) -> None:
+        data = {
+            "plans": [{"plan_id": "p1", "title": "A", "analysis": "Analisis de la IA",
+                       "plan": [{"order": 1, "command": "ls"}]}]
+        }
+        plans = assess_ticket_automation._normalize_plans(data)
+        self.assertEqual("Analisis de la IA", plans[0]["analysis"])
+
+    def test_plan_phase_does_not_persist_when_persist_is_false(self) -> None:
+        runtime = MagicMock()
+        runtime.function_base_url = "http://on-premise-victor.local:9000"
+        runtime.function_route_victor = "/api/agents/VictorDurableAgent/run"
+        runtime.is_active = True
+
+        fake_response = MagicMock()
+        fake_response.json.return_value = {
+            "plans": [{"plan_id": "p1", "title": "A", "analysis": "texto",
+                       "plan": [{"order": 1, "command": "ls"}]}]
+        }
+        fake_response.raise_for_status.return_value = None
+
+        with patch("src.persistence.db.session_scope", _fake_db_session(runtime)), patch(
+            "src.handlers.workers.assess_ticket_automation.requests.post", return_value=fake_response
+        ), patch("src.shared.tickets_store.update_ticket_fields") as mock_update:
+            result = assess_ticket_automation.handler(
+                {"ticketId": "t5", "tenantId": 7, "subject": "x", "description": "y", "phase": "plan",
+                 "persist": False, "customInstructions": "analiza esto"},
+                None,
+            )
+        mock_update.assert_not_called()
+        self.assertEqual("texto", result["analysis"])
+
+    def test_execute_phase_persists_execution_logs(self) -> None:
+        runtime = MagicMock()
+        runtime.function_base_url = "http://on-premise-victor.local:9000"
+        runtime.function_route_victor = "/api/agents/VictorDurableAgent/run"
+        runtime.is_active = True
+
+        fake_response = MagicMock()
+        fake_response.json.return_value = {
+            "all_success": True,
+            "step_results": [
+                {"order": 1, "command": "ls -la /opt/xoc-test", "description": "Listar artefactos",
+                 "success": True, "status": "ok", "returncode": 0, "stdout": "ok", "stderr": ""},
+                {"order": 2, "command": "rm -f /opt/xoc-test/incident/backdoor.sh", "description": "Eliminar",
+                 "success": True, "status": "ok", "returncode": 0, "stdout": "", "stderr": ""},
+            ],
+        }
+        fake_response.raise_for_status.return_value = None
+
+        with patch("src.persistence.db.session_scope", _fake_db_session(runtime)), patch(
+            "src.handlers.workers.assess_ticket_automation.requests.post", return_value=fake_response
+        ), patch("src.shared.tickets_store.update_ticket_fields") as mock_update, patch(
+            "src.handlers.workers.assess_ticket_automation.publish_ticket_status_notification"
+        ):
+            result = assess_ticket_automation.handler(
+                {"ticketId": "t6", "tenantId": 7, "subject": "x", "description": "y", "phase": "execute",
+                 "plan": {"steps": [{"order": 1, "command": "ls"}]}},
+                None,
+            )
+
+        fields = mock_update.call_args.args[2]
+        self.assertEqual("RESUELTO", fields["status"])
+        self.assertIn("Listar artefactos: OK", fields["execution_summary"])
+        logs = fields["execution_logs"]
+        self.assertEqual("t6", logs["correlation_id"])
+        self.assertEqual(2, len(logs["timeline"]))
+        self.assertEqual("ok", logs["timeline"][0]["status"])
+        self.assertIn("rm -f", logs["timeline"][1]["detail"])
+        self.assertEqual("completed", logs["final_result"]["status"])
+        self.assertEqual(2, result["executionLogs"]["iterations"])
+
+    def test_execute_phase_persists_failure_detail(self) -> None:
+        runtime = MagicMock()
+        runtime.function_base_url = "http://on-premise-victor.local:9000"
+        runtime.function_route_victor = "/api/agents/VictorDurableAgent/run"
+        runtime.is_active = True
+
+        fake_response = MagicMock()
+        fake_response.json.return_value = {
+            "all_success": False,
+            "step_results": [
+                {"order": 1, "command": "rm -f /opt/xoc-test/x", "description": "Eliminar",
+                 "success": False, "status": "failed", "returncode": 1, "stdout": "", "stderr": "No such file"},
+            ],
+        }
+        fake_response.raise_for_status.return_value = None
+
+        with patch("src.persistence.db.session_scope", _fake_db_session(runtime)), patch(
+            "src.handlers.workers.assess_ticket_automation.requests.post", return_value=fake_response
+        ), patch("src.shared.tickets_store.update_ticket_fields") as mock_update, patch(
+            "src.handlers.workers.assess_ticket_automation.publish_ticket_status_notification"
+        ):
+            assess_ticket_automation.handler(
+                {"ticketId": "t7", "tenantId": 7, "subject": "x", "description": "y", "phase": "execute",
+                 "plan": {"steps": [{"order": 1, "command": "rm -f /opt/xoc-test/x"}]}},
+                None,
+            )
+
+        fields = mock_update.call_args.args[2]
+        self.assertNotIn("status", fields)
+        self.assertEqual("FAILED", fields["execution_status"])
+        self.assertIn("Eliminar: FAILED", fields["execution_summary"])
+        self.assertIn("No such file", fields["execution_logs"]["timeline"][0]["detail"])
+        self.assertEqual("failed", fields["execution_logs"]["final_result"]["status"])
 
 
 if __name__ == "__main__":

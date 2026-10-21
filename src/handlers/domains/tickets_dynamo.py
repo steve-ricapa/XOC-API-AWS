@@ -90,6 +90,55 @@ def _assert_can_approve(claims: dict, item: dict) -> None:
         raise ForbiddenError(f"Insufficient role to approve this ticket. Required: {required_role}")
 
 
+def _governance_violation_message(user_role: str, requirement: dict) -> str:
+    """Mensaje en claro cuando la gobernanza bloquea la solucion propuesta."""
+    role = user_role or "SIN ROL"
+    return (
+        f"Tu rol ({role}) no puede aprobar una solucion de riesgo "
+        f"'{requirement.get('max_risk_level', 'basic')}'. "
+        f"Esta solucion requiere la aprobacion de {requirement.get('approver_label', 'Admin del tenant')} "
+        f"({requirement.get('required_approver_role', 'ADMIN')}). "
+        "Pide a un administrador que la ejecute o escribe una solucion de menor riesgo."
+    )
+
+
+def _normalize_custom_steps(steps: list) -> list:
+    """Normaliza los pasos escritos por el usuario para poder ejecutarlos."""
+    normalized = []
+    for idx, step in enumerate(steps):
+        if not isinstance(step, dict):
+            continue
+        command = step.get("command")
+        if not command:
+            continue
+        normalized.append({
+            "step_id": step.get("step_id") or f"custom-{idx + 1}",
+            "order": step.get("order", idx + 1),
+            "action": step.get("action", "shell"),
+            "command": command,
+            "description": step.get("description", ""),
+            "risk_level": step.get("risk_level") or "",
+        })
+    return normalized
+
+
+def _evaluate_solution(steps: list, source: str = "custom", analysis: str = "") -> tuple[dict, dict]:
+    """Evalua la solucion propuesta y devuelve (plan, requisito de aprobacion).
+
+    La gobernanza se aplica a la solucion resultante (no al riesgo maximo del
+    ticket): un plan propio seguro se puede aprobar aunque el ticket tenga
+    alternativas de mayor riesgo. El riesgo del plan se recalcula con la
+    inferencia por comando, de modo que un `risk_level` declarado no puede
+    maquillar un comando destructivo.
+    """
+    plan = {"steps": steps, "source": source}
+    if analysis:
+        plan["analysis"] = analysis
+    requirement = approval_requirement(plan)
+    plan["risk_level"] = requirement["max_risk_level"]
+    return plan, requirement
+
+
 def _resolve_ticket_for_action(claims: dict, ticket_id: str) -> dict:
     role = (claims.get("role") or "").upper()
     if role in PLATFORM_OPERATOR_ROLES:
@@ -426,32 +475,30 @@ def select_ticket_decision(ticket_id: str, payload: dict, claims: dict = Depends
     return {"message": "Decision selected successfully", "ticket": serialize_ticket(updated)}
 
 
-@router.patch("/{ticket_id}/decision/custom")
-def custom_ticket_plan(ticket_id: str, payload: dict, claims: dict = Depends(require_access_claims)):
-    """Registra un plan custom del usuario (texto libre o pasos JSON) y lo ejecuta.
+@router.patch("/{ticket_id}/decision/custom/preview")
+def preview_ticket_custom_plan(ticket_id: str, payload: dict, claims: dict = Depends(require_access_claims)):
+    """Analiza la solucion propuesta por el usuario y devuelve el plan de la IA.
 
-    - `custom_instructions`: texto libre que Victor convierte en un plan ejecutable.
-    - `custom_plan_steps`: pasos JSON directos (estructurados) escritos por el usuario.
+    No cambia el estado del ticket. Devuelve el plan analizado por Victor (a
+    partir de lo que escribio el usuario, no literal), el analisis de la IA, el
+    riesgo efectivo, el rol requerido y si el usuario puede ejecutarlo.
     """
     item = _resolve_ticket_for_action(claims, ticket_id)
     tenant_id = int(item.get("tenant_id") or 0)
     pending_decision = item.get("pending_decision")
     if not pending_decision or not isinstance(pending_decision, dict):
         raise ValidationError("No pending decision found for this ticket")
-    required_role = pending_decision.get("required_approver_role", "USER")
-    user_role = (claims.get("role") or "").upper()
-    if not is_role_sufficient(user_role, required_role):
-        raise ForbiddenError("Insufficient role to approve this decision")
 
     custom_instructions = payload.get("custom_instructions")
     custom_plan_steps = payload.get("custom_plan_steps")
     if not custom_instructions and not custom_plan_steps:
         raise ValidationError("custom_instructions or custom_plan_steps is required")
 
+    analysis = ""
     if custom_plan_steps:
         if not isinstance(custom_plan_steps, list) or len(custom_plan_steps) == 0:
             raise ValidationError("custom_plan_steps must be a non-empty list of steps")
-        selected_plan = {"steps": custom_plan_steps, "source": "custom"}
+        steps = _normalize_custom_steps(custom_plan_steps)
     else:
         from src.handlers.workers import assess_ticket_automation
         result = assess_ticket_automation.handler({
@@ -461,22 +508,92 @@ def custom_ticket_plan(ticket_id: str, payload: dict, claims: dict = Depends(req
             "description": item.get("description", ""),
             "phase": "plan",
             "generatePlans": False,
+            "persist": False,
             "customInstructions": custom_instructions,
         }, None)
         plans = result.get("plans") or []
         if not plans:
             raise ValidationError("Victor could not generate a plan from your instructions")
-        selected_plan = {"steps": plans[0].get("plan", []), "source": "custom"}
+        recommended = plans[0]
+        steps = recommended.get("plan", []) or []
+        analysis = recommended.get("analysis") or result.get("analysis") or ""
+        if not analysis:
+            analysis = recommended.get("plan_summary") or ""
 
-    # Custom plans bypass Victor's original risk assessment, so the risk of the
-    # user-provided steps must be re-evaluated before the workflow executes them.
-    requirement = approval_requirement(selected_plan)
+    if not steps:
+        raise ValidationError("The proposed solution did not produce any executable step")
+
+    preview_plan, requirement = _evaluate_solution(steps, source="custom", analysis=analysis)
+    user_role = (claims.get("role") or "").upper()
+    can_execute = is_role_sufficient(user_role, requirement["required_approver_role"])
+    return {
+        "message": "Custom plan preview generated",
+        "analysis": analysis,
+        "plan": preview_plan,
+        "requirement": requirement,
+        "can_execute": can_execute,
+        "governance_message": "" if can_execute else _governance_violation_message(user_role, requirement),
+        "ticket_id": ticket_id,
+    }
+
+
+@router.patch("/{ticket_id}/decision/custom")
+def custom_ticket_plan(ticket_id: str, payload: dict, claims: dict = Depends(require_access_claims)):
+    """Registra un plan custom del usuario (texto libre o pasos JSON) y lo ejecuta.
+
+    - `custom_instructions`: texto libre que Victor convierte en un plan ejecutable.
+    - `custom_plan_steps`: pasos JSON directos (estructurados) escritos por el usuario.
+
+    La gobernanza se evalua sobre la solucion resultante: si el plan propuesto
+    exige un rol que el usuario no tiene, se responde 403 con un mensaje claro
+    indicando que rol hace falta.
+    """
+    item = _resolve_ticket_for_action(claims, ticket_id)
+    tenant_id = int(item.get("tenant_id") or 0)
+    pending_decision = item.get("pending_decision")
+    if not pending_decision or not isinstance(pending_decision, dict):
+        raise ValidationError("No pending decision found for this ticket")
+    user_role = (claims.get("role") or "").upper()
+
+    custom_instructions = payload.get("custom_instructions")
+    custom_plan_steps = payload.get("custom_plan_steps")
+    if not custom_instructions and not custom_plan_steps:
+        raise ValidationError("custom_instructions or custom_plan_steps is required")
+
+    analysis = ""
+    if custom_plan_steps:
+        if not isinstance(custom_plan_steps, list) or len(custom_plan_steps) == 0:
+            raise ValidationError("custom_plan_steps must be a non-empty list of steps")
+        steps = _normalize_custom_steps(custom_plan_steps)
+        if not steps:
+            raise ValidationError("custom_plan_steps must contain at least one step with a command")
+    else:
+        from src.handlers.workers import assess_ticket_automation
+        result = assess_ticket_automation.handler({
+            "ticketId": ticket_id,
+            "tenantId": tenant_id,
+            "subject": item.get("subject", ""),
+            "description": item.get("description", ""),
+            "phase": "plan",
+            "generatePlans": False,
+            "persist": False,
+            "customInstructions": custom_instructions,
+        }, None)
+        plans = result.get("plans") or []
+        if not plans:
+            raise ValidationError("Victor could not generate a plan from your instructions")
+        recommended = plans[0]
+        steps = recommended.get("plan", []) or []
+        analysis = recommended.get("analysis") or result.get("analysis") or ""
+        if not steps:
+            raise ValidationError("Victor could not generate an executable plan from your instructions")
+
+    # Los planes custom evitan la evaluacion original de Victor, asi que el
+    # riesgo de los pasos propuestos se recalcula (incluida la inferencia por
+    # comando) antes de autorizar la ejecucion.
+    selected_plan, requirement = _evaluate_solution(steps, source="custom", analysis=analysis)
     if not is_role_sufficient(user_role, requirement["required_approver_role"]):
-        raise ForbiddenError(
-            f"Insufficient role to approve a plan with risk level {requirement['max_risk_level']}. "
-            f"Required: {requirement['required_approver_role']}"
-        )
-    selected_plan["risk_level"] = requirement["max_risk_level"]
+        raise ForbiddenError(_governance_violation_message(user_role, requirement))
 
     update_ticket_fields(tenant_id, ticket_id, {"action_plan": selected_plan})
     _resume_workflow(item, approved=True, selected_plan=selected_plan)

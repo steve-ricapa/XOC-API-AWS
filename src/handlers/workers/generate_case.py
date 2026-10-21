@@ -52,7 +52,12 @@ def handler(event: dict, context) -> dict:
             if action == "success" and solution_applied:
                 fields["execution_summary"] = solution_applied
             elif action == "failed_after_attempts":
-                fields["execution_summary"] = f"Failed after {total_attempts} attempts"
+                # Se conserva el detalle de la ejecucion fallida (pasos, causa)
+                # en vez de Replace el summary con un mensaje generico.
+                previous_summary = ticket.get("execution_summary")
+                detail = str(previous_summary).strip() if previous_summary else ""
+                base = f"Failed after {total_attempts} attempts"
+                fields["execution_summary"] = f"{base}: {detail}"[:500] if detail else base
             update_ticket_fields(int(tenant_id), ticket_id, fields)
         # The F3 inbox uses a deterministic key, so an already-published
         # RESUELTO/RECHAZADO event is a no-op for duplicate deliveries.
