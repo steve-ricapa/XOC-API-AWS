@@ -31,21 +31,18 @@ def _resolve_victor_endpoint(tenant_id: int) -> tuple[str | None, str, str]:
     """Resuelve el endpoint de Victor a usar para un tenant.
 
     Orden de prioridad:
-      1. URL global configurada por env (AGENTS_FUNCTION_BASE_URL_VICTOR): Victor on-premise
-         dedicado. Devuelve source "global".
-      2. Runtime settings del tenant en RDS (function_base_url + function_route_victor):
-         Victor on-premise por tenant. Devuelve source "on_premise".
+      1. Runtime settings del tenant en RDS (function_base_url + function_route_victor):
+         Victor on-premise dedicado del tenant (laboratorio/instalaciones aisladas).
+         Devuelve source "on_premise".
+      2. URL global configurada por env (AGENTS_FUNCTION_BASE_URL_VICTOR): Victor
+         on-premise compartido. Devuelve source "global".
       3. Nada configurado -> (None, route, "fallback").
 
     La llamada a RDS es opcional y con tolerancia a fallos: si no hay secretos de
-    BD o el lookup falla, se degrada al comportamiento sin endpoint.
+    BD o el lookup falla, se degrada al comportamiento global/fallback.
     """
     settings = get_settings()
     default_route = (settings.agents_function_route_victor or "/api/agents/VictorDurableAgent/run").strip()
-
-    base_url = (settings.agents_function_base_url_victor or "").strip()
-    if base_url:
-        return base_url, default_route, "global"
 
     try:
         from src.persistence.db import session_scope
@@ -61,6 +58,10 @@ def _resolve_victor_endpoint(tenant_id: int) -> tuple[str | None, str, str]:
                 return (runtime.function_base_url or "").strip(), route, "on_premise"
     except Exception as exc:  # pragma: no cover - defensivo
         logger.warning("Could not resolve on-premise Victor runtime settings for tenant %s: %s", tenant_id, exc)
+
+    base_url = (settings.agents_function_base_url_victor or "").strip()
+    if base_url:
+        return base_url, default_route, "global"
 
     return None, default_route, "fallback"
 

@@ -1,0 +1,305 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >-
+  XOC test lab host. EC2 Ubuntu instance that runs VICTOR on-premise (server +
+  executor) and holds simulated malicious files, so plans execute against this
+  isolated lab target. SSM access means no local SSH/VPN is required.
+
+Parameters:
+  InstanceName:
+    Type: String
+    Default: xoc-test-target
+    Description: Nombre/tag de la instancia.
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC donde vive VICTOR (prod usa xoc-prod-vpc 10.20.0.0/16).
+
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subred publica (prod usa xoc-prod-public-a 10.20.0.0/24) para tener IP publica y salida a internet/SSM.
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: ''
+    Description: (Opcional) Key pair solo si vas a usar SSH. Vacio = acceso exclusivamente por SSM.
+
+  InstanceType:
+    Type: String
+    Default: t3.small
+    AllowedValues: [t3.micro, t3.small, t3.medium, t3.large]
+    Description: Tipo de instancia.
+
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
+    Description: AMI Ubuntu 24.04 LTS (resuelta por SSM, siempre vigente).
+
+  VictorCidr:
+    Type: String
+    Default: 10.20.0.0/16
+    Description: CIDR permitido hacia SSH/ICMP (red donde vive VICTOR/on-prem).
+
+  AllocateElasticIp:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Asignar IP publica fija (EIP) a la instancia.
+
+  BootstrapScriptUrl:
+    Type: String
+    Default: https://raw.githubusercontent.com/steve-ricapa/XOC-API-AWS/main/scripts/test-server-seed.sh
+    Description: URL del script de seed (artefactos simulados). Si falla, el UserData crea un seed minimo.
+
+  InstallVictor:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: 'Instalar VICTOR on-premise (docker compose: victor-server + executor) en esta instancia.'
+
+  VictorRepoUrl:
+    Type: String
+    Default: https://github.com/steve-ricapa/VICTOR-XOC-ClaudeC.git
+    Description: Repo publico de VICTOR on-premise.
+
+  VictorRepoRef:
+    Type: String
+    Default: main
+    Description: Rama/tag de VICTOR a desplegar.
+
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: API key de Azure AI Foundry/Anthropic. Se escribe en /opt/victor/.env (chmod 600). Puedes dejarla vacia y completarla luego por SSM.
+
+  AzureEndpoint:
+    Type: String
+    Default: https://aoai-sophia-xoc-eus2.services.ai.azure.com/anthropic
+    Description: Endpoint Azure AI Foundry para Claude.
+
+  AnthropicModel:
+    Type: String
+    Default: claude-sonnet-4-6
+    Description: Modelo Claude.
+
+  AzureDeployment:
+    Type: String
+    Default: claude-sonnet-4-6
+    Description: Nombre del deployment en Azure AI Foundry.
+
+Conditions:
+  HasKey: !Not [!Equals [!Ref KeyName, '']]
+  CreateEip: !Equals [!Ref AllocateElasticIp, 'true']
+
+Resources:
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Name
+          Value: !Sub '${InstanceName}-role'
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref InstanceRole
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: XOC test target - SSM only, VICTOR reachability
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref VictorCidr
+          Description: SSH desde red VICTOR/on-prem
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: !Ref VictorCidr
+          Description: API VICTOR (Lambdas XOC en la VPC) - sin auth, solo red interna
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: !Ref VictorCidr
+          Description: ICMP desde red VICTOR/on-prem
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+          Description: Salida para SSM, apt y descarga del seed
+      Tags:
+        - Key: Name
+          Value: !Sub '${InstanceName}-sg'
+        - Key: xoc:role
+          Value: test-target
+
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      KeyName: !If [HasKey, !Ref KeyName, !Ref 'AWS::NoValue']
+      IamInstanceProfile: !Ref InstanceProfile
+      SecurityGroupIds:
+        - !Ref SecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            DeleteOnTermination: true
+      Tags:
+        - Key: Name
+          Value: !Ref InstanceName
+        - Key: xoc:role
+          Value: test-target
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+            set -euxo pipefail
+            exec > >(tee -a /var/log/xoc-test-bootstrap.log) 2>&1
+
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -y
+            apt-get install -y curl ca-certificates jq unzip nano less procps
+
+            mkdir -p /opt/xoc-test/logs
+            BOOTSTRAP_URL="${BootstrapUrl}"
+
+            if curl -fsSL --retry 3 --connect-timeout 10 "$BOOTSTRAP_URL" -o /opt/xoc-test/seed.sh; then
+              chmod +x /opt/xoc-test/seed.sh
+              /opt/xoc-test/seed.sh | tee -a /var/log/xoc-test-bootstrap.log
+            else
+              echo "WARN: no se pudo descargar $BOOTSTRAP_URL; creando seed minimo" | tee -a /var/log/xoc-test-bootstrap.log
+              mkdir -p /opt/xoc-test/incident
+              printf 'X5O!P%%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*\n' > /opt/xoc-test/incident/eicar_test.txt
+              cat > /opt/xoc-test/incident/backdoor.sh <<'EOF2'
+            #!/bin/bash
+            echo "[SIMULATED BACKDOOR] beacon to 192.0.2.10:4444 (no network call)"
+            EOF2
+              chmod +x /opt/xoc-test/incident/backdoor.sh
+              echo '{"generated_at":"'"$(date -Is)"'","source":"userdata-fallback","files":["/opt/xoc-test/incident/eicar_test.txt","/opt/xoc-test/incident/backdoor.sh"]}' > /opt/xoc-test/incident/manifest.json
+            fi
+
+            echo "XOC test target ready" > /opt/xoc-test/READY
+
+            if [ "${InstallVictor}" = "true" ]; then
+              echo "Installing VICTOR on-premise (server + executor)..."
+              apt-get install -y -o DPkg::Lock::Timeout=120 git docker.io docker-compose-v2 || apt-get install -y -o DPkg::Lock::Timeout=120 git docker.io docker-compose
+              systemctl enable --now docker
+              usermod -aG docker ubuntu || true
+              mkdir -p /var/quarantine
+
+              if [ ! -d /opt/victor/.git ]; then
+                git clone --branch "${VictorRepoRef}" "${VictorRepoUrl}" /opt/victor
+              fi
+              cd /opt/victor
+              git fetch --all --tags --prune
+              git checkout "${VictorRepoRef}"
+              git reset --hard "origin/${VictorRepoRef}" || true
+
+              set +x
+              cat > /opt/victor/.env <<'EOF_ENV'
+            ANTHROPIC_API_KEY=${AnthropicApiKey}
+            ANTHROPIC_MODEL=${AnthropicModel}
+            AZURE_ENDPOINT=${AzureEndpoint}
+            AZURE_DEPLOYMENT=${AzureDeployment}
+            EXECUTOR_URL=http://executor:8888
+            PORT=8000
+            STAGE=prod
+            EOF_ENV
+              chmod 600 /opt/victor/.env
+              set -x
+
+              cat > /opt/victor/docker-compose.override.yml <<'EOF_OVR'
+            services:
+              executor:
+                volumes:
+                  - /tmp:/tmp:rw
+                  - /var/quarantine:/var/quarantine:rw
+                  - /opt/xoc-test:/opt/xoc-test:rw
+            EOF_OVR
+
+              if docker compose version >/dev/null 2>&1; then
+                docker compose up -d --build
+              else
+                docker-compose up -d --build
+              fi
+
+              for _ in $(seq 1 60); do
+                if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+                  echo "VICTOR healthy" > /opt/victor/READY
+                  break
+                fi
+                sleep 5
+              done
+              echo "VICTOR bootstrap finished"
+            fi
+
+            echo "XOC lab ready" > /opt/xoc-test/READY
+          - BootstrapUrl: !Ref BootstrapScriptUrl
+            InstallVictor: !Ref InstallVictor
+            VictorRepoUrl: !Ref VictorRepoUrl
+            VictorRepoRef: !Ref VictorRepoRef
+            AnthropicApiKey: !Ref AnthropicApiKey
+            AzureEndpoint: !Ref AzureEndpoint
+            AnthropicModel: !Ref AnthropicModel
+            AzureDeployment: !Ref AzureDeployment
+
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    Condition: CreateEip
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref Instance
+      Tags:
+        - Key: Name
+          Value: !Sub '${InstanceName}-eip'
+
+Outputs:
+  InstanceId:
+    Value: !Ref Instance
+  PrivateIp:
+    Value: !GetAtt Instance.PrivateIp
+  PublicIp:
+    Value: !If [CreateEip, !Ref ElasticIp, !GetAtt Instance.PublicIp]
+  SsmTargetTag:
+    Value: 'xoc:role=test-target'
+  VictorBaseUrl:
+    Description: URL privada de VICTOR para runtime settings del tenant (Lambda -> EC2).
+    Value: !Sub 'http://${Instance.PrivateIp}:8000'
+  VictorHealthUrl:
+    Description: Health check desde la propia instancia o desde la VPC.
+    Value: !Sub 'http://${Instance.PrivateIp}:8000/health'
+  SsmTailVictorLogsCommand:
+    Description: Ver logs del bootstrap y de docker desde CloudShell.
+    Value: !Sub >-
+      aws ssm send-command --document-name AWS-RunShellScript
+      --targets "Key=tag:xoc:role,Values=test-target"
+      --comment "xoc-victor-logs"
+      --parameters '{"commands":["sudo tail -n 80 /var/log/xoc-test-bootstrap.log","cd /opt/victor && sudo docker compose ps && sudo docker compose logs --tail=80 victor-server executor"]}'
+      --region ${AWS::Region}
+      --query Command.CommandId --output text
+  SsmRunSeedCommand:
+    Description: Ejecutar el seed completo desde AWS CloudShell (sin SSH).
+    Value: !Sub >-
+      aws ssm send-command --document-name AWS-RunShellScript
+      --targets "Key=tag:xoc:role,Values=test-target"
+      --comment "xoc-test-seed"
+      --parameters '{"commands":["sudo /opt/xoc-test/seed.sh"]}'
+      --region ${AWS::Region}
+      --query Command.CommandId --output text

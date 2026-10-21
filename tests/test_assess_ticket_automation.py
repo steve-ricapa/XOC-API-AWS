@@ -24,6 +24,18 @@ def _fake_db_session(runtime):
     return _scope
 
 
+def _fake_db_session_without_settings():
+    @contextmanager
+    def _scope():
+        session = MagicMock()
+        query_result = MagicMock()
+        query_result.filter.return_value.first.return_value = None
+        session.query.return_value = query_result
+        yield session
+
+    return _scope
+
+
 class AssessTicketAutomationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.previous_base = os.environ.get("AGENTS_FUNCTION_BASE_URL_VICTOR")
@@ -43,10 +55,24 @@ class AssessTicketAutomationTests(unittest.TestCase):
             os.environ["JWT_SECRET_KEY"] = self.previous_jwt
         assess_ticket_automation.get_settings.cache_clear()
 
-    def test_global_url_wins_and_marks_source_global(self) -> None:
+    def test_tenant_runtime_settings_win_over_global(self) -> None:
         os.environ["AGENTS_FUNCTION_BASE_URL_VICTOR"] = "http://10.0.0.5:8000"
         assess_ticket_automation.get_settings.cache_clear()
-        base, route, source = assess_ticket_automation._resolve_victor_endpoint(7)
+        runtime = MagicMock()
+        runtime.function_base_url = "http://10.0.0.99:8000"
+        runtime.function_route_victor = "/api/agents/VictorDurableAgent/run"
+        runtime.is_active = True
+        with patch("src.persistence.db.session_scope", _fake_db_session(runtime)):
+            base, route, source = assess_ticket_automation._resolve_victor_endpoint(7)
+        self.assertEqual("http://10.0.0.99:8000", base)
+        self.assertEqual("/api/agents/VictorDurableAgent/run", route)
+        self.assertEqual("on_premise", source)
+
+    def test_global_url_used_when_tenant_has_no_runtime_settings(self) -> None:
+        os.environ["AGENTS_FUNCTION_BASE_URL_VICTOR"] = "http://10.0.0.5:8000"
+        assess_ticket_automation.get_settings.cache_clear()
+        with patch("src.persistence.db.session_scope", _fake_db_session_without_settings()):
+            base, route, source = assess_ticket_automation._resolve_victor_endpoint(7)
         self.assertEqual("http://10.0.0.5:8000", base)
         self.assertEqual("/api/agents/VictorDurableAgent/run", route)
         self.assertEqual("global", source)
