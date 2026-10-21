@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 import unittest
 from unittest.mock import patch
 
@@ -201,6 +202,16 @@ class TicketApprovalFlowTests(unittest.TestCase):
         with patch.object(tickets_dynamo.stepfunctions, "send_task_success") as mock_send:
             tickets_dynamo._resume_workflow(item, approved=True, selected_plan=selected_plan)
         mock_send.assert_called_once_with(taskToken="tok-123", output='{"approved": true, "selected_plan": {"steps": [{"order": 1, "command": "x"}]}}')
+
+    def test_resume_workflow_serializes_decimal_selected_plan(self) -> None:
+        from decimal import Decimal
+
+        item = self._preaprobado_ticket()
+        selected_plan = {"steps": [{"order": Decimal("1"), "command": "x", "risk_level": "basic"}]}
+        with patch.object(tickets_dynamo.stepfunctions, "send_task_success") as mock_send:
+            tickets_dynamo._resume_workflow(item, approved=True, selected_plan=selected_plan)
+        output = json.loads(mock_send.call_args.kwargs["output"])
+        self.assertEqual(1, output["selected_plan"]["steps"][0]["order"])
 
     def test_plan_steps_for_option_returns_selected_steps(self) -> None:
         item = {

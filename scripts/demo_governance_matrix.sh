@@ -280,7 +280,7 @@ done
 if [[ -n "$OPERATOR_TOKEN" ]]; then
     rule
     log "Prueba custom critical (plan custom con risk_level=critical)"
-    CRIT_ID="$(create_ticket "Purga irreversible de laboratorio" "Se requiere purgar de forma irreversible el entorno de pruebas. Accion simulada, sin impacto real.")" || exit 1
+    CRIT_ID="$(create_ticket "Revisar archivo sospechoso (custom critical)" "Se detecto /opt/xoc-test/incident/eicar_test.txt. Solo listar y revisar el archivo para confirmar el hallazgo.")" || exit 1
     log "  ticket $CRIT_ID"
     if poll_preaprobado "$CRIT_ID" >/dev/null; then
         custom_plan_as "$USER_TOKEN" "$CRIT_ID" "USER (esperado 403)"

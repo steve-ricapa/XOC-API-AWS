@@ -1,6 +1,7 @@
 import json
 import boto3
 from botocore.exceptions import ClientError
+from decimal import Decimal
 from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -100,6 +101,13 @@ def _resolve_ticket_for_action(claims: dict, ticket_id: str) -> dict:
     return get_tenant_ticket_or_404(tenant_id, ticket_id)
 
 
+def _json_default(value):
+    """Serializa valores de DynamoDB (Decimal) en el payload de Step Functions."""
+    if isinstance(value, Decimal):
+        return int(value) if value == value.to_integral_value() else float(value)
+    return str(value)
+
+
 def _resume_workflow(item: dict, approved: bool, selected_plan=None) -> None:
     pending_decision = item.get("pending_decision") or {}
     if not isinstance(pending_decision, dict):
@@ -111,7 +119,7 @@ def _resume_workflow(item: dict, approved: bool, selected_plan=None) -> None:
     if selected_plan is not None:
         output["selected_plan"] = selected_plan
     try:
-        stepfunctions.send_task_success(taskToken=task_token, output=json.dumps(output))
+        stepfunctions.send_task_success(taskToken=task_token, output=json.dumps(output, default=_json_default))
     except Exception as exc:
         logger.error("Failed to resume workflow for ticket %s: %s", item.get("ticket_id"), exc)
         raise AppError(status_code=502, message="Failed to resume the automation workflow")
