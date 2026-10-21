@@ -25,13 +25,13 @@ WAIT_SECONDS="${WAIT_SECONDS:-300}"
 STATUS=""
 BODY=""
 
-for arg in "$@"; do
-    case "$arg" in
+while [[ $# -gt 0 ]]; do
+    case "$1" in
         --env-file) ENV_FILE="${2:-}"; shift 2 ;;
         --execute) EXECUTE=true; shift ;;
         --wait-seconds) WAIT_SECONDS="${2:-}"; shift 2 ;;
         -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
-        *) echo "Argumento desconocido: $arg" >&2; exit 2 ;;
+        *) echo "Argumento desconocido: $1" >&2; exit 2 ;;
     esac
 done
 
