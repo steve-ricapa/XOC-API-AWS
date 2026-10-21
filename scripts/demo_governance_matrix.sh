@@ -164,7 +164,7 @@ declare -a TICKET_IDS=() REQUIRED=() MAXRISK=() OPTIONS=() TITLES=()
 SPECS=(
     "Revisar archivo sospechoso en servidor de pruebas|Se detecto /opt/xoc-test/incident/eicar_test.txt en el servidor de laboratorio. Solo se requiere listar y revisar el archivo para confirmar el hallazgo. Accion de lectura, sin cambios."
     "Contener persistencia: mover artefacto a cuarentena|Se detecto persistencia en /opt/xoc-test/incident/persistence.cron en el servidor de laboratorio. Se requiere contener la amenaza moviendo el artefacto a cuarentena para su analisis."
-    "Erradicar backdoor y purgar artefactos|Se detecto una backdoor activa y multiples artefactos maliciosos en /opt/xoc-test/incident. Se requiere eliminar los archivos, borrar las llaves SSH no autorizadas y purgar el directorio comprometido."
+    "Erradicar backdoor y purgar artefactos|Se detecto una backdoor activa en /opt/xoc-test/incident/backdoor.sh junto a multiples artefactos maliciosos. Se requiere eliminar el archivo, borrar las llaves SSH no autorizadas y purgar el directorio comprometido."
 )
 
 log "Creando 3 tickets (perfil basic / controlled-risky / critical)"
