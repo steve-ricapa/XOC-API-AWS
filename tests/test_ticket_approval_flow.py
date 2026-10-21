@@ -278,6 +278,27 @@ class TicketApprovalFlowTests(unittest.TestCase):
         mock_send.assert_not_called()
         mock_table.update_item.assert_not_called()
 
+    def test_custom_decision_platform_operator_resolves_ticket_globally(self) -> None:
+        item = self._preaprobado_ticket()
+        steps = [{"order": 1, "action": "shell", "command": "echo x", "risk_level": "critical"}]
+        with patch.object(tickets_dynamo, "get_ticket_by_id_or_none", return_value=item) as global_lookup, patch.object(
+            tickets_dynamo, "_get_ticket_or_404", return_value=item
+        ), patch.object(tickets_dynamo, "update_ticket_fields") as mock_update, patch.object(
+            tickets_dynamo, "_resume_workflow"
+        ) as mock_resume, patch.object(tickets_dynamo, "table") as mock_table, patch.object(
+            tickets_dynamo, "_emit_event"
+        ), patch.object(tickets_dynamo, "publish_ticket_status_notification"):
+            result = tickets_dynamo.custom_ticket_plan(
+                "t1",
+                {"custom_plan_steps": steps},
+                {"role": "ADMIN_XOC"},
+            )
+        global_lookup.assert_called_once_with("t1")
+        self.assertEqual("Custom plan submitted successfully", result["message"])
+        self.assertEqual(7, mock_update.call_args.args[0])
+        mock_resume.assert_called_once()
+        mock_table.update_item.assert_called_once()
+
 
 class GenerateCaseTests(unittest.TestCase):
     def test_rejected_action_is_accepted(self) -> None:

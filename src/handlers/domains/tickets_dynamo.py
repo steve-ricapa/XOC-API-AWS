@@ -98,7 +98,7 @@ def _resolve_ticket_for_action(claims: dict, ticket_id: str) -> dict:
             raise NotFoundError("Ticket not found")
         return item
     tenant_id = int(claims.get("tenantId") or claims.get("tenant_id") or 0)
-    return get_tenant_ticket_or_404(tenant_id, ticket_id)
+    return _get_ticket_or_404(tenant_id, ticket_id)
 
 
 def _json_default(value):
@@ -352,8 +352,8 @@ def reject_ticket(ticket_id: str, claims: dict = Depends(require_access_claims))
 
 @router.patch("/{ticket_id}/decision/select")
 def select_ticket_decision(ticket_id: str, payload: dict, claims: dict = Depends(require_access_claims)):
-    tenant_id = int(claims.get("tenantId") or claims.get("tenant_id") or 0)
-    item = _get_ticket_or_404(tenant_id, ticket_id)
+    item = _resolve_ticket_for_action(claims, ticket_id)
+    tenant_id = int(item.get("tenant_id") or 0)
     pending_decision = item.get("pending_decision")
     if not pending_decision or not isinstance(pending_decision, dict):
         raise ValidationError("No pending decision found for this ticket")
@@ -433,8 +433,8 @@ def custom_ticket_plan(ticket_id: str, payload: dict, claims: dict = Depends(req
     - `custom_instructions`: texto libre que Victor convierte en un plan ejecutable.
     - `custom_plan_steps`: pasos JSON directos (estructurados) escritos por el usuario.
     """
-    tenant_id = int(claims.get("tenantId") or claims.get("tenant_id") or 0)
-    item = _get_ticket_or_404(tenant_id, ticket_id)
+    item = _resolve_ticket_for_action(claims, ticket_id)
+    tenant_id = int(item.get("tenant_id") or 0)
     pending_decision = item.get("pending_decision")
     if not pending_decision or not isinstance(pending_decision, dict):
         raise ValidationError("No pending decision found for this ticket")
