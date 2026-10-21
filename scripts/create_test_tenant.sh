@@ -330,6 +330,7 @@ cat <<EOF
  Integracion:   id=$INTEGRATION_ID (xoc_appliance)
  System:        id=$SYSTEM_ID ($SYSTEM_NAME)
  Servidor:      privada=$SERVER_PRIVATE_IP publica=$SERVER_PUBLIC_IP
+ VICTOR:        $VICTOR_BASE_URL
 
  Usuarios:
    ADMIN_XOC (aprueba todo):   $OPERATOR_EMAIL / $OPERATOR_PASSWORD
