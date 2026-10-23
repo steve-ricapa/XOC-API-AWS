@@ -275,13 +275,19 @@ class AssessTicketAutomationTests(unittest.TestCase):
 
         fields = mock_update.call_args.args[2]
         self.assertEqual("RESUELTO", fields["status"])
-        self.assertIn("Listar artefactos: OK", fields["execution_summary"])
+        self.assertEqual("2/2 pasos completados", fields["execution_summary"])
         logs = fields["execution_logs"]
         self.assertEqual("t6", logs["correlation_id"])
         self.assertEqual(2, len(logs["timeline"]))
+        self.assertEqual((2, 2), (logs["steps_ok"], logs["steps_total"]))
         self.assertEqual("ok", logs["timeline"][0]["status"])
+        self.assertEqual("Listar artefactos", logs["timeline"][0]["label"])
+        self.assertEqual("ls -la /opt/xoc-test", logs["timeline"][0]["command"])
+        self.assertIn("ok", logs["timeline"][0]["stdout"])
         self.assertIn("rm -f", logs["timeline"][1]["detail"])
+        self.assertEqual("rm -f /opt/xoc-test/incident/backdoor.sh", logs["timeline"][1]["command"])
         self.assertEqual("completed", logs["final_result"]["status"])
+        self.assertIn("$ ls -la /opt/xoc-test", logs["final_result"]["stdout"])
         self.assertEqual(2, result["executionLogs"]["iterations"])
 
     def test_execute_phase_persists_failure_detail(self) -> None:
@@ -312,11 +318,46 @@ class AssessTicketAutomationTests(unittest.TestCase):
             )
 
         fields = mock_update.call_args.args[2]
-        self.assertNotIn("status", fields)
+        self.assertEqual("FALLIDO", fields["status"])
         self.assertEqual("FAILED", fields["execution_status"])
-        self.assertIn("Eliminar: FAILED", fields["execution_summary"])
+        self.assertEqual("0/1 pasos completados: fallo en 'Eliminar'", fields["execution_summary"])
         self.assertIn("No such file", fields["execution_logs"]["timeline"][0]["detail"])
+        self.assertEqual("No such file", fields["execution_logs"]["timeline"][0]["stderr"])
+        self.assertIn("No such file", fields["execution_logs"]["final_result"]["stderr"])
         self.assertEqual("failed", fields["execution_logs"]["final_result"]["status"])
+
+    def test_mark_failed_phase_persists_failure_without_calling_victor(self) -> None:
+        with patch("src.shared.tickets_store.get_tenant_ticket_or_none", return_value=None), patch(
+            "src.shared.tickets_store.update_ticket_fields"
+        ) as mock_update, patch(
+            "src.handlers.workers.assess_ticket_automation.requests.post"
+        ) as mock_post:
+            result = assess_ticket_automation.handler(
+                {"ticketId": "t9", "tenantId": 7, "phase": "mark_failed", "reason": "timeout"},
+                None,
+            )
+
+        mock_post.assert_not_called()
+        fields = mock_update.call_args.args[2]
+        self.assertEqual("FALLIDO", fields["status"])
+        self.assertEqual("FAILED", fields["execution_status"])
+        self.assertEqual("timeout", fields["execution_summary"])
+        self.assertEqual("failed", result["status"])
+
+    def test_mark_failed_phase_keeps_existing_detail(self) -> None:
+        existing = {
+            "execution_status": "FAILED",
+            "execution_summary": "0/4 pasos completados: fallo en 'Verificar'",
+        }
+        with patch("src.shared.tickets_store.get_tenant_ticket_or_none", return_value=existing), patch(
+            "src.shared.tickets_store.update_ticket_fields"
+        ) as mock_update:
+            assess_ticket_automation.handler(
+                {"ticketId": "t10", "tenantId": 7, "phase": "mark_failed", "reason": "Lambda.Unknown"},
+                None,
+            )
+
+        mock_update.assert_not_called()
 
     def test_execution_logs_are_dynamo_serializable(self) -> None:
         from boto3.dynamodb.types import TypeSerializer

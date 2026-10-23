@@ -80,9 +80,12 @@ def _chat_deadline(request):
 
 
 def _runtime_timeout(deadline, *, second_turn=False):
-    # Allow Azure's 8s runtime plus transit on completion, without extending
-    # the shared 23s Chat deadline or consuming the Lambda's 3s reserve.
-    remaining = min(12.0 if second_turn else 9.0, deadline - time.monotonic())
+    # Azure App Service cold starts and single-turn completions can exceed 9 s.
+    # Give the first turn most of the shared 23 s Chat budget while reserving
+    # room for a possible tool-continuation turn. Never consume the Lambda's
+    # 3 s response/persistence reserve.
+    cap = 9.0 if second_turn else 14.0
+    remaining = min(cap, deadline - time.monotonic())
     if remaining <= 0.1:
         raise requests.exceptions.Timeout("Chat budget exhausted")
     connect = min(1.0, remaining / 4)
@@ -1007,7 +1010,12 @@ def proxy_chat(
             return cleaned_payload
 
         if governed:
-            # No raw provider errors, legacy retries or alternative execution.
+            # No raw provider errors, retries or alternative execution: an
+            # uncertain turn must never be replayed automatically.
+            logger.warning(
+                "[chat] SOPHIA runtime returned status=%s governed=true",
+                sophia_response.status_code,
+            )
             if sophia_response.status_code == 409 or sophia_response.status_code >= 500:
                 raise _uncertain_sophia_turn()
             raise sophia_tool_chat.protocol_error("sophia_runtime_unavailable")

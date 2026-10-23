@@ -203,6 +203,22 @@ def _fallback_response(phase: str, ticket_id: str, tenant_id: int, subject: str,
     }
 
 
+_MAX_STEP_OUTPUT = 8000
+
+_OK_STATUSES = {"ok", "success", "succeeded", "completed", "done"}
+
+
+def _step_is_ok(status) -> bool:
+    return str(status or "").strip().lower() in _OK_STATUSES
+
+
+def _clip_output(value, limit: int = _MAX_STEP_OUTPUT) -> str:
+    text = "" if value is None else str(value)
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}\n...[salida truncada: {len(text) - limit} caracteres omitidos]"
+
+
 def _build_execution_logs(
     ticket_id: str,
     step_results: list,
@@ -214,58 +230,122 @@ def _build_execution_logs(
 
     Formato (ExecutionLogsPayload):
       run_id, correlation_id, iterations, duration_seconds,
+      steps_ok, steps_total,
       final_result{status,message,stdout,stderr,artifact_path},
-      timeline[{ts,step,status,detail}], decision_history
+      timeline[{ts,index,step,label,status,command,returncode,stdout,stderr,detail}],
+      decision_history
+
+    Cada paso conserva su comando y su salida completa (hasta 8 KB) para que el
+    frontend pueda mostrar el detalle real en vez de un resumen concatenado.
     """
     now = datetime.now(timezone.utc).isoformat()
     timeline = []
+    stdout_parts: list[str] = []
+    stderr_parts: list[str] = []
+    ok_count = 0
+
     for idx, raw_step in enumerate(step_results):
         if not isinstance(raw_step, dict):
             continue
         status = raw_step.get("status") or ("ok" if raw_step.get("success", True) else "failed")
+        if _step_is_ok(status):
+            ok_count += 1
         label = (
             raw_step.get("description")
             or raw_step.get("tool")
             or raw_step.get("command")
             or f"Paso {idx + 1}"
         )
-        details = []
-        command = raw_step.get("command")
-        if command:
-            details.append(str(command))
+        command = _clip_output(raw_step.get("command"), 2000)
+        stdout = _clip_output(
+            raw_step.get("stdout")
+            or raw_step.get("output")
+            or raw_step.get("result")
+        )
+        stderr = _clip_output(raw_step.get("stderr"))
         returncode = raw_step.get("returncode")
-        if returncode is not None:
-            details.append(f"rc={returncode}")
-        stderr = (raw_step.get("stderr") or "").strip()
-        stdout = (raw_step.get("stdout") or "").strip()
-        if stderr:
-            details.append(stderr[:300])
-        elif stdout:
-            details.append(stdout[:300])
-        for warning in raw_step.get("warnings") or []:
-            details.append(str(warning))
+        warnings = [str(w) for w in (raw_step.get("warnings") or [])]
+        output = stdout or stderr
+        detail_parts = [part for part in (
+            command,
+            f"rc={returncode}" if returncode is not None else "",
+            output,
+        ) if part]
         timeline.append({
-            "ts": now,
+            "ts": raw_step.get("ts") or now,
+            "index": idx + 1,
             "step": f"{idx + 1}. {label}",
+            "label": label,
             "status": str(status),
-            "detail": " | ".join(d for d in details if d)[:600],
+            "command": command,
+            "returncode": returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "warnings": warnings,
+            "detail": "\n".join(detail_parts) or "Sin salida registrada",
         })
+        if command:
+            stdout_parts.append(f"$ {command}")
+        if stdout:
+            stdout_parts.append(stdout)
+        if stderr:
+            stderr_parts.append(f"[stderr] {stderr}")
+
+    total = len(timeline)
+    if not summary:
+        summary = (
+            f"{ok_count}/{total} pasos completados"
+            if all_success
+            else f"{ok_count}/{total} pasos completados (con fallos)"
+        )
 
     return {
         "run_id": f"{ticket_id}-{int(datetime.now(timezone.utc).timestamp())}",
         "correlation_id": ticket_id,
-        "iterations": len(timeline),
+        "iterations": total,
         "duration_seconds": round(duration_seconds, 2) if duration_seconds is not None else None,
+        "steps_ok": ok_count,
+        "steps_total": total,
         "final_result": {
             "status": "completed" if all_success else "failed",
             "message": summary,
-            "stdout": "",
-            "stderr": "",
+            "stdout": "\n".join(stdout_parts),
+            "stderr": "\n".join(stderr_parts),
             "artifact_path": None,
         },
         "timeline": timeline,
         "decision_history": [],
     }
+
+
+def _persist_execution_failure(tenant_id, ticket_id: str, reason: str) -> None:
+    """Deja el ticket en FALLIDO con logs cuando la ejecucion no puede completarse.
+
+    Evita el estado atascado APROBADO/EXECUTING cuando Victor no responde o el
+    plan no tiene pasos ejecutables. Si el error ya se persistio con detalle,
+    conserva ese detalle en lugar de reemplazarlo por el mensaje del state
+    machine.
+    """
+    try:
+        from src.shared.tickets_store import get_tenant_ticket_or_none, update_ticket_fields
+        existing = get_tenant_ticket_or_none(int(tenant_id), ticket_id)
+        if (
+            existing
+            and existing.get("execution_status") == "FAILED"
+            and existing.get("execution_summary")
+        ):
+            logger.info("Ticket %s already has a persisted execution failure; keeping detail", ticket_id)
+            return
+        logs = _build_execution_logs(ticket_id, [], False, reason)
+        logs["final_result"]["stderr"] = reason
+        update_ticket_fields(int(tenant_id), ticket_id, {
+            "status": "FALLIDO",
+            "execution_status": "FAILED",
+            "execution_summary": reason,
+            "execution_logs": logs,
+        })
+    except Exception as exc:
+        logger.warning("Failed to persist execution failure for ticket %s: %s", ticket_id, exc)
 
 
 def handler(event: dict, context) -> dict:
@@ -278,6 +358,16 @@ def handler(event: dict, context) -> dict:
     if not ticket_id or not tenant_id:
         raise ValidationError("ticketId and tenantId are required")
 
+    if phase == "mark_failed":
+        reason = event.get("reason") or "La ejecucion del plan no pudo completarse"
+        _persist_execution_failure(tenant_id, ticket_id, reason)
+        return {
+            "status": "failed",
+            "ticketId": ticket_id,
+            "tenantId": tenant_id,
+            "reason": reason,
+        }
+
     base_url, victor_route, endpoint_source = _resolve_victor_endpoint(int(tenant_id))
 
     if not base_url:
@@ -288,7 +378,9 @@ def handler(event: dict, context) -> dict:
 
     full_url = f"{base_url}{victor_route}"
     token = _build_service_token(int(tenant_id))
-    timeout_seconds = int(os.environ.get("VICTOR_TIMEOUT_SECONDS", "300"))
+    # Keep headroom below the 300 s Lambda budget so a hung Victor can be
+    # recorded as FAILED instead of leaving the ticket stuck in EXECUTING.
+    timeout_seconds = int(os.environ.get("VICTOR_TIMEOUT_SECONDS", "240"))
 
     plan_from_event = event.get("plan")
     similar_case_plan = event.get("similarCasePlan")
@@ -335,6 +427,11 @@ def handler(event: dict, context) -> dict:
                 "description": description,
                 "victorSource": endpoint_source,
             }
+        if phase == "execute":
+            _persist_execution_failure(
+                tenant_id, ticket_id,
+                "Victor no respondio a tiempo durante la ejecucion del plan",
+            )
         raise ValidationError("Victor timed out during plan generation")
     except requests.exceptions.RequestException as exc:
         status_code = getattr(getattr(exc, "response", None), "status_code", None)
@@ -351,7 +448,20 @@ def handler(event: dict, context) -> dict:
                 "description": description,
                 "victorSource": endpoint_source,
             }
+        if phase == "execute":
+            _persist_execution_failure(
+                tenant_id, ticket_id,
+                f"Victor devolvio un error durante la ejecucion (HTTP {status_code or 'sin codigo'})",
+            )
         raise ValidationError(f"Victor returned an error: {exc}")
+    except ValueError as exc:
+        logger.error("Victor returned an invalid JSON response for ticket %s: %s", ticket_id, exc)
+        if phase == "execute":
+            _persist_execution_failure(
+                tenant_id, ticket_id,
+                "Victor devolvio una respuesta invalida durante la ejecucion",
+            )
+        raise ValidationError("Victor returned an invalid response")
 
     if phase == "assessment":
         can_resolve = bool(data.get("can_resolve", data.get("canResolve", False)))
@@ -372,29 +482,35 @@ def handler(event: dict, context) -> dict:
             execute_plan = event.get("recommendedPlan")
         if not _plan_has_steps(execute_plan):
             logger.error("Execute phase reached with empty plan for ticket %s", ticket_id)
+            _persist_execution_failure(tenant_id, ticket_id, "No hay pasos ejecutables en el plan aprobado")
             raise ValidationError("Cannot execute: no action plan steps present for this ticket")
         plan_from_event = execute_plan
         all_success = bool(data.get("all_success", False))
         step_results = data.get("step_results", [])
         step_results = step_results if isinstance(step_results, list) else []
-        summary_parts = []
-        for r in step_results:
-            if not isinstance(r, dict):
-                summary_parts.append(str(r)[:100])
-                continue
-            label = (
-                r.get("description")
-                or r.get("tool")
-                or r.get("command")
-                or r.get("action")
-                or "?"
+        ok_count = sum(
+            1 for r in step_results
+            if isinstance(r, dict)
+            and _step_is_ok(r.get("status") or ("ok" if r.get("success", True) else "failed"))
+        )
+        total_steps = len(step_results)
+        execution_summary = f"{ok_count}/{total_steps} pasos completados"
+        if not all_success:
+            failed_step = next(
+                (
+                    r for r in step_results
+                    if isinstance(r, dict)
+                    and not _step_is_ok(r.get("status") or ("ok" if r.get("success", True) else "failed"))
+                ),
+                None,
             )
-            status = r.get("status")
-            if not status:
-                status = "ok" if r.get("success", True) else "failed"
-            detail = (r.get("output") or r.get("result") or r.get("stdout") or "")[:100]
-            summary_parts.append(f"{label}: {str(status).upper()}" + (f" ({detail})" if detail else ""))
-        execution_summary = "; ".join(summary_parts)[:500] or str(data)[:500]
+            if failed_step:
+                failed_label = (
+                    failed_step.get("description")
+                    or failed_step.get("command")
+                    or "paso sin descripcion"
+                )
+                execution_summary = f"{execution_summary}: fallo en '{failed_label}'"
         execution_logs = _build_execution_logs(
             ticket_id=str(ticket_id),
             step_results=step_results,
@@ -423,6 +539,7 @@ def handler(event: dict, context) -> dict:
             try:
                 from src.shared.tickets_store import update_ticket_fields
                 update_ticket_fields(int(tenant_id), ticket_id, {
+                    "status": "FALLIDO",
                     "execution_status": "FAILED",
                     "execution_summary": execution_summary,
                     "execution_logs": execution_logs,

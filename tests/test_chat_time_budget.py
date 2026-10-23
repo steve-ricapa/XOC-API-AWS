@@ -6,16 +6,16 @@ from src.handlers.routes import chat
 
 
 class ChatBudgetTests(unittest.TestCase):
-    def test_second_turn_has_transit_margin_without_changing_first_turn(self):
+    def test_first_turn_uses_most_of_budget_second_turn_keeps_margin(self):
         with patch.object(chat.time, "monotonic", return_value=100):
-            self.assertEqual((1, 8), chat._runtime_timeout(123))
-            self.assertEqual((1, 11), chat._runtime_timeout(123, second_turn=True))
+            self.assertEqual((1, 13), chat._runtime_timeout(123))
+            self.assertEqual((1, 8), chat._runtime_timeout(123, second_turn=True))
 
     def test_second_turn_cannot_extend_remaining_deadline(self):
         with patch.object(chat.time, "monotonic", return_value=100):
             for remaining in (0.2, 2, 7, 10, 23):
                 connect, read = chat._runtime_timeout(100 + remaining, second_turn=True)
-                self.assertLessEqual(connect + read, min(12, remaining) + 1e-9)
+                self.assertLessEqual(connect + read, min(9, remaining) + 1e-9)
             with self.assertRaises(requests.Timeout):
                 chat._runtime_timeout(100, second_turn=True)
 
@@ -61,7 +61,7 @@ class ChatBudgetTests(unittest.TestCase):
                 connect, read = chat._runtime_timeout(deadline)
                 self.assertGreater(connect, 0)
                 self.assertGreater(read, 0)
-                self.assertLessEqual(connect + read, min(9, deadline - 100))
+                self.assertLessEqual(connect + read, min(14, deadline - 100))
 
     def test_exhausted_lambda_has_no_budget(self):
         request = SimpleNamespace(scope={"aws.context": Mock(get_remaining_time_in_millis=Mock(return_value=2000))})

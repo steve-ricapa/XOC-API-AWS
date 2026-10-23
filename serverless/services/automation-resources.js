@@ -154,6 +154,22 @@ module.exports = function automationResources(stage) {
                     Parameters: { 'ticketId.$': '$.state.ticketId', 'tenantId.$': '$.state.tenantId', 'subject.$': '$.state.subject', 'description.$': '$.state.description', 'plan.$': '$.approval.selected_plan', 'recommendedPlan.$': '$.plan.plan', phase: 'execute' },
                     ResultPath: '$.execution',
                     Next: 'CheckTicketStatus',
+                    Catch: [{ ErrorEquals: ['States.ALL'], ResultPath: '$.executionError', Next: 'MarkExecutionFailed' }],
+                    Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
+                  },
+                  MarkExecutionFailed: {
+                    // Runs even when the execute Lambda dies (timeout/crash), so
+                    // the ticket never stays stuck in APROBADO/EXECUTING.
+                    Type: 'Task',
+                    Resource: '${AssessTicketAutomationArn}',
+                    Parameters: {
+                      'ticketId.$': '$.state.ticketId',
+                      'tenantId.$': '$.state.tenantId',
+                      'reason.$': "States.Format('La ejecucion fallo: {}', $.executionError.Error)",
+                      phase: 'mark_failed',
+                    },
+                    ResultPath: '$.executionFailure',
+                    Next: 'RegisterFailedCase',
                     Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
                   },
                   CheckTicketStatus: {
