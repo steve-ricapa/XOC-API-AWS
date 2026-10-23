@@ -139,6 +139,61 @@ def _evaluate_solution(steps: list, source: str = "custom", analysis: str = "") 
     return plan, requirement
 
 
+def _analyze_custom_instructions(
+    *,
+    ticket_id: str,
+    tenant_id: int,
+    subject: str,
+    description: str,
+    custom_instructions: str,
+) -> tuple[list, str]:
+    """Convierte instrucciones libres en pasos ejecutables usando Victor.
+
+    La generacion ocurre dentro del request del API. Cualquier fallo del
+    runtime se traduce en un 502 explicito; nunca en un 500 opaco.
+    """
+    from src.handlers.workers import assess_ticket_automation
+
+    try:
+        result = assess_ticket_automation.handler(
+            {
+                "ticketId": ticket_id,
+                "tenantId": tenant_id,
+                "subject": subject,
+                "description": description,
+                "phase": "plan",
+                "generatePlans": False,
+                "persist": False,
+                "customInstructions": custom_instructions,
+            },
+            None,
+        )
+    except AppError:
+        raise
+    except Exception as exc:
+        logger.exception(
+            "Custom plan generation failed for ticket %s (tenant=%s): %s",
+            ticket_id,
+            tenant_id,
+            exc,
+        )
+        raise AppError(
+            "No se pudo analizar la solucion con Victor. Intenta de nuevo o escribe los comandos manualmente.",
+            status_code=502,
+            code="custom_plan_generation_failed",
+        )
+
+    plans = result.get("plans") or []
+    if not plans:
+        raise ValidationError("Victor could not generate a plan from your instructions")
+    recommended = plans[0]
+    steps = recommended.get("plan", []) or []
+    analysis = recommended.get("analysis") or result.get("analysis") or ""
+    if not analysis:
+        analysis = recommended.get("plan_summary") or ""
+    return steps, analysis
+
+
 def _resolve_ticket_for_action(claims: dict, ticket_id: str) -> dict:
     role = (claims.get("role") or "").upper()
     if role in PLATFORM_OPERATOR_ROLES:
@@ -500,25 +555,13 @@ def preview_ticket_custom_plan(ticket_id: str, payload: dict, claims: dict = Dep
             raise ValidationError("custom_plan_steps must be a non-empty list of steps")
         steps = _normalize_custom_steps(custom_plan_steps)
     else:
-        from src.handlers.workers import assess_ticket_automation
-        result = assess_ticket_automation.handler({
-            "ticketId": ticket_id,
-            "tenantId": tenant_id,
-            "subject": item.get("subject", ""),
-            "description": item.get("description", ""),
-            "phase": "plan",
-            "generatePlans": False,
-            "persist": False,
-            "customInstructions": custom_instructions,
-        }, None)
-        plans = result.get("plans") or []
-        if not plans:
-            raise ValidationError("Victor could not generate a plan from your instructions")
-        recommended = plans[0]
-        steps = recommended.get("plan", []) or []
-        analysis = recommended.get("analysis") or result.get("analysis") or ""
-        if not analysis:
-            analysis = recommended.get("plan_summary") or ""
+        steps, analysis = _analyze_custom_instructions(
+            ticket_id=ticket_id,
+            tenant_id=tenant_id,
+            subject=item.get("subject", ""),
+            description=item.get("description", ""),
+            custom_instructions=custom_instructions,
+        )
 
     if not steps:
         raise ValidationError("The proposed solution did not produce any executable step")
@@ -568,23 +611,13 @@ def custom_ticket_plan(ticket_id: str, payload: dict, claims: dict = Depends(req
         if not steps:
             raise ValidationError("custom_plan_steps must contain at least one step with a command")
     else:
-        from src.handlers.workers import assess_ticket_automation
-        result = assess_ticket_automation.handler({
-            "ticketId": ticket_id,
-            "tenantId": tenant_id,
-            "subject": item.get("subject", ""),
-            "description": item.get("description", ""),
-            "phase": "plan",
-            "generatePlans": False,
-            "persist": False,
-            "customInstructions": custom_instructions,
-        }, None)
-        plans = result.get("plans") or []
-        if not plans:
-            raise ValidationError("Victor could not generate a plan from your instructions")
-        recommended = plans[0]
-        steps = recommended.get("plan", []) or []
-        analysis = recommended.get("analysis") or result.get("analysis") or ""
+        steps, analysis = _analyze_custom_instructions(
+            ticket_id=ticket_id,
+            tenant_id=tenant_id,
+            subject=item.get("subject", ""),
+            description=item.get("description", ""),
+            custom_instructions=custom_instructions,
+        )
         if not steps:
             raise ValidationError("Victor could not generate an executable plan from your instructions")
 

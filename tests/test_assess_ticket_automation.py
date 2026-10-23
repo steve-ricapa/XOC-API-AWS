@@ -244,6 +244,39 @@ class AssessTicketAutomationTests(unittest.TestCase):
         mock_update.assert_not_called()
         self.assertEqual("texto", result["analysis"])
 
+    def test_plan_phase_tolerates_non_string_risk_metadata(self) -> None:
+        runtime = MagicMock()
+        runtime.function_base_url = "http://on-premise-victor.local:9000"
+        runtime.function_route_victor = "/api/agents/VictorDurableAgent/run"
+        runtime.is_active = True
+
+        fake_response = MagicMock()
+        fake_response.json.return_value = {
+            "plans": [{
+                "plan_id": "p1",
+                "analysis": "analisis custom",
+                "plan": [
+                    {"order": 1, "command": ["ls", "-la", "/tmp"], "risk_level": 1},
+                    {"order": 2, "command": "cat /tmp/x", "risk_level": {"level": "basic"}},
+                ],
+            }]
+        }
+        fake_response.raise_for_status.return_value = None
+
+        with patch("src.persistence.db.session_scope", _fake_db_session(runtime)), patch(
+            "src.handlers.workers.assess_ticket_automation.requests.post", return_value=fake_response
+        ):
+            result = assess_ticket_automation.handler(
+                {"ticketId": "t6", "tenantId": 7, "subject": "x", "description": "y", "phase": "plan",
+                 "persist": False, "customInstructions": "listar /tmp"},
+                None,
+            )
+
+        steps = result["plans"][0]["plan"]
+        self.assertEqual("ls -la /tmp", steps[0]["command"])
+        self.assertEqual(2, len(steps))
+        self.assertEqual("basic", result["maxRiskLevel"])
+
     def test_execute_phase_persists_execution_logs(self) -> None:
         runtime = MagicMock()
         runtime.function_base_url = "http://on-premise-victor.local:9000"

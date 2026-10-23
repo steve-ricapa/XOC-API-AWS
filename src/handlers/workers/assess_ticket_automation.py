@@ -103,6 +103,30 @@ def _payload_for(
     return payload
 
 
+def _sanitize_plan_steps(steps) -> list:
+    """Normaliza los pasos devueltos por Victor antes de evaluarlos/ejecutarlos.
+
+    Algunos planes (sobre todo los generados a partir de instrucciones libres)
+    traen `command` como lista de argumentos o como numero. El front y el
+    ejecutor esperan un string; se normaliza aqui para evitar errores aguas
+    abajo sin descartar pasos.
+    """
+    if not isinstance(steps, list):
+        return []
+    normalized = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        command = step.get("command")
+        if isinstance(command, list) and command and all(isinstance(part, str) for part in command):
+            joined = " ".join(part.strip() for part in command if part.strip())
+            step = {**step, "command": joined}
+        elif isinstance(command, (int, float)) and not isinstance(command, bool):
+            step = {**step, "command": str(command)}
+        normalized.append(step)
+    return normalized
+
+
 def _normalize_plans(data) -> list:
     """Convierte la respuesta de Victor en una lista de planes.
 
@@ -130,6 +154,7 @@ def _normalize_plans(data) -> list:
             steps = inner.get("steps", []) if isinstance(inner, dict) else inner if isinstance(inner, list) else []
             if not isinstance(steps, list):
                 steps = []
+            steps = _sanitize_plan_steps(steps)
             if len(steps) == 0:
                 continue
             normalized.append({
@@ -147,6 +172,7 @@ def _normalize_plans(data) -> list:
     steps = single.get("steps", []) if isinstance(single, dict) else single if isinstance(single, list) else []
     if not isinstance(steps, list):
         steps = []
+    steps = _sanitize_plan_steps(steps)
     if len(steps) == 0:
         return []
     return [{

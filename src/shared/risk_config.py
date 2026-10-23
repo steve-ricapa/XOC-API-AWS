@@ -294,20 +294,32 @@ def approver_label_for_risk(risk_level: str) -> str:
     return APPROVER_LABEL_FOR_RISK.get(risk_level.lower(), APPROVER_LABEL_FOR_RISK[DEFAULT_RISK_LEVEL])
 
 
+def _as_lower_text(value) -> str:
+    """Normaliza metadatos del agente sin asumir que sean strings.
+
+    Victor (Azure/on-premise) puede devolver `risk_level`, `impact` o
+    `action_type` como numeros u objetos. Un `.lower()` directo provocaba un
+    AttributeError y un 500 al previsualizar un plan custom.
+    """
+    if value is None or isinstance(value, (dict, list, tuple, set)):
+        return ""
+    return str(value).strip().lower()
+
+
 def _declared_step_risk_level(step: dict) -> str:
     """Riesgo declarado por el agente para un paso (sin inferencia por comando)."""
-    level = (step.get("risk_level") or "").lower()
+    level = _as_lower_text(step.get("risk_level"))
     if level in RISK_LEVEL_ORDER:
         return level
 
-    impact = (step.get("impact") or "").lower()
+    impact = _as_lower_text(step.get("impact"))
     if impact in ("important", "critical", "high", "irreversible"):
         return "risky" if impact != "irreversible" else "critical"
 
     if step.get("important") in (True, "true", "True", 1):
         return "risky"
 
-    action_type = (step.get("action_type") or "").lower()
+    action_type = _as_lower_text(step.get("action_type"))
     return ACTION_TYPE_RISK_MAP.get(action_type, DEFAULT_RISK_LEVEL)
 
 

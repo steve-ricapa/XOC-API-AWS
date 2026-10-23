@@ -428,6 +428,21 @@ class CustomPlanGovernanceTests(unittest.TestCase):
         self.assertIn("no puede aprobar", result["governance_message"])
         self.assertIn("Admin del tenant", result["governance_message"])
 
+    def test_preview_maps_unexpected_victor_error_to_502(self) -> None:
+        item = self._ticket()
+        with patch.object(tickets_dynamo, "_get_ticket_or_404", return_value=item), patch(
+            "src.handlers.workers.assess_ticket_automation.handler",
+            side_effect=AttributeError("'int' object has no attribute 'lower'"),
+        ), patch.object(tickets_dynamo.logger, "exception"):
+            with self.assertRaises(AppError) as ctx:
+                tickets_dynamo.preview_ticket_custom_plan(
+                    "t1",
+                    {"custom_instructions": "revisar el artefacto"},
+                    {"role": "USER", "tenantId": 7},
+                )
+        self.assertEqual(502, ctx.exception.status_code)
+        self.assertEqual("custom_plan_generation_failed", ctx.exception.code)
+
     def test_preview_requires_instructions_or_steps(self) -> None:
         item = self._ticket()
         with patch.object(tickets_dynamo, "_get_ticket_or_404", return_value=item):
