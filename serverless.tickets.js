@@ -4,7 +4,7 @@ const ticketsResources = require('./serverless/services/tickets-resources');
 module.exports = buildService({
   service: 'xoc-api-tickets',
   attachToSharedHttpApi: true,
-  iam: { dynamo: true, events: true },
+  iam: { dynamo: true, events: true, vpc: true },
   environment: (stage) => ({
     ...commonEnvironment(stage),
     NOTIFICATION_EVENT_BUS_NAME: `xoc-api-ops-${stage}-notifications-bus`,
@@ -28,6 +28,8 @@ module.exports = buildService({
     ticketsDynamoApi: lambdaConfig(stage, {
       handler: 'src/handlers/domains/tickets_dynamo.handler',
       description: 'Tickets domain API (DynamoDB-backed)',
+      // Custom-plan preview calls VICTOR and resolves its RDS runtime settings.
+      needsVpc: true,
       include: [
         'src/handlers/domains/tickets_dynamo.py',
         'src/notifications/**',
