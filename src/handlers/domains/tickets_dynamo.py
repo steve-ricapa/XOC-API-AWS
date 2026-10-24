@@ -17,6 +17,7 @@ from src.shared.tickets_store import (
     build_new_ticket_item,
     build_secondary_index_fields,
     get_tenant_ticket_or_404,
+    get_tenant_ticket_or_none,
     get_ticket_by_id_or_none,
     list_tenant_tickets,
     now_iso,
@@ -32,6 +33,7 @@ eventbridge = boto3.client("events")
 stepfunctions = boto3.client("stepfunctions")
 
 PLATFORM_OPERATOR_ROLES = {"ADMIN_XOC", "SUPERADMIN"}
+_PROCESSED_APPROVAL_STATUSES = {"APROBADO", "EN_EJECUCION", "RESUELTO", "FALLIDO"}
 
 
 def _emit_event(event_name: str, tenant_id: int, ticket_id: str, payload: dict):
@@ -229,6 +231,60 @@ def _resume_workflow(item: dict, approved: bool, selected_plan=None) -> None:
         raise AppError(status_code=502, message="Failed to resume the automation workflow")
 
 
+def _already_processed_ticket(tenant_id: int, ticket_id: str) -> dict | None:
+    """Return the ticket when the workflow advanced before our conditional write.
+
+    The execution can finish between send_task_success and the DynamoDB update.
+    In that race the write fails with ConditionalCheckFailedException even though
+    the decision was applied. Treat an advanced status as success so the caller
+    gets the real ticket instead of a misleading error.
+    """
+    current = get_tenant_ticket_or_none(tenant_id, ticket_id)
+    if current and current.get("status") in _PROCESSED_APPROVAL_STATUSES:
+        return current
+    return None
+
+
+def _mark_decision_approved(tenant_id: int, ticket_id: str, user_id, created_at: str) -> None:
+    """Move a PREAPROBADO ticket to APROBADO/EXECUTING after a decision."""
+    now = now_iso()
+    secondary = build_secondary_index_fields(tenant_id, ticket_id, "APROBADO", created_at)
+    table.update_item(
+        Key=ticket_key(tenant_id, ticket_id),
+        UpdateExpression="SET #pending_decision = :null, #status = :aprobado, #execution_status = :executing, #approved_by_user_id = :uid, #approved_at = :at, #updated_at = :now, #gsi1pk = :gsi1pk, #gsi1sk = :gsi1sk, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk",
+        ConditionExpression="#status = :preaprobado",
+        ExpressionAttributeValues={
+            ":null": None,
+            ":aprobado": "APROBADO",
+            ":executing": "EXECUTING",
+            ":preaprobado": "PREAPROBADO",
+            ":uid": int(user_id) if user_id else None,
+            ":at": now,
+            ":now": now,
+            ":gsi1pk": secondary["gsi1pk"],
+            ":gsi1sk": secondary["gsi1sk"],
+            ":gsi2pk": secondary["gsi2pk"],
+            ":gsi2sk": secondary["gsi2sk"],
+            ":gsi3pk": secondary["gsi3pk"],
+            ":gsi3sk": secondary["gsi3sk"],
+        },
+        ExpressionAttributeNames={
+            "#pending_decision": "pending_decision",
+            "#status": "status",
+            "#execution_status": "execution_status",
+            "#approved_by_user_id": "approved_by_user_id",
+            "#approved_at": "approved_at",
+            "#updated_at": "updated_at",
+            "#gsi1pk": "gsi1pk",
+            "#gsi1sk": "gsi1sk",
+            "#gsi2pk": "gsi2pk",
+            "#gsi2sk": "gsi2sk",
+            "#gsi3pk": "gsi3pk",
+            "#gsi3sk": "gsi3sk",
+        },
+    )
+
+
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
 
@@ -384,6 +440,9 @@ def approve_ticket(ticket_id: str, claims: dict = Depends(require_access_claims)
         )
     except ClientError as exc:
         if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            current = _already_processed_ticket(tenant_id, ticket_id)
+            if current:
+                return {"message": "Ticket approved successfully", "ticket": serialize_ticket(current)}
             raise ValidationError("Ticket approval state changed, please refresh and try again")
         raise
     updated = get_tenant_ticket_or_404(tenant_id, ticket_id)
@@ -442,6 +501,9 @@ def reject_ticket(ticket_id: str, claims: dict = Depends(require_access_claims))
         )
     except ClientError as exc:
         if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            current = get_tenant_ticket_or_none(tenant_id, ticket_id)
+            if current and current.get("status") in {"RECHAZADO", "DERIVADO"}:
+                return {"message": "Ticket rejected successfully", "ticket": serialize_ticket(current)}
             raise ValidationError("Ticket approval state changed, please refresh and try again")
         raise
     updated = get_tenant_ticket_or_404(tenant_id, ticket_id)
@@ -482,44 +544,17 @@ def select_ticket_decision(ticket_id: str, payload: dict, claims: dict = Depends
     chosen_plan["risk_level"] = requirement["max_risk_level"]
     update_ticket_fields(tenant_id, ticket_id, {"action_plan": chosen_plan})
     _resume_workflow(item, approved=True, selected_plan=chosen_plan)
-    now = now_iso()
     user_id = claims.get("userId") or claims.get("sub")
-    created_at = item.get("created_at") or now
-    secondary = build_secondary_index_fields(tenant_id, ticket_id, "APROBADO", created_at)
-    table.update_item(
-        Key=ticket_key(tenant_id, ticket_id),
-        UpdateExpression="SET #pending_decision = :null, #status = :aprobado, #execution_status = :executing, #approved_by_user_id = :uid, #approved_at = :at, #updated_at = :now, #gsi1pk = :gsi1pk, #gsi1sk = :gsi1sk, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk",
-        ConditionExpression="#status = :preaprobado",
-        ExpressionAttributeValues={
-            ":null": None,
-            ":aprobado": "APROBADO",
-            ":executing": "EXECUTING",
-            ":preaprobado": "PREAPROBADO",
-            ":uid": int(user_id) if user_id else None,
-            ":at": now,
-            ":now": now,
-            ":gsi1pk": secondary["gsi1pk"],
-            ":gsi1sk": secondary["gsi1sk"],
-            ":gsi2pk": secondary["gsi2pk"],
-            ":gsi2sk": secondary["gsi2sk"],
-            ":gsi3pk": secondary["gsi3pk"],
-            ":gsi3sk": secondary["gsi3sk"],
-        },
-        ExpressionAttributeNames={
-            "#pending_decision": "pending_decision",
-            "#status": "status",
-            "#execution_status": "execution_status",
-            "#approved_by_user_id": "approved_by_user_id",
-            "#approved_at": "approved_at",
-            "#updated_at": "updated_at",
-            "#gsi1pk": "gsi1pk",
-            "#gsi1sk": "gsi1sk",
-            "#gsi2pk": "gsi2pk",
-            "#gsi2sk": "gsi2sk",
-            "#gsi3pk": "gsi3pk",
-            "#gsi3sk": "gsi3sk",
-        },
-    )
+    created_at = item.get("created_at") or now_iso()
+    try:
+        _mark_decision_approved(tenant_id, ticket_id, user_id, created_at)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            current = _already_processed_ticket(tenant_id, ticket_id)
+            if current:
+                return {"message": "Decision selected successfully", "ticket": serialize_ticket(current)}
+            raise ValidationError("Ticket approval state changed, please refresh and try again")
+        raise
     updated = _get_ticket_or_404(tenant_id, ticket_id)
     _emit_event("ticket.status_changed", tenant_id, ticket_id, {"status": "APROBADO", "selected_option_id": selected_option_id})
     publish_ticket_status_notification(
@@ -630,44 +665,17 @@ def custom_ticket_plan(ticket_id: str, payload: dict, claims: dict = Depends(req
 
     update_ticket_fields(tenant_id, ticket_id, {"action_plan": selected_plan})
     _resume_workflow(item, approved=True, selected_plan=selected_plan)
-    now = now_iso()
     user_id = claims.get("userId") or claims.get("sub")
-    created_at = item.get("created_at") or now
-    secondary = build_secondary_index_fields(tenant_id, ticket_id, "APROBADO", created_at)
-    table.update_item(
-        Key=ticket_key(tenant_id, ticket_id),
-        UpdateExpression="SET #pending_decision = :null, #status = :aprobado, #execution_status = :executing, #approved_by_user_id = :uid, #approved_at = :at, #updated_at = :now, #gsi1pk = :gsi1pk, #gsi1sk = :gsi1sk, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk",
-        ConditionExpression="#status = :preaprobado",
-        ExpressionAttributeValues={
-            ":null": None,
-            ":aprobado": "APROBADO",
-            ":executing": "EXECUTING",
-            ":preaprobado": "PREAPROBADO",
-            ":uid": int(user_id) if user_id else None,
-            ":at": now,
-            ":now": now,
-            ":gsi1pk": secondary["gsi1pk"],
-            ":gsi1sk": secondary["gsi1sk"],
-            ":gsi2pk": secondary["gsi2pk"],
-            ":gsi2sk": secondary["gsi2sk"],
-            ":gsi3pk": secondary["gsi3pk"],
-            ":gsi3sk": secondary["gsi3sk"],
-        },
-        ExpressionAttributeNames={
-            "#pending_decision": "pending_decision",
-            "#status": "status",
-            "#execution_status": "execution_status",
-            "#approved_by_user_id": "approved_by_user_id",
-            "#approved_at": "approved_at",
-            "#updated_at": "updated_at",
-            "#gsi1pk": "gsi1pk",
-            "#gsi1sk": "gsi1sk",
-            "#gsi2pk": "gsi2pk",
-            "#gsi2sk": "gsi2sk",
-            "#gsi3pk": "gsi3pk",
-            "#gsi3sk": "gsi3sk",
-        },
-    )
+    created_at = item.get("created_at") or now_iso()
+    try:
+        _mark_decision_approved(tenant_id, ticket_id, user_id, created_at)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            current = _already_processed_ticket(tenant_id, ticket_id)
+            if current:
+                return {"message": "Custom plan submitted successfully", "ticket": serialize_ticket(current)}
+            raise ValidationError("Ticket approval state changed, please refresh and try again")
+        raise
     updated = _get_ticket_or_404(tenant_id, ticket_id)
     _emit_event("ticket.status_changed", tenant_id, ticket_id, {"status": "APROBADO", "custom": True})
     publish_ticket_status_notification(

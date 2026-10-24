@@ -6,6 +6,8 @@ import json
 import unittest
 from unittest.mock import patch
 
+from botocore.exceptions import ClientError
+
 os.environ["TICKETS_TABLE_NAME"] = "xoc-api-tickets-test-tickets"
 os.environ["EVENT_BUS_NAME"] = "xoc-api-tickets-test-bus"
 os.environ["CASES_TABLE_NAME"] = "xoc-api-automation-test-cases-v2"
@@ -260,6 +262,24 @@ class TicketApprovalFlowTests(unittest.TestCase):
         self.assertEqual("APROBADO", update_kwargs["ExpressionAttributeValues"][":aprobado"])
         self.assertEqual("EXECUTING", update_kwargs["ExpressionAttributeValues"][":executing"])
         self.assertEqual("PREAPROBADO", update_kwargs["ExpressionAttributeValues"][":preaprobado"])
+
+    def test_approve_returns_advanced_ticket_when_workflow_finishes_first(self) -> None:
+        item = self._preaprobado_ticket()
+        executed = {**item, "status": "RESUELTO", "execution_status": "EXECUTED"}
+        conditional = ClientError(
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": "changed"}},
+            "UpdateItem",
+        )
+        with patch.object(tickets_dynamo, "_resolve_ticket_for_action", return_value=item), patch.object(
+            tickets_dynamo, "_assert_can_approve"
+        ), patch.object(
+            tickets_dynamo, "resolve_executable_plan", return_value={"steps": [{"command": "x"}]}
+        ), patch.object(tickets_dynamo, "_resume_workflow"), patch.object(
+            tickets_dynamo, "get_tenant_ticket_or_none", return_value=executed
+        ), patch.object(tickets_dynamo, "table") as mock_table:
+            mock_table.update_item.side_effect = conditional
+            result = tickets_dynamo.approve_ticket("t1", {"role": "USER", "tenantId": 7})
+        self.assertEqual("RESUELTO", result["ticket"]["status"])
 
     def test_select_decision_blocks_option_above_user_role(self) -> None:
         item = self._preaprobado_ticket()

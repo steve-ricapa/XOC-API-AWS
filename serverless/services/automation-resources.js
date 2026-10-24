@@ -94,7 +94,8 @@ module.exports = function automationResources(stage) {
                     Resource: '${AssessTicketAutomationArn}',
                     Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', phase: 'plan' },
                     ResultPath: '$.plan',
-                    Next: 'CheckSimilarCaseForInit',
+                    Next: 'CheckPlansAvailable',
+                    Catch: [{ ErrorEquals: ['States.ALL'], ResultPath: '$.planError', Next: 'MarkPlanUnavailable' }],
                     Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
                   },
                   AssessTicketPlanWithSimilar: {
@@ -102,7 +103,28 @@ module.exports = function automationResources(stage) {
                     Resource: '${AssessTicketAutomationArn}',
                     Parameters: { 'ticketId.$': '$.input.ticketId', 'tenantId.$': '$.input.tenantId', 'subject.$': '$.input.subject', 'description.$': '$.input.description', 'similarCasePlan.$': '$.similarCases.similarCase.plan_used', 'similarCaseSolution.$': '$.similarCases.similarCase.solution_applied', phase: 'plan' },
                     ResultPath: '$.plan',
-                    Next: 'CheckSimilarCaseForInit',
+                    Next: 'CheckPlansAvailable',
+                    Catch: [{ ErrorEquals: ['States.ALL'], ResultPath: '$.planError', Next: 'MarkPlanUnavailable' }],
+                    Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
+                  },
+                  CheckPlansAvailable: {
+                    Type: 'Choice',
+                    Choices: [{ Variable: '$.plan.plans[0].plan[0]', IsPresent: true, Next: 'CheckSimilarCaseForInit' }],
+                    Default: 'MarkPlanUnavailable',
+                  },
+                  MarkPlanUnavailable: {
+                    // A plan without executable steps must end as DERIVADO, never
+                    // as PREAPROBADO with an empty list of options.
+                    Type: 'Task',
+                    Resource: '${AssessTicketAutomationArn}',
+                    Parameters: {
+                      'ticketId.$': '$.input.ticketId',
+                      'tenantId.$': '$.input.tenantId',
+                      phase: 'mark_derived',
+                      reasonCode: 'NO_EXECUTABLE_PLAN',
+                    },
+                    ResultPath: '$.planUnavailable',
+                    Next: 'EndPlanUnavailable',
                     Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
                   },
                   CheckSimilarCaseForInit: {
@@ -237,6 +259,11 @@ module.exports = function automationResources(stage) {
                   EndCannotResolve: {
                     Type: 'Pass',
                     Result: { status: 'cannot_resolve', message: 'Victor Azure determined this ticket cannot be resolved automatically.' },
+                    End: true,
+                  },
+                  EndPlanUnavailable: {
+                    Type: 'Pass',
+                    Result: { status: 'plan_unavailable', message: 'No executable remediation plan was generated; ticket marked as DERIVADO.' },
                     End: true,
                   },
                   EndTimeoutRegistered: {

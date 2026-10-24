@@ -231,7 +231,7 @@ def _fallback_response(phase: str, ticket_id: str, tenant_id: int, subject: str,
 
 _MAX_STEP_OUTPUT = 8000
 
-_OK_STATUSES = {"ok", "success", "succeeded", "completed", "done"}
+_OK_STATUSES = {"ok", "success", "succeeded", "completed", "done", "true"}
 
 
 def _step_is_ok(status) -> bool:
@@ -394,6 +394,16 @@ def handler(event: dict, context) -> dict:
             "reason": reason,
         }
 
+    if phase == "mark_derived":
+        reason_code = event.get("reasonCode") or "NO_EXECUTABLE_PLAN"
+        sync_unresolvable_assessment(int(tenant_id), ticket_id, reason_code)
+        return {
+            "status": "derivado",
+            "ticketId": ticket_id,
+            "tenantId": tenant_id,
+            "reasonCode": reason_code,
+        }
+
     base_url, victor_route, endpoint_source = _resolve_victor_endpoint(int(tenant_id))
 
     if not base_url:
@@ -511,9 +521,18 @@ def handler(event: dict, context) -> dict:
             _persist_execution_failure(tenant_id, ticket_id, "No hay pasos ejecutables en el plan aprobado")
             raise ValidationError("Cannot execute: no action plan steps present for this ticket")
         plan_from_event = execute_plan
-        all_success = bool(data.get("all_success", False))
         step_results = data.get("step_results", [])
         step_results = step_results if isinstance(step_results, list) else []
+        if "all_success" in data:
+            all_success = bool(data.get("all_success"))
+        else:
+            # Algunas versiones de Victor solo devuelven step_results; inferir
+            # el resultado evita marcar como FALLIDO una ejecucion correcta.
+            all_success = bool(step_results) and all(
+                _step_is_ok(r.get("status") or ("ok" if r.get("success", True) else "failed"))
+                for r in step_results
+                if isinstance(r, dict)
+            )
         ok_count = sum(
             1 for r in step_results
             if isinstance(r, dict)
@@ -583,7 +602,7 @@ def handler(event: dict, context) -> dict:
 
     plans = _normalize_plans(data)
     if not plans:
-        logger.error("Victor returned no valid plans for ticket %s (ticket will not be executable)", ticket_id)
+        logger.error("Victor returned no valid plans for ticket %s (ticket will be derived)", ticket_id)
         raise ValidationError("Victor returned an empty plan - no steps to execute")
 
     recommended = plans[0]

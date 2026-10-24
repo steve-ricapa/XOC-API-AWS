@@ -359,6 +359,50 @@ class AssessTicketAutomationTests(unittest.TestCase):
         self.assertIn("No such file", fields["execution_logs"]["final_result"]["stderr"])
         self.assertEqual("failed", fields["execution_logs"]["final_result"]["status"])
 
+    def test_execute_phase_infers_success_when_victor_omits_all_success(self) -> None:
+        runtime = MagicMock()
+        runtime.function_base_url = "http://on-premise-victor.local:9000"
+        runtime.function_route_victor = "/api/agents/VictorDurableAgent/run"
+        runtime.is_active = True
+
+        fake_response = MagicMock()
+        fake_response.json.return_value = {
+            "step_results": [
+                {"order": 1, "command": "ls", "status": "completed", "stdout": "ok"},
+                {"order": 2, "command": "echo done", "success": True, "stdout": "done"},
+            ],
+        }
+        fake_response.raise_for_status.return_value = None
+
+        with patch("src.persistence.db.session_scope", _fake_db_session(runtime)), patch(
+            "src.handlers.workers.assess_ticket_automation.requests.post", return_value=fake_response
+        ), patch("src.shared.tickets_store.update_ticket_fields") as mock_update, patch(
+            "src.handlers.workers.assess_ticket_automation.publish_ticket_status_notification"
+        ):
+            assess_ticket_automation.handler(
+                {"ticketId": "t10", "tenantId": 7, "subject": "x", "description": "y", "phase": "execute",
+                 "plan": {"steps": [{"order": 1, "command": "ls"}]}},
+                None,
+            )
+
+        fields = mock_update.call_args.args[2]
+        self.assertEqual("RESUELTO", fields["status"])
+        self.assertEqual("2/2 pasos completados", fields["execution_summary"])
+
+    def test_mark_derived_phase_marks_ticket_as_derivado(self) -> None:
+        with patch(
+            "src.handlers.workers.assess_ticket_automation.sync_unresolvable_assessment"
+        ) as mock_sync, patch(
+            "src.handlers.workers.assess_ticket_automation.requests.post"
+        ) as mock_post:
+            result = assess_ticket_automation.handler(
+                {"ticketId": "t11", "tenantId": 7, "phase": "mark_derived", "reasonCode": "NO_EXECUTABLE_PLAN"},
+                None,
+            )
+        mock_sync.assert_called_once_with(7, "t11", "NO_EXECUTABLE_PLAN")
+        mock_post.assert_not_called()
+        self.assertEqual("derivado", result["status"])
+
     def test_mark_failed_phase_persists_failure_without_calling_victor(self) -> None:
         with patch("src.shared.tickets_store.get_tenant_ticket_or_none", return_value=None), patch(
             "src.shared.tickets_store.update_ticket_fields"

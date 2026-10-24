@@ -19,6 +19,7 @@ ASSESSMENT_MESSAGES = {
     "VICTOR_TIMEOUT": "La evaluación de VICTOR agotó el tiempo de espera. Requiere revisión manual.",
     "VICTOR_ACCESS_DENIED": "No se pudo completar la evaluación por un rechazo de acceso de VICTOR. Requiere revisión manual.",
     "VICTOR_UNAVAILABLE": "No se pudo completar la evaluación de VICTOR por un error de comunicación o respuesta. Requiere revisión manual.",
+    "NO_EXECUTABLE_PLAN": "VICTOR no generó un plan de remediación ejecutable. Requiere revisión manual.",
 }
 
 
