@@ -23,6 +23,8 @@ def main():
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--wait-seconds", type=int, default=600)
     parser.add_argument("--min-plans", type=int, default=3)
+    parser.add_argument("--prepare-demo", action="store_true",
+                        help="Crear cinco tickets y dejarlos PREAPROBADO; nunca aprobar ni ejecutar")
     args = parser.parse_args()
     os.umask(0o077)
     run = time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
@@ -116,11 +118,96 @@ def main():
             time.sleep(5)
         raise RuntimeError("Timeout ticket " + tid + "; revisar workflow antes de repetir")
 
+    def prepare_demo(admin):
+        scenarios = [
+            ("01-lectura", "Inspeccion sin cambios (USER)", False),
+            ("02-recomendado", "Eliminacion con plan recomendado (ADMIN)", True),
+            ("03-alternativo", "Respaldo y eliminacion con plan alternativo (ADMIN)", True),
+            ("04-personalizado", "Plan personalizado con preview (ADMIN)", True),
+            ("05-rechazo", "Rechazar remediacion y conservar archivo (ADMIN)", True),
+        ]
+        manifest = {"run": run, "root": root, "instance": args.instance_id, "tickets": []}
+        guide = [f"# Demo XOC {run}", "", f"Directorio en xoc-test: `{root}`", "",
+                 "Tickets creados sin aprobar ni ejecutar. Usar USER para lectura y bloqueo por riesgo; ADMIN para remediar.", ""]
+        q = shlex.quote
+        for mode, title, changes in scenarios:
+            directory = root + "/" + mode
+            target, keeper = directory + "/objetivo.txt", directory + "/testigo.txt"
+            original = f"XOC DEMO archivo inofensivo {run} {mode}\n"
+            preserved = f"XOC DEMO testigo conservar {run} {mode}\n"
+            remote("mkdir -p " + q(directory) + "\nchmod 0777 " + q(directory)
+                   + "\nprintf %s " + q(original) + " > " + q(target)
+                   + "\nprintf %s " + q(preserved) + " > " + q(keeper)
+                   + "\nchmod 0666 " + q(target) + " " + q(keeper)
+                   + "\ncd /opt/victor\ndocker compose exec -T executor sh -c "
+                   + q("test -f " + q(target) + " && test -f " + q(keeper)))
+            if changes:
+                goal = (f"Retirar exclusivamente {target} de su ubicacion original. Genera tres planes "
+                        "diferentes y ejecutables: eliminacion directa; copia de respaldo y eliminacion; "
+                        "traslado a cuarentena. Respaldos y cuarentena deben estar dentro del directorio "
+                        f"autorizado {directory}. Inspecciona el archivo primero y verifica ausencia final, "
+                        "devolviendo error si no se cumple el objetivo. No eliminar directorios completos.")
+            else:
+                goal = (f"Inspeccionar {target}: verificar existencia, mostrar contenido y calcular SHA-256. "
+                        "SOLO LECTURA, riesgo basic. No crear, mover, eliminar ni modificar archivos. "
+                        "Una unica estrategia de lectura es suficiente.")
+            description = (f"Demo autorizada en xoc-test, IP privada 10.20.0.97. {goal} "
+                           f"Conservar {keeper} y todos los otros directorios y archivos sin cambios. "
+                           "Los planes se presentaran para aprobacion humana; no ejecutar durante la generacion.")
+            code, created = api("POST", "/tickets", admin, {
+                "subject": f"DEMO {run} | {title}", "description": description,
+                "priority": "high", "metadata": {"source": "demo-preapproved", "run": run, "scenario": mode}})
+            if code != 201:
+                raise RuntimeError(f"Crear ticket {mode}: HTTP {code}; revisar manifest antes de repetir")
+            tid = created["ticket"]["id"]
+            entry = {"scenario": mode, "ticket_id": tid, "title": title, "target": target,
+                     "keeper": keeper, "target_sha256": hashlib.sha256(original.encode()).hexdigest(),
+                     "keeper_sha256": hashlib.sha256(preserved.encode()).hexdigest(),
+                     "required_options": args.min_plans if changes else 1}
+            manifest["tickets"].append(entry)
+            save("demo-manifest", manifest)
+            print(f"[CREADO] {mode}: {tid}", flush=True)
+            guide += [f"## {title}", f"Ticket: `{tid}`", f"Archivo: `{target}`", ""]
+            if mode == "04-personalizado":
+                guide += ["Texto para pegar en plan personalizado y previsualizar:", "", "```text",
+                          f"Inspecciona {target} y calcula su SHA-256. Crea {directory}/cuarentena-demo. "
+                          f"Mueve solo {target} a {directory}/cuarentena-demo/objetivo.txt. "
+                          "Comprueba que el original ya no existe y el destino conserva el hash. "
+                          f"No modificar {keeper} ni ninguna otra ruta. Las verificaciones deben fallar "
+                          "con codigo distinto de cero si no se cumple el objetivo.", "```", ""]
+        (output / "demo-guide.md").write_text("\n".join(guide), encoding="utf-8")
+        for entry in manifest["tickets"]:
+            doc = poll(admin, entry["ticket_id"], {"PREAPROBADO"})
+            save(entry["scenario"] + "-prepared", doc)
+            entry["status"] = doc.get("status")
+            options = (doc.get("pending_decision") or {}).get("options") or []
+            entry["options"] = len(options)
+            check(doc.get("status") == "PREAPROBADO", entry["scenario"] + ": " + str(doc.get("status")))
+            check(len(options) >= entry["required_options"],
+                  f"{entry['scenario']}: {len(options)} planes (minimo {entry['required_options']})")
+            save("demo-manifest", manifest)
+        # Verify preparation had no remediation side effects in the target server.
+        verify = "import pathlib,hashlib,json\nitems=" + repr(manifest["tickets"]) + "\n"
+        verify += ("out=[]\nfor item in items:\n"
+                   " p=pathlib.Path(item['target']); k=pathlib.Path(item['keeper'])\n"
+                   " out.append({'scenario':item['scenario'], 'target_ok':p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest()==item['target_sha256'], "
+                   "'keeper_ok':k.is_file() and hashlib.sha256(k.read_bytes()).hexdigest()==item['keeper_sha256']})\n"
+                   "print(json.dumps(out))\n")
+        disk = json.loads(remote("python3 - <<'PY'\n" + verify + "PY"))
+        save("demo-preparation-disk", disk)
+        for item in disk:
+            check(item["target_ok"] and item["keeper_ok"], item["scenario"] + ": archivos preparados intactos")
+        print(f"\nAbre XOC Test Lab y busca: DEMO {run}\nGuia y texto custom: {output / 'demo-guide.md'}", flush=True)
+
     try:
-        admin, user = login("ADMIN"), login("USER")
+        admin = login("ADMIN")
+        user = None if args.prepare_demo else login("USER")
         # SSM must work before creating tickets or approving anything.
         remote("test -d /opt/victor && cd /opt/victor && docker compose exec -T executor sh -c 'test -d /opt/xoc-test/incident'")
         check(True, "SSM y montaje del executor accesibles")
+        if args.prepare_demo:
+            prepare_demo(admin)
+            return 1 if any(not r["pass"] for r in results) else 0
         fixture = "XOC E2E harmless fixture " + run + "\n"
         keeper = "XOC E2E preserve " + run + "\n"
         for mode in ("recommended", "alternative", "custom", "reject"):
@@ -230,7 +317,10 @@ def main():
         save("summary", {"run": run, "instance": args.instance_id, "root": root, "results": results})
         passed = sum(r["pass"] for r in results)
         print(f"\nResultado: {passed} OK, {len(results)-passed} fallos. Evidencia: {output}")
-        print("No se borran tickets ni evidencias. Esta suite no prueba timeout de 7 dias ni fallos inducidos.")
+        if args.prepare_demo:
+            print("Modo preparacion: no se enviaron aprobaciones, rechazos ni planes a ejecutar.")
+        else:
+            print("No se borran tickets ni evidencias. Esta suite no prueba timeout de 7 dias ni fallos inducidos.")
     return 1 if any(not r["pass"] for r in results) else 0
 
 
