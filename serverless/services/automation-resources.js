@@ -227,7 +227,7 @@ module.exports = function automationResources(stage) {
                   RegisterSuccessfulCase: {
                     Type: 'Task',
                     Resource: '${GenerateCaseArn}',
-                    Parameters: { 'ticket_id.$': '$.state.ticketId', 'tenant_id.$': '$.state.tenantId', 'subject.$': '$.state.subject', action: 'success', 'total_attempts.$': '$.state.attemptCount', 'solution_applied.$': '$.statusCheck.solutionApplied', 'plan_used.$': '$.plan.plan', 'similar_case_id.$': '$.state.similarCaseId' },
+                    Parameters: { 'ticket_id.$': '$.state.ticketId', 'tenant_id.$': '$.state.tenantId', 'subject.$': '$.state.subject', action: 'success', 'total_attempts.$': '$.state.attemptCount', 'solution_applied.$': '$.statusCheck.solutionApplied', 'plan_used.$': '$.approval.selected_plan', 'similar_case_id.$': '$.state.similarCaseId' },
                     ResultPath: '$.caseResult',
                     Next: 'EndCaseRegistered',
                     Retry: [{ ErrorEquals: ['Lambda.ServiceException', 'Lambda.SdkClientException'], IntervalSeconds: 2, MaxAttempts: 3, BackoffRate: 2 }],
