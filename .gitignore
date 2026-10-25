@@ -14,3 +14,5 @@ opencode.json
 scripts/apply_live_voice_schema_remote.sh
 scripts/apply_pending_ingestions_schema_remote.sh
 docs/local/
+local-output/e2e-remediation-*/
+local-output/e2e_remediation.sh
